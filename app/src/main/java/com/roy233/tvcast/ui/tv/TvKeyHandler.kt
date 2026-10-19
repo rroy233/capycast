@@ -29,21 +29,21 @@ internal enum class TvBackAction {
 
 /** 识别限定时间内的连续两次主页返回。 */
 internal class DoubleBackExitGate(private val intervalMs: Long) {
-    private var previousPressAtMs: Long? = null
+    private var backPressCount = 0
+    private var promptShownAtMs = 0L
 
     fun press(nowMs: Long): Boolean {
-        val previousPress = previousPressAtMs
-        if (previousPress != null && nowMs >= previousPress && nowMs - previousPress <= intervalMs) {
-            previousPressAtMs = null
-            return true
-        }
-        previousPressAtMs = nowMs
-        return false
+        if (nowMs - promptShownAtMs > intervalMs) backPressCount = 0
+        backPressCount++
+        if (backPressCount == 1) promptShownAtMs = nowMs
+        return backPressCount >= 2
     }
+}
 
-    fun reset() {
-        previousPressAtMs = null
-    }
+/** 主页退出提示文案与连续返回时间窗。 */
+internal object HomeBackExitTiming {
+    const val PROMPT_TEXT = "再按一次返回键退出"
+    const val EXIT_WINDOW_MS = 5_000L
 }
 
 /** 处理电视遥控器按键并将其转换为界面操作。 */
@@ -101,8 +101,14 @@ object TvKeyHandler {
     ): Boolean {
         if (event.type != KeyEventType.KeyDown) return false
 
-        if (event.key == Key.Back || event.key == Key.Escape) {
-            dispatchBack(state, actions)
+        // Back is dispatched by Activity's OnBackPressedDispatcher. Handling it
+        // here as well can count one remote press twice (KeyDown + system Back).
+        if (event.key == Key.Back) return false
+
+        if (event.key == Key.Escape) {
+            if (event.nativeKeyEvent.repeatCount == 0) {
+                dispatchBack(state, actions)
+            }
             return true
         }
 

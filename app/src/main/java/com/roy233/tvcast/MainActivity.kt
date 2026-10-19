@@ -1,8 +1,8 @@
 package com.roy233.tvcast
 
 import android.os.Bundle
-import android.os.SystemClock
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.compose.runtime.getValue
@@ -20,6 +20,7 @@ import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.ui.tv.DoubleBackExitGate
+import com.roy233.tvcast.ui.tv.HomeBackExitTiming
 import com.roy233.tvcast.ui.tv.TvKeyHandler
 import com.roy233.tvcast.data.local.RecentCastStore
 import com.roy233.tvcast.data.local.UiPreferences
@@ -130,15 +131,12 @@ class MainActivity : ComponentActivity() {
         onLogin = { startQrLogin() },
         onSkipLogin = { skipLogin() },
         onOpenSidebar = {
-            homeBackExitGate.reset()
             ui = ui.copy(sidebarVisible = true)
         },
         onCloseSidebar = {
-            homeBackExitGate.reset()
             ui = ui.copy(sidebarVisible = false)
         },
         onNavigateHome = {
-            homeBackExitGate.reset()
             ui = ui.copy(
                 destination = TvDestination.HOME,
                 settingsPage = SettingsPage.ROOT,
@@ -147,7 +145,6 @@ class MainActivity : ComponentActivity() {
             )
         },
         onNavigateSettings = {
-            homeBackExitGate.reset()
             ui = ui.copy(
                 destination = TvDestination.SETTINGS,
                 settingsPage = SettingsPage.ROOT,
@@ -200,7 +197,7 @@ class MainActivity : ComponentActivity() {
         },
         onConfirmStopCast = { stopCasting() },
         onCancelStopCast = { ui = ui.copy(stopCastConfirm = false, hudVisible = true) },
-        onClearToast = { ui = ui.copy(toast = null) },
+        onClearToast = { clearToast() },
         onRecast = { recast(it) },
         onDismissContinue = { ui = ui.copy(showContinue = false) },
         onSetRememberPlaybackContent = { enabled ->
@@ -435,6 +432,15 @@ class MainActivity : ComponentActivity() {
         startOrLogin()
         startTicker()
         updateCoordinator.checkAutomaticallyOnLaunch()
+    }
+
+    /** 根页面连续两次返回退出；其他返回层级由界面导航处理。 */
+    override fun finish() {
+        if (homeBackExitGate.press(System.currentTimeMillis())) {
+            super.finish()
+        } else {
+            Toast.makeText(this, HomeBackExitTiming.PROMPT_TEXT, Toast.LENGTH_SHORT).show()
+        }
     }
 
     /** 将当前播放信息加入最近投屏记录。 */
@@ -843,12 +849,12 @@ class MainActivity : ComponentActivity() {
 
     /** 首页连续两次返回退出，首按显示明确提示。 */
     private fun handleHomeBack() {
-        val now = SystemClock.elapsedRealtime()
-        if (homeBackExitGate.press(now)) {
-            finish()
-            return
-        }
-        ui = ui.copy(toast = "再按一次返回键退出")
+        finish()
+    }
+
+    /** 清除界面内的短暂状态提示。 */
+    private fun clearToast() {
+        ui = ui.copy(toast = null)
     }
 
     // ------------------------------------------------------------------ //
@@ -929,6 +935,6 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** 日志标签。 */
         private const val TAG = "SimpleBili"
-        private const val HOME_BACK_EXIT_WINDOW_MS = 2_000L
+        private const val HOME_BACK_EXIT_WINDOW_MS = HomeBackExitTiming.EXIT_WINDOW_MS
     }
 }

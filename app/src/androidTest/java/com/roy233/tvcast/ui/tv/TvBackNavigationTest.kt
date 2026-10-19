@@ -100,12 +100,12 @@ class TvBackNavigationTest {
     }
 
     @Test
-    fun onlyTwoHomeBackPressesWithinWindowRequestExit() {
-        val gate = DoubleBackExitGate(intervalMs = 2_000L)
+    fun homeExitUsesSmartTubeStyleFiveSecondWindowFromPromptShown() {
+        val gate = DoubleBackExitGate(intervalMs = 5_000L)
 
-        assertEquals(false, gate.press(1_000L))
-        assertEquals(true, gate.press(2_500L))
-        assertEquals(false, gate.press(3_000L))
-        assertEquals(false, gate.press(5_100L))
+        assertEquals(false, gate.press(10_000L))
+        assertEquals(true, gate.press(15_000L))
+        assertEquals(false, gate.press(20_001L))
+        assertEquals(false, gate.press(25_002L))
     }
 }
