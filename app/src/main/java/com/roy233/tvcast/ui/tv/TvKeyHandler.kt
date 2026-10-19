@@ -22,7 +22,6 @@ object TvKeyHandler {
      * @param state 当前电视界面状态。
      * @param actions 可执行的界面操作回调。
      * @param modal 当前是否存在模态内容。
-     * @param sidebarFocused 侧边栏当前是否拥有焦点。
      * @return 事件是否已被处理。
      */
     fun handle(
@@ -30,7 +29,6 @@ object TvKeyHandler {
         state: TvUiState,
         actions: TvActions,
         modal: Boolean,
-        sidebarFocused: Boolean,
     ): Boolean {
         if (event.type != KeyEventType.KeyDown) return false
 
@@ -60,21 +58,6 @@ object TvKeyHandler {
                 state.mode == TvMode.IDLE ->
                     if (state.sidebarVisible) actions.onCloseSidebar() else actions.onOpenSidebar()
             }
-            return true
-        }
-
-        if (state.mode == TvMode.IDLE &&
-            !modal &&
-            state.sidebarVisible &&
-            sidebarFocused &&
-            event.key == Key.DirectionRight
-        ) {
-            actions.onCloseSidebar()
-            return true
-        }
-
-        if (state.mode == TvMode.IDLE && !modal && event.key == Key.DirectionLeft && !state.sidebarVisible) {
-            actions.onOpenSidebar()
             return true
         }
 

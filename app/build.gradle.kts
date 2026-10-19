@@ -31,6 +31,7 @@ android {
         applicationId = "com.roy233.tvcast"
         minSdk = 21
         targetSdk = 36
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = APP_VERSION_CODE
         versionName = APP_VERSION_NAME
         ndk {
@@ -111,6 +112,11 @@ dependencies {
     implementation("io.github.kyant0:backdrop:1.0.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 /** 输出工作流校验与发布所需的版本元数据。 */

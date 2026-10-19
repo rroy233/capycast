@@ -55,11 +55,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Audiotrack
@@ -104,7 +103,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -118,6 +116,7 @@ import coil.compose.AsyncImage
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
+import com.roy233.tvcast.ui.tv.tvFocusRegion
 
 /**
  * 显示账号、设备和播放设置页面。
@@ -127,83 +126,92 @@ import kotlinx.coroutines.delay
  */
 @Composable
 internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
+    val doneFocus = remember { FocusRequester() }
+    val updateEntryFocus = remember { FocusRequester() }
+    var previousPage by remember { mutableStateOf(state.settingsPage) }
+    LaunchedEffect(state.settingsPage, state.sidebarVisible) {
+        if (state.settingsPage == SettingsPage.ROOT && !state.sidebarVisible) {
+            val requester = if (previousPage == SettingsPage.UPDATE) updateEntryFocus else doneFocus
+            runCatching { requester.requestFocus() }
+        }
+        previousPage = state.settingsPage
+    }
     if (state.settingsPage == SettingsPage.UPDATE) {
         UpdateSettingsScreen(state, actions)
         return
     }
-    val doneFocus = remember { FocusRequester() }
-    val view = LocalView.current
-    LaunchedEffect(state.sidebarVisible) {
-        if (!state.sidebarVisible) {
-            var guard = 0
-            while (!view.hasFocus() && guard++ < 15) delay(100)
-            delay(220)
-            for (i in 0 until 8) {
-                if (runCatching { doneFocus.requestFocus() }.getOrDefault(false)) break
-                delay(180)
-            }
-        }
-    }
-
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < 500.dp
         val hPad = if (compact) 32.dp else 80.dp
         val vPad = if (compact) 20.dp else 52.dp
         val titleSize = if (compact) 36.sp else 48.sp
 
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = hPad, vertical = vPad)
-                .verticalScroll(rememberScrollState()),
+                .tvFocusRegion(),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BasicText(
-                    text = "设置",
-                    style = TvType.title.copy(fontSize = titleSize),
-                    modifier = Modifier.weight(1f),
-                )
-                WhiteButton(
-                    text = "完成",
-                    onClick = actions.onNavigateHome,
-                    focusRequester = doneFocus,
-                    compact = true,
-                )
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BasicText(
+                        text = "设置",
+                        style = TvType.title.copy(fontSize = titleSize),
+                        modifier = Modifier.weight(1f),
+                    )
+                    WhiteButton(
+                        text = "完成",
+                        onClick = actions.onNavigateHome,
+                        focusRequester = doneFocus,
+                        compact = true,
+                    )
+                }
+                Spacer(Modifier.height(if (compact) 18.dp else 28.dp))
             }
 
-            Spacer(Modifier.height(if (compact) 18.dp else 28.dp))
+            item {
+                SettingsSection("账号") {
+                    SettingsInfoRow("账号", state.accountName)
+                    SettingsInfoRow("会员", if (state.vip) "大会员" else "普通账号")
+                    FocusableRow(
+                        title = "退出登录",
+                        onClick = actions.onLogout,
+                        enabled = state.loggedIn,
+                        destructive = true,
+                        showChevron = false,
+                        rowHeight = 50.dp,
+                    )
+                }
+            }
 
-            SettingsSection("账号") {
-                SettingsInfoRow("账号", state.accountName)
-                SettingsInfoRow("会员", if (state.vip) "大会员" else "普通账号")
-                FocusableRow(
-                    title = "退出登录",
-                    onClick = actions.onLogout,
-                    enabled = state.loggedIn,
-                    destructive = true,
-                    showChevron = false,
-                    rowHeight = 50.dp,
-                )
+            item {
+                SettingsSection("设备") {
+                    SettingsInfoRow("设备名称", "${state.deviceName} · ${state.roomName}")
+                    SettingsInfoRow("网络", "${state.network} · ${state.ip}")
+                    SettingsInfoRow("投屏地址", state.dlnaUrl)
+                }
             }
-            SettingsSection("设备") {
-                SettingsInfoRow("设备名称", "${state.deviceName} · ${state.roomName}")
-                SettingsInfoRow("网络", "${state.network} · ${state.ip}")
-                SettingsInfoRow("投屏地址", state.dlnaUrl)
+
+            item {
+                SettingsSection("播放") {
+                    SettingsInfoRow("默认画质", "账号最高")
+                    SettingsInfoRow("通道", state.castMode)
+                    SettingsInfoRow("版本", state.version)
+                }
             }
-            SettingsSection("播放") {
-                SettingsInfoRow("默认画质", "账号最高")
-                SettingsInfoRow("通道", state.castMode)
-                SettingsInfoRow("版本", state.version)
-            }
-            SettingsSection("应用") {
-                FocusableRow(
-                    title = "应用更新",
-                    value = updateSummary(state),
-                    onClick = actions.onOpenUpdateSettings,
-                )
+
+            item {
+                SettingsSection("应用") {
+                    FocusableRow(
+                        title = "应用更新",
+                        value = updateSummary(state),
+                        onClick = actions.onOpenUpdateSettings,
+                        focusRequester = updateEntryFocus,
+                    )
+                }
             }
         }
     }

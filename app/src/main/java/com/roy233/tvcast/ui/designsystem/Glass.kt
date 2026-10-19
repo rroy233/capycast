@@ -6,6 +6,7 @@ import android.provider.Settings
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
+import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -82,10 +83,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -358,18 +356,6 @@ fun GlassButton(
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .focusProperties { canFocus = enabled }
             .onFocusChanged { focusObserved = it.isFocused }
-            .onPreviewKeyEvent { event ->
-                if (enabled &&
-                    event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.Enter || event.key == Key.DirectionCenter)
-                ) {
-                    onClick()
-                    true
-                } else {
-                    false
-                }
-            }
-            .focusable()
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -455,18 +441,6 @@ fun GlassIconButton(
             .focusProperties { canFocus = enabled }
             .onFocusChanged { focusObserved = it.isFocused }
             .semantics { this.contentDescription = contentDescription }
-            .onPreviewKeyEvent { event ->
-                if (enabled &&
-                    event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.Enter || event.key == Key.DirectionCenter)
-                ) {
-                    onClick()
-                    true
-                } else {
-                    false
-                }
-            }
-            .focusable()
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -522,17 +496,6 @@ fun PrimaryPlayButton(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .onFocusChanged { focusObserved = it.isFocused }
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.Enter || event.key == Key.DirectionCenter)
-                ) {
-                    onClick()
-                    true
-                } else {
-                    false
-                }
-            }
-            .focusable()
             .shadow(
                 elevation = if (focused) 26.dp else 16.dp,
                 shape = CircleShape,
@@ -765,7 +728,8 @@ fun GlassAlert(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.58f)),
+            .background(Color.Black.copy(alpha = 0.58f))
+            .tvModalFocusRegion(),
         contentAlignment = Alignment.Center,
     ) {
         GlassSurface(

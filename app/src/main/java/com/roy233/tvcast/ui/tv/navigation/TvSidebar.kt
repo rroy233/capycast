@@ -12,6 +12,7 @@ import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.tv.tvFocusRegion
 import com.roy233.tvcast.ui.designsystem.*
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -31,7 +32,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -53,11 +53,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Audiotrack
@@ -72,9 +70,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,7 +78,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -92,12 +87,6 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -129,7 +118,6 @@ import kotlinx.coroutines.delay
 internal fun Sidebar(
     state: TvUiState,
     actions: TvActions,
-    onSidebarFocusChanged: (Boolean) -> Unit,
 ) {
     val homeFocus = remember { FocusRequester() }
     val settingsFocus = remember { FocusRequester() }
@@ -151,7 +139,8 @@ internal fun Sidebar(
     GlassSurface(
         modifier = Modifier
             .fillMaxHeight()
-            .width(208.dp),
+            .width(208.dp)
+            .tvFocusRegion(),
         shape = RoundedCornerShape(0.dp),
         tint = Color(0xB30B0B0F),
         borderAlpha = 0f,
@@ -228,7 +217,6 @@ internal fun Sidebar(
                     }
                 },
                 focusRequester = homeFocus,
-                onFocused = onSidebarFocusChanged,
             )
             Spacer(Modifier.height(4.dp))
             SidebarItem(
@@ -243,7 +231,6 @@ internal fun Sidebar(
                     }
                 },
                 focusRequester = settingsFocus,
-                onFocused = onSidebarFocusChanged,
             )
 
             Spacer(Modifier.weight(1f))
@@ -267,12 +254,10 @@ private fun SidebarItem(
     selected: Boolean,
     onClick: () -> Unit,
     focusRequester: FocusRequester,
-    onFocused: (Boolean) -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val interactionFocused by interaction.collectIsFocusedAsState()
-    var focusObserved by remember { mutableStateOf(false) }
-    val focused = interactionFocused || focusObserved
+    val focused = interactionFocused
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.02f else 1f,
         animationSpec = spring(dampingRatio = 0.85f, stiffness = 420f),
@@ -286,21 +271,6 @@ private fun SidebarItem(
             .height(46.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .focusRequester(focusRequester)
-            .onFocusChanged {
-                focusObserved = it.isFocused
-                onFocused(it.isFocused)
-            }
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.Enter || event.key == Key.DirectionCenter)
-                ) {
-                    onClick()
-                    true
-                } else {
-                    false
-                }
-            }
-            .focusable()
             .clip(shape)
             .background(
                 when {

@@ -79,9 +79,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -136,14 +134,9 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
     val ambient = state.mode == TvMode.IDLE
     val modal = state.panel != null || state.error != null ||
         state.exitConfirm || state.helpVisible
+    val focusManager = LocalFocusManager.current
     val density = LocalDensity.current
     val swipeThreshold = with(density) { 72.dp.toPx() }
-    var sidebarFocused by remember { mutableStateOf(false) }
-
-    LaunchedEffect(state.sidebarVisible) {
-        if (!state.sidebarVisible) sidebarFocused = false
-    }
-
     // tvOS-style quiet auto-collapse after switching to Bilibili.
     LaunchedEffect(state.mode, state.destination, state.sidebarVisible) {
         if (state.mode == TvMode.IDLE &&
@@ -183,7 +176,23 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                         Modifier
                     }
                 )
-                .onPreviewKeyEvent { TvKeyHandler.handle(it, state, actions, modal, sidebarFocused) }
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown &&
+                        event.key == Key.DirectionLeft &&
+                        state.mode == TvMode.IDLE &&
+                        !state.sidebarVisible &&
+                        !modal
+                    ) {
+                        if (focusManager.moveFocus(FocusDirection.Left)) {
+                            true
+                        } else {
+                            actions.onOpenSidebar()
+                            true
+                        }
+                    } else {
+                        TvKeyHandler.handle(event, state, actions, modal)
+                    }
+                }
         ) {
             if (ambient) {
                 TvBackground(
@@ -202,7 +211,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                         enter = expandHorizontally(tween(220), Alignment.Start) + fadeIn(tween(180)),
                         exit = shrinkHorizontally(tween(200), Alignment.Start) + fadeOut(tween(160)),
                     ) {
-                        Sidebar(state, actions) { sidebarFocused = it }
+                        Sidebar(state, actions)
                     }
                     Box(
                         Modifier

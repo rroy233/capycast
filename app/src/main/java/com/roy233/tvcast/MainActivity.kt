@@ -83,10 +83,6 @@ class MainActivity : ComponentActivity() {
     private var lastTitle = ""
     /** 最近一次失败操作的重试回调。 */
     private var lastErrorRetry: (() -> Unit)? = null
-    /** 是否已进入二次返回退出确认状态。 */
-    private var exitArmed = false
-    /** 返回退出确认的重置任务。 */
-    private var backResetJob: Job? = null
 
     /** 电视界面状态。 */
     private var ui by mutableStateOf(TvUiState())
@@ -130,7 +126,6 @@ class MainActivity : ComponentActivity() {
         onOpenSidebar = { ui = ui.copy(sidebarVisible = true) },
         onCloseSidebar = { ui = ui.copy(sidebarVisible = false) },
         onNavigateHome = {
-            exitArmed = false
             ui = ui.copy(
                 destination = TvDestination.HOME,
                 settingsPage = SettingsPage.ROOT,
@@ -139,7 +134,6 @@ class MainActivity : ComponentActivity() {
             )
         },
         onNavigateSettings = {
-            exitArmed = false
             ui = ui.copy(
                 destination = TvDestination.SETTINGS,
                 settingsPage = SettingsPage.ROOT,
@@ -156,7 +150,6 @@ class MainActivity : ComponentActivity() {
         onCancelUpdateDownload = { updateCoordinator.cancelUpdateDownload() },
         onInstallUpdate = { updateCoordinator.installUpdate() },
         onShowHelp = {
-            exitArmed = false
             ui = ui.copy(helpVisible = true)
         },
         onCloseHelp = { ui = ui.copy(helpVisible = false) },
@@ -175,7 +168,6 @@ class MainActivity : ComponentActivity() {
             }
         },
         onOpenPanel = { kind ->
-            exitArmed = false
             ui = ui.copy(
                 panel = kind,
                 hudVisible = true,
@@ -187,13 +179,13 @@ class MainActivity : ComponentActivity() {
         onSelectAudio = { id -> switchAudio(id) },
         onRetry = { retryLastAction() },
         onDismissError = { dismissError() },
-        onRequestExit = { ui = ui.copy(exitConfirm = true, hudVisible = false) },
+        onRequestExit = { finish() },
         onConfirmExit = { finish() },
         onCancelExit = { ui = ui.copy(exitConfirm = false, hudVisible = true) },
         onExitApp = { finish() },
         onClearToast = { ui = ui.copy(toast = null) },
         onRecast = { recast(it) },
-        onHomeBack = { homeBack() },
+        onHomeBack = { finish() },
     )
 
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
@@ -294,7 +286,6 @@ class MainActivity : ComponentActivity() {
         }
         composeUi.isFocusable = true
         composeUi.post { composeUi.requestFocus() }
-        composeUi.postDelayed({ composeUi.requestFocus() }, 1200)
 
         LogHub.start(this)
         dlna = DlnaRenderer(this, dlnaListener, deviceName = castDeviceName)
@@ -394,24 +385,6 @@ class MainActivity : ComponentActivity() {
         startOrLogin()
         startTicker()
         updateCoordinator.checkAutomaticallyIfDue()
-    }
-
-    /** 处理首页返回操作，并执行二次确认退出逻辑。 */
-    private fun homeBack() {
-        if (exitArmed) {
-            finish()
-            return
-        }
-        exitArmed = true
-        ui = ui.copy(
-            showContinue = false,
-            toast = "再点一次退出应用",
-        )
-        backResetJob?.cancel()
-        backResetJob = scope.launch {
-            delay(2000)
-            exitArmed = false
-        }
     }
 
     /** 将当前播放信息加入最近投屏记录。 */
@@ -822,8 +795,9 @@ class MainActivity : ComponentActivity() {
     /** 恢复界面焦点并刷新设备网络信息。 */
     override fun onResume() {
         super.onResume()
-        composeUi.post { composeUi.requestFocus() }
-        composeUi.postDelayed({ composeUi.requestFocus() }, 1200)
+        if (!composeUi.hasFocus()) {
+            composeUi.post { composeUi.requestFocus() }
+        }
         ui = ui.copy(network = deviceInfo.wifiName(), ip = LogHub.localIp())
     }
 

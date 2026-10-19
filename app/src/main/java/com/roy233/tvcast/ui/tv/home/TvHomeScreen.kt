@@ -15,6 +15,7 @@ import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.designsystem.*
+import com.roy233.tvcast.ui.tv.tvFocusRegion
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
@@ -32,10 +33,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -54,11 +55,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Audiotrack
@@ -93,12 +92,6 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -503,17 +496,6 @@ internal fun WhiteButton(
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .focusRequester(focusRequester)
             .onFocusChanged { focusObserved = it.isFocused }
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown &&
-                    (event.key == Key.Enter || event.key == Key.DirectionCenter)
-                ) {
-                    onClick()
-                    true
-                } else {
-                    false
-                }
-            }
-            .focusable()
             .shadow(18.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(CircleShape)
             .background(Color.White)
@@ -554,11 +536,14 @@ private fun RecentShelf(recents: List<RecentCast>, actions: TvActions) {
             style = TvType.section.copy(fontSize = 22.sp),
         )
         Spacer(Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
+        LazyRow(
+            modifier = Modifier.tvFocusRegion(),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            recents.take(8).forEach { recent ->
+            items(
+                items = recents.take(8),
+                key = { "${it.aid}-${it.cid}" },
+            ) { recent ->
                 RecentCard(recent, actions)
             }
         }
@@ -590,8 +575,7 @@ private fun RecentCard(recent: RecentCast, actions: TvActions) {
                 interactionSource = interaction,
                 indication = null,
                 onClick = { actions.onRecast(recent) },
-            )
-            .focusable(),
+            ),
     ) {
         Box(
             modifier = Modifier

@@ -1,6 +1,7 @@
 package com.roy233.tvcast.ui.tv.overlay
 
 import com.roy233.tvcast.ui.tv.home.WhiteButton
+import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 
 import android.graphics.Bitmap
 import com.roy233.tvcast.ui.theme.TvColors
@@ -136,6 +137,7 @@ internal fun HelpSheet(state: TvUiState, actions: TvActions) {
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.68f))
+            .tvModalFocusRegion()
             .pointerInput(Unit) { detectTapGestures { actions.onCloseHelp() } },
         contentAlignment = Alignment.Center,
     ) {
@@ -210,7 +212,8 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.72f)),
+            .background(Color.Black.copy(alpha = 0.72f))
+            .tvModalFocusRegion(),
         contentAlignment = Alignment.Center,
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {

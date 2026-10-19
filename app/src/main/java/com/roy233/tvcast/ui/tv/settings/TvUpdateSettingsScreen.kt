@@ -2,8 +2,7 @@ package com.roy233.tvcast.ui.tv.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -17,15 +16,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +50,7 @@ import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
+import com.roy233.tvcast.ui.tv.tvFocusRegion
 
 /**
  * 显示更新通道、检查开关、发布说明和下载安装操作。
@@ -61,116 +61,127 @@ import com.roy233.tvcast.ui.tv.home.WhiteButton
 @Composable
 internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
     val update = state.update
-    val backFocus = remember { FocusRequester() }
     val checkFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        checkFocus.requestFocus()
+    }
     val canCheck = update.status != UpdateStatus.CHECKING &&
         update.status != UpdateStatus.DOWNLOADING &&
         update.status != UpdateStatus.VERIFYING
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 80.dp, vertical = 52.dp)
-            .verticalScroll(rememberScrollState()),
+            .tvFocusRegion(),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.SystemUpdate,
-                contentDescription = null,
-                tint = TvColors.pink,
-            )
-            Spacer(Modifier.width(14.dp))
-            BasicText(
-                text = "应用更新",
-                style = TvType.title.copy(fontSize = 48.sp),
-                modifier = Modifier.weight(1f),
-            )
-            WhiteButton(
-                text = "返回",
-                onClick = actions.onCloseUpdateSettings,
-                focusRequester = backFocus,
-                compact = true,
-            )
-        }
-
-        Spacer(Modifier.height(26.dp))
-        UpdateStatusCard(update)
-        Spacer(Modifier.height(22.dp))
-
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            BasicText(
-                text = "当前版本 ${state.version}",
-                style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 18.sp),
-                modifier = Modifier.weight(1f),
-            )
-            WhiteButton(
-                text = if (canCheck) "检查更新" else "更新进行中",
-                onClick = { if (canCheck) actions.onCheckForUpdates() },
-                focusRequester = checkFocus,
-            )
-        }
-
-        UpdateAction(update, actions)
-        update.availableUpdate?.let { available ->
-            UpdateSection("版本 ${available.versionName}") {
-                BasicText(
-                    text = "${formatBytes(available.sizeBytes)} · GitHub Release",
-                    style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 17.sp),
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.SystemUpdate,
+                    contentDescription = null,
+                    tint = TvColors.pink,
                 )
-                if (available.releaseNotes.isBlank()) {
+                Spacer(Modifier.width(14.dp))
+                BasicText(
+                    text = "应用更新",
+                    style = TvType.title.copy(fontSize = 48.sp),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(26.dp))
+        }
+
+        item {
+            UpdateStatusCard(update)
+            Spacer(Modifier.height(22.dp))
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().tvFocusRegion(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                BasicText(
+                    text = "当前版本 ${state.version}",
+                    style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 18.sp),
+                    modifier = Modifier.weight(1f),
+                )
+                WhiteButton(
+                    text = if (canCheck) "检查更新" else "更新进行中",
+                    onClick = { if (canCheck) actions.onCheckForUpdates() },
+                    focusRequester = checkFocus,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+
+        item { UpdateAction(update, actions) }
+
+        item {
+            update.availableUpdate?.let { available ->
+                UpdateSection("版本 ${available.versionName}") {
                     BasicText(
-                        text = "此版本未提供更新说明。",
-                        style = TvType.body.copy(color = TvColors.textSecondary),
+                        text = "${formatBytes(available.sizeBytes)} · GitHub Release",
+                        style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 17.sp),
                         modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
                     )
-                } else {
-                    MarkdownReleaseNotes(available.releaseNotes)
+                    if (available.releaseNotes.isBlank()) {
+                        BasicText(
+                            text = "此版本未提供更新说明。",
+                            style = TvType.body.copy(color = TvColors.textSecondary),
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                        )
+                    } else {
+                        MarkdownReleaseNotes(available.releaseNotes)
+                    }
                 }
             }
+            Spacer(Modifier.height(24.dp))
         }
-        Spacer(Modifier.height(40.dp))
-        UpdateChoiceGroup("更新通道") {
-            UpdateOptionTile(
-                title = "正式版",
-                description = "推荐日常使用",
-                selected = update.channel == UpdateChannel.STABLE,
-                onClick = { actions.onSelectUpdateChannel(UpdateChannel.STABLE) },
-                modifier = Modifier.weight(1f),
-            )
-            UpdateOptionTile(
-                title = "Beta 版",
-                description = "公开测试版本",
-                selected = update.channel == UpdateChannel.BETA,
-                onClick = { actions.onSelectUpdateChannel(UpdateChannel.BETA) },
-                modifier = Modifier.weight(1f),
-            )
+
+        item {
+            UpdateChoiceGroup("更新通道") {
+                UpdateOptionTile(
+                    title = "正式版",
+                    description = "推荐日常使用",
+                    selected = update.channel == UpdateChannel.STABLE,
+                    onClick = { actions.onSelectUpdateChannel(UpdateChannel.STABLE) },
+                    modifier = Modifier.weight(1f),
+                )
+                UpdateOptionTile(
+                    title = "Beta 版",
+                    description = "公开测试版本",
+                    selected = update.channel == UpdateChannel.BETA,
+                    onClick = { actions.onSelectUpdateChannel(UpdateChannel.BETA) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(16.dp))
         }
-        Spacer(Modifier.height(16.dp))
-        UpdateChoiceGroup("自动检查更新") {
-            UpdateOptionTile(
-                title = "开启",
-                description = "启动应用时自动检查",
-                selected = update.automaticCheck,
-                onClick = { actions.onSetAutoUpdateCheck(true) },
-                modifier = Modifier.weight(1f),
-            )
-            UpdateOptionTile(
-                title = "关闭",
-                description = "仅在手动操作时检查",
-                selected = !update.automaticCheck,
-                onClick = { actions.onSetAutoUpdateCheck(false) },
-                modifier = Modifier.weight(1f),
-            )
+
+        item {
+            UpdateChoiceGroup("自动检查更新") {
+                UpdateOptionTile(
+                    title = "开启",
+                    description = "启动应用时自动检查",
+                    selected = update.automaticCheck,
+                    onClick = { actions.onSetAutoUpdateCheck(true) },
+                    modifier = Modifier.weight(1f),
+                )
+                UpdateOptionTile(
+                    title = "关闭",
+                    description = "仅在手动操作时检查",
+                    selected = !update.automaticCheck,
+                    onClick = { actions.onSetAutoUpdateCheck(false) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(18.dp))
         }
-        Spacer(Modifier.height(18.dp))
     }
 }
 
@@ -190,7 +201,7 @@ private fun UpdateChoiceGroup(
         modifier = Modifier.padding(bottom = 7.dp, start = 2.dp),
     )
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().tvFocusRegion(),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         content = content,
     )
@@ -229,13 +240,13 @@ private fun UpdateOptionTile(
                 },
                 shape = shape,
             )
-            .clickable(
+            .selectable(
+                selected = selected,
                 interactionSource = interaction,
                 indication = null,
-                role = Role.Button,
+                role = Role.RadioButton,
                 onClick = onClick,
             )
-            .focusable(interactionSource = interaction)
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
@@ -248,7 +259,7 @@ private fun UpdateOptionTile(
             if (selected) {
                 Icon(
                     imageVector = Icons.Rounded.CheckCircle,
-                    contentDescription = "已选中",
+                    contentDescription = null,
                     tint = TvColors.pink,
                 )
             }
