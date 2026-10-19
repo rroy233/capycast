@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -16,10 +17,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material.Icon
@@ -34,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +46,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -62,6 +73,7 @@ import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.tvFocusRegion
+import kotlinx.coroutines.launch
 
 /**
  * 显示更新通道、检查开关、发布说明和下载安装操作。
@@ -73,9 +85,12 @@ import com.roy233.tvcast.ui.tv.tvFocusRegion
 internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
     val update = state.update
     val releaseNotes = update.availableUpdate?.releaseNotes.orEmpty()
-    val checkFocus = remember { FocusRequester() }
+    val headerFocus = remember { FocusRequester() }
+    val primaryActionFocus = remember { FocusRequester() }
+    val listState = rememberLazyListState()
     LaunchedEffect(Unit) {
-        checkFocus.requestFocus()
+        listState.scrollToItem(0)
+        headerFocus.requestFocus()
     }
     val progress = if (update.totalBytes > 0L) {
         (update.downloadedBytes.toFloat() / update.totalBytes.toFloat()).coerceIn(0f, 1f)
@@ -108,14 +123,30 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
         UpdateStatus.IDLE, UpdateStatus.UP_TO_DATE -> actions.onCheckForUpdates
     }
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 80.dp, vertical = 52.dp)
             .tvFocusRegion(),
     ) {
         item {
+            val interaction = remember { MutableInteractionSource() }
+            val focused = interaction.collectIsFocusedAsState().value
+            val shape = RoundedCornerShape(14.dp)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .background(if (focused) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+                    .border(
+                        width = 2.dp,
+                        color = if (focused) TvColors.pink else Color.Transparent,
+                        shape = shape,
+                    )
+                    .focusRequester(headerFocus)
+                    .focusable(interactionSource = interaction)
+                    .semantics(mergeDescendants = true) { }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -159,7 +190,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                 WhiteButton(
                     text = primaryActionText,
                     onClick = primaryAction,
-                    focusRequester = checkFocus,
+                    focusRequester = primaryActionFocus,
                 )
             }
             Spacer(Modifier.height(10.dp))
@@ -304,6 +335,8 @@ private fun UpdateOptionTile(
 /** 在统一信息卡中呈现更新阶段、版本摘要、更新日志和下载进度。 */
 @Composable
 private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused = interaction.collectIsFocusedAsState().value
     val accent = updateAccent(update.status)
     val fraction = if (update.totalBytes > 0L) {
         (update.downloadedBytes.toFloat() / update.totalBytes.toFloat()).coerceIn(0f, 1f)
@@ -313,9 +346,16 @@ private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(max = 240.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(accent.copy(alpha = 0.10f))
-            .border(1.dp, accent.copy(alpha = 0.38f), RoundedCornerShape(18.dp))
+            .background(accent.copy(alpha = if (focused) 0.17f else 0.10f))
+            .border(
+                width = if (focused) 3.dp else 1.dp,
+                color = if (focused) TvColors.pink else accent.copy(alpha = 0.38f),
+                shape = RoundedCornerShape(18.dp),
+            )
+            .focusable(interactionSource = interaction)
+            .semantics(mergeDescendants = true) { }
             .padding(horizontal = 22.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -582,10 +622,39 @@ private fun ReleaseNoteBlock(block: ReleaseNote, focusRequester: FocusRequester?
         return
     }
     var focused by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+    val scrollStep = with(LocalDensity.current) { 48.dp.roundToPx() }
     val shape = RoundedCornerShape(10.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(max = 96.dp)
+            .verticalScroll(scrollState)
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.DirectionDown -> {
+                        if (!scrollState.canScrollForward) return@onPreviewKeyEvent false
+                        coroutineScope.launch {
+                            scrollState.scrollTo(
+                                (scrollState.value + scrollStep).coerceAtMost(scrollState.maxValue),
+                            )
+                        }
+                        true
+                    }
+
+                    Key.DirectionUp -> {
+                        if (!scrollState.canScrollBackward) return@onPreviewKeyEvent false
+                        coroutineScope.launch {
+                            scrollState.scrollTo((scrollState.value - scrollStep).coerceAtLeast(0))
+                        }
+                        true
+                    }
+
+                    else -> false
+                }
+            }
             .clip(shape)
             .background(if (focused) Color.White.copy(alpha = 0.07f) else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }

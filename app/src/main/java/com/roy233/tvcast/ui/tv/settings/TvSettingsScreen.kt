@@ -255,11 +255,23 @@ private fun SettingsSection(title: String, content: @Composable () -> Unit) {
 /** 显示设置项的标题和值。 */
 @Composable
 private fun SettingsInfoRow(title: String, value: String) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused = interaction.collectIsFocusedAsState().value
+    val shape = RoundedCornerShape(10.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .padding(horizontal = 2.dp),
+            .height(52.dp)
+            .clip(shape)
+            .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+            .border(
+                width = 2.dp,
+                color = if (focused) TvColors.pink else Color.Transparent,
+                shape = shape,
+            )
+            .focusable(interactionSource = interaction)
+            .semantics(mergeDescendants = true) { }
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BasicText(

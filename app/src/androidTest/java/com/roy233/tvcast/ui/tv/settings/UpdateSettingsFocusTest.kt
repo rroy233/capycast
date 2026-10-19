@@ -29,11 +29,17 @@ class UpdateSettingsFocusTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun updatePageRequestsInitialFocusOnCheckAction() {
+    fun updatePageRequestsInitialFocusAtTopAndMovesThroughSections() {
         composeRule.setContent {
             UpdateSettingsScreen(state = TvUiState(), actions = TvActions())
         }
 
+        composeRule.onNodeWithText("应用更新").assertIsFocused()
+        composeRule.onNodeWithText("应用更新")
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithText("选择通道后检查更新").assertIsFocused()
+        composeRule.onNodeWithText("选择通道后检查更新")
+            .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithText("检查更新").assertIsFocused()
     }
 
@@ -47,6 +53,10 @@ class UpdateSettingsFocusTest {
             )
         }
 
+        composeRule.onNodeWithText("应用更新")
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithText("选择通道后检查更新")
+            .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithText("检查更新")
             .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithText("正式版").assertIsFocused()
@@ -154,6 +164,42 @@ class UpdateSettingsFocusTest {
     }
 
     @Test
+    fun longReleaseNoteScrollsInSmallStepsBeforeMovingFocus() {
+        val longNote = "条目内容 ".repeat(120)
+        composeRule.setContent {
+            UpdateNotesScreen(
+                state = TvUiState(
+                    update = UpdateUiState(
+                        status = UpdateStatus.AVAILABLE,
+                        availableUpdate = sampleUpdate("# 说明\n$longNote\n- 下一项"),
+                    ),
+                ),
+                actions = TvActions(),
+            )
+        }
+
+        composeRule.onNodeWithText("说明").assertIsFocused()
+        composeRule.onNodeWithText("说明").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithText("条目内容", substring = true).assertIsFocused()
+        composeRule.onNodeWithText("条目内容", substring = true)
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithText("条目内容", substring = true).assertIsFocused()
+    }
+
+    @Test
+    fun settingsReadOnlyRowsCanReceiveRemoteFocus() {
+        composeRule.setContent {
+            SettingsScreen(
+                state = TvUiState(accountName = "tv-user"),
+                actions = TvActions(),
+            )
+        }
+
+        composeRule.onNodeWithText("完成").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithText("tv-user").assertIsFocused()
+    }
+
+    @Test
     fun downloadButtonDisplaysProgressAndCanCancel() {
         var cancelled = false
         composeRule.setContent {
@@ -172,6 +218,13 @@ class UpdateSettingsFocusTest {
         }
 
         composeRule.onNodeWithText("下载中 42%").assertExists()
+        composeRule.onNodeWithText("应用更新")
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithText("正在下载新版本").assertIsFocused()
+        composeRule.onNodeWithText("正在下载新版本")
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithText("查看更新日志")
+            .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithText("下载中 42%")
             .performKeyInput { pressKey(Key.DirectionCenter) }
         composeRule.runOnIdle { assertEquals(true, cancelled) }
