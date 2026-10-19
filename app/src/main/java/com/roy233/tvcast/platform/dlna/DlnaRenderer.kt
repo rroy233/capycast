@@ -2,6 +2,7 @@ package com.roy233.tvcast.platform.dlna
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.R
 import java.io.BufferedInputStream
@@ -35,8 +36,11 @@ import kotlin.concurrent.thread
  * `_nva_ext_` payload; [NvaExtDecoder] turns it into aid/cid, and the
  * [Listener] resolves the account's max quality with libVLC.
  *
- * The SSDP/HTTP shapes below were verified against the real Bilibili app with
- * castlab/castlab.py (same paths, same SOAP actions, same device identity).
+ * The device description deliberately advertises a generic DLNA renderer
+ * without Bilibili vendor fields: when it claims to be an official
+ * "云视听小电视" TV, the Android app switches to the proprietary BiliLink/NVA
+ * projection protocol (`SETUP /projection`) instead of DLNA, which this
+ * renderer does not implement.
  */
 class DlnaRenderer(
     /** 用于读取设备资源和网络服务的上下文。 */
@@ -44,7 +48,7 @@ class DlnaRenderer(
     /** 接收投屏与播放控制事件的回调接口。 */
     private val listener: Listener,
     /** 对外广播的 DLNA 设备名称。 */
-    private val deviceName: String = "云视听小电视",
+    private val deviceName: String = "CapyCast",
 ) {
 
     /** 接收 DLNA 媒体与播放控制事件。 */
@@ -116,7 +120,7 @@ class DlnaRenderer(
 
     /** 当前设备描述文档的访问地址。 */
     val descriptionUrl: String
-        get() = "http://$ip:$port/bilibili/description.xml"
+        get() = "http://$ip:$port/description.xml"
 
     /** 启动 HTTP、SSDP 和设备保活服务。 */
     fun start() {
@@ -660,19 +664,14 @@ class DlnaRenderer(
   <device>
     <deviceType>$MEDIA_RENDERER</deviceType>
     <friendlyName>${DlnaXml.escape(deviceName)}</friendlyName>
-    <manufacturer>Bilibili Inc.</manufacturer>
-    <manufacturerURL>https://bilibili.com/</manufacturerURL>
+    <manufacturer>CapyCast</manufacturer>
+    <manufacturerURL>https://github.com/rroy233/capycast</manufacturerURL>
     <modelDescription>${DlnaXml.escape(deviceName)}</modelDescription>
     <modelName>${DlnaXml.escape(deviceName)}</modelName>
-    <modelNumber>1.8.7</modelNumber>
-    <modelURL>https://app.bilibili.com/</modelURL>
+    <modelNumber>${DlnaXml.escape(BuildConfig.VERSION_NAME)}</modelNumber>
+    <modelURL>https://github.com/rroy233/capycast</modelURL>
     <serialNumber>${DlnaXml.escape(udn.substringBefore('-').uppercase(Locale.US))}</serialNumber>
     <UDN>uuid:${DlnaXml.escape(udn)}</UDN>
-    <X_brandName>Bilibili</X_brandName>
-    <capability>511</capability>
-    <channelName>yst</channelName>
-    <hostVersion>1</hostVersion>
-    <ottVersion>108700</ottVersion>
     <dlna:X_DLNADOC xmlns:dlna="urn:schemas-dlna-org:device-1-0">DMR-1.50</dlna:X_DLNADOC>
     <dlna:X_DLNACAP xmlns:dlna="urn:schemas-dlna-org:device-1-0">av-upload,image-upload,audio-upload</dlna:X_DLNACAP>
     <serviceList>

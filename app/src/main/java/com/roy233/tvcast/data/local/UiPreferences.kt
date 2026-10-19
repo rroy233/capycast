@@ -14,7 +14,7 @@ class UiPreferences(context: Context) {
 
     /** 配置的设备名称，未配置时使用默认名称。 */
     val deviceName: String
-        get() = prefs.getString("device_name", "云视听小电视") ?: "云视听小电视"
+        get() = prefs.getString("device_name", "CapyCast") ?: "CapyCast"
 
     /** 配置的房间名称，未配置时使用默认名称。 */
     val roomName: String

@@ -133,7 +133,7 @@ data class TvUiState(
     val accountName: String = "未登录",
     val mid: Long = 0L,
     val vip: Boolean = false,
-    val deviceName: String = "云视听小电视",
+    val deviceName: String = "CapyCast",
     val roomName: String = "客厅",
     val network: String = "Wi-Fi",
     val ip: String = "",

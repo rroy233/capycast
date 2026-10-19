@@ -84,7 +84,7 @@ class DeviceInfoProvider(private val context: Context) {
         /** 设备短标识使用的摘要字节数。 */
         const val SHORT_ID_BYTES = 4
         /** 未提供设备名称时使用的默认名称。 */
-        const val DEFAULT_DEVICE_NAME = "云视听小电视"
+        const val DEFAULT_DEVICE_NAME = "CapyCast"
         /** 无法读取应用信息时使用的语义化版本号。 */
         const val DEFAULT_VERSION_NAME = "0.1.0"
     }
