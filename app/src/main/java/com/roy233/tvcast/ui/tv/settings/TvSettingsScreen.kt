@@ -177,52 +177,74 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
             }
 
             item {
-                SettingsSection("账号") {
+                SettingsSection("账号信息") {
                     SettingsInfoRow("账号", state.accountName)
+                    SettingsRowDivider()
                     SettingsInfoRow("会员", if (state.vip) "大会员" else "普通账号")
+                }
+                Spacer(Modifier.height(18.dp))
+            }
+
+            item {
+                SettingsSection("账号操作") {
                     FocusableRow(
                         title = "退出登录",
                         onClick = actions.onLogout,
                         enabled = state.loggedIn,
                         destructive = true,
                         showChevron = false,
-                        rowHeight = 50.dp,
+                        rowHeight = 64.dp,
                     )
                 }
+                Spacer(Modifier.height(18.dp))
             }
 
             item {
                 SettingsSection("设备") {
                     SettingsInfoRow("设备名称", "${state.deviceName} · ${state.roomName}")
+                    SettingsRowDivider()
                     SettingsInfoRow("网络", "${state.network} · ${state.ip}")
+                    SettingsRowDivider()
                     SettingsInfoRow("投屏地址", state.dlnaUrl)
                 }
+                Spacer(Modifier.height(18.dp))
             }
 
             item {
-                SettingsSection("播放") {
-                    FocusableRow(
+                SettingsSection("播放偏好") {
+                    SettingsToggleRow(
                         title = "记忆播放内容",
-                        value = if (state.rememberPlaybackContent) "开启" else "关闭",
-                        onClick = {
-                            actions.onSetRememberPlaybackContent(!state.rememberPlaybackContent)
-                        },
-                        showChevron = false,
-                        rowHeight = 50.dp,
+                        checked = state.rememberPlaybackContent,
+                        onCheckedChange = actions.onSetRememberPlaybackContent,
                     )
+                }
+                Spacer(Modifier.height(18.dp))
+            }
+
+            item {
+                SettingsSection("播放信息") {
                     SettingsInfoRow("默认画质", "账号最高")
+                    SettingsRowDivider()
                     SettingsInfoRow("通道", state.castMode)
+                }
+                Spacer(Modifier.height(18.dp))
+            }
+
+            item {
+                SettingsSection("应用信息") {
                     SettingsInfoRow("版本", state.version)
                 }
+                Spacer(Modifier.height(18.dp))
             }
 
             item {
-                SettingsSection("应用") {
+                SettingsSection("应用更新") {
                     FocusableRow(
                         title = "应用更新",
                         value = updateSummary(state),
                         onClick = actions.onOpenUpdateSettings,
                         focusRequester = updateEntryFocus,
+                        rowHeight = 64.dp,
                     )
                 }
             }
@@ -237,64 +259,5 @@ private fun updateSummary(state: TvUiState): String = when (state.update.status)
     com.roy233.tvcast.feature.update.UpdateStatus.READY_TO_INSTALL -> "可安装"
     com.roy233.tvcast.feature.update.UpdateStatus.DOWNLOADING -> "下载中"
     else -> "${state.update.channel.displayName}"
-}
-
-/** 显示一组带标题的设置项。 */
-@Composable
-private fun SettingsSection(title: String, content: @Composable () -> Unit) {
-    BasicText(
-        text = title,
-        style = TvType.caption.copy(
-            color = TvColors.textTertiary,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Medium,
-        ),
-        modifier = Modifier.padding(top = 12.dp, bottom = 6.dp, start = 2.dp),
-    )
-    Column { content() }
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 10.dp)
-            .height(1.dp)
-            .background(Color.White.copy(alpha = 0.07f))
-    )
-}
-
-/** 显示设置项的标题和值。 */
-@Composable
-private fun SettingsInfoRow(title: String, value: String) {
-    val interaction = remember { MutableInteractionSource() }
-    val focused = interaction.collectIsFocusedAsState().value
-    val shape = RoundedCornerShape(10.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .clip(shape)
-            .background(if (focused) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-            .border(
-                width = 2.dp,
-                color = if (focused) TvColors.pink else Color.Transparent,
-                shape = shape,
-            )
-            .focusable(interactionSource = interaction)
-            .semantics(mergeDescendants = true) { }
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        BasicText(
-            text = title,
-            style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 21.sp),
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-        )
-        BasicText(
-            text = value,
-            style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 17.sp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
 }
 

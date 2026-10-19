@@ -217,20 +217,11 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
         }
 
         item {
-            UpdateChoiceGroup("自动检查更新") {
-                UpdateOptionTile(
-                    title = "开启",
-                    description = "启动应用时自动检查",
-                    selected = update.automaticCheck,
-                    onClick = { actions.onSetAutoUpdateCheck(true) },
-                    modifier = Modifier.weight(1f),
-                )
-                UpdateOptionTile(
-                    title = "关闭",
-                    description = "仅在手动操作时检查",
-                    selected = !update.automaticCheck,
-                    onClick = { actions.onSetAutoUpdateCheck(false) },
-                    modifier = Modifier.weight(1f),
+            SettingsSection("自动检查更新") {
+                SettingsToggleRow(
+                    title = "启动应用时自动检查",
+                    checked = update.automaticCheck,
+                    onCheckedChange = actions.onSetAutoUpdateCheck,
                 )
             }
             Spacer(Modifier.height(18.dp))

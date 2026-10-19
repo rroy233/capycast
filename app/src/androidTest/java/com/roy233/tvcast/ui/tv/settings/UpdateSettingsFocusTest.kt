@@ -3,6 +3,7 @@ package com.roy233.tvcast.ui.tv.settings
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -187,16 +188,24 @@ class UpdateSettingsFocusTest {
     }
 
     @Test
-    fun settingsReadOnlyRowsCanReceiveRemoteFocus() {
+    fun settingsInfoRowsCanReceiveFocusWithoutActivationAndToggleRowsAreInteractive() {
+        var rememberPlaybackContent = true
         composeRule.setContent {
             SettingsScreen(
                 state = TvUiState(accountName = "tv-user"),
-                actions = TvActions(),
+                actions = TvActions(
+                    onSetRememberPlaybackContent = { rememberPlaybackContent = it },
+                ),
             )
         }
 
         composeRule.onNodeWithText("完成").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithText("tv-user").assertIsFocused()
+        composeRule.onNodeWithText("tv-user")
+            .performKeyInput { pressKey(Key.DirectionCenter) }
+        assertEquals(true, rememberPlaybackContent)
+        composeRule.onNodeWithText("记忆播放内容").performClick()
+        assertEquals(false, rememberPlaybackContent)
     }
 
     @Test
