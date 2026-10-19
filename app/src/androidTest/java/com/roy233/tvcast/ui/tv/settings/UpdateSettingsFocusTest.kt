@@ -10,6 +10,9 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.roy233.tvcast.feature.update.UpdateChannel
+import com.roy233.tvcast.feature.update.AppUpdateInfo
+import com.roy233.tvcast.feature.update.UpdateStatus
+import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import org.junit.Assert.assertEquals
@@ -61,4 +64,82 @@ class UpdateSettingsFocusTest {
 
         composeRule.onNodeWithText("正式版").assertIsSelected()
     }
+
+    @Test
+    fun availableUpdateShowsVersionNotesAndDownloadAction() {
+        val release = sampleUpdate()
+        composeRule.setContent {
+            UpdateSettingsScreen(
+                state = TvUiState(
+                    version = "0.1.0",
+                    update = UpdateUiState(
+                        status = UpdateStatus.AVAILABLE,
+                        availableUpdate = release,
+                    ),
+                ),
+                actions = TvActions(),
+            )
+        }
+
+        composeRule.onNodeWithText("v1.2.3").assertExists()
+        composeRule.onNodeWithText("更新日志").assertExists()
+        composeRule.onNodeWithText("适配电视遥控器").assertExists()
+        composeRule.onNodeWithText("下载").assertExists()
+    }
+
+    @Test
+    fun downloadButtonDisplaysProgressAndCanCancel() {
+        var cancelled = false
+        composeRule.setContent {
+            UpdateSettingsScreen(
+                state = TvUiState(
+                    version = "0.1.0",
+                    update = UpdateUiState(
+                        status = UpdateStatus.DOWNLOADING,
+                        availableUpdate = sampleUpdate(),
+                        downloadedBytes = 420L,
+                        totalBytes = 1_000L,
+                    ),
+                ),
+                actions = TvActions(onCancelUpdateDownload = { cancelled = true }),
+            )
+        }
+
+        composeRule.onNodeWithText("下载中 42%").assertExists()
+        composeRule.onNodeWithText("下载中 42%")
+            .performKeyInput { pressKey(Key.DirectionCenter) }
+        composeRule.runOnIdle { assertEquals(true, cancelled) }
+    }
+
+    @Test
+    fun verifiedUpdateShowsInstallAction() {
+        composeRule.setContent {
+            UpdateSettingsScreen(
+                state = TvUiState(
+                    version = "0.1.0",
+                    update = UpdateUiState(
+                        status = UpdateStatus.READY_TO_INSTALL,
+                        availableUpdate = sampleUpdate(),
+                        downloadedApkPath = "/tmp/update.apk",
+                    ),
+                ),
+                actions = TvActions(),
+            )
+        }
+
+        composeRule.onNodeWithText("安装包已准备就绪").assertExists()
+        composeRule.onNodeWithText("安装").assertExists()
+    }
+
+    private fun sampleUpdate() = AppUpdateInfo(
+        channel = UpdateChannel.STABLE,
+        versionName = "1.2.3",
+        versionCode = 123L,
+        apkName = "capycast-1.2.3.apk",
+        downloadUrl = "https://github.com/rroy233/capycast/releases/download/v1.2.3/capycast-1.2.3.apk",
+        sha256 = "a".repeat(64),
+        sizeBytes = 1_000L,
+        releaseNotes = "# 改进\n- 适配电视遥控器",
+        releaseUrl = "https://github.com/rroy233/capycast/releases/tag/v1.2.3",
+    )
 }

@@ -44,6 +44,7 @@ enum class UpdateStatus {
  * @property versionCode Android 用于比较新旧版本的整数版本号。
  * @property apkName 发布附件中的 APK 文件名。
  * @property downloadUrl APK 的公开下载地址。
+ * @property fallbackDownloadUrl APK 的备用代理下载地址。
  * @property sha256 APK 的 SHA-256 校验值。
  * @property sizeBytes APK 文件大小，单位为字节。
  * @property releaseNotes GitHub Release 的 Markdown 更新说明。
@@ -55,6 +56,7 @@ data class AppUpdateInfo(
     val versionCode: Long,
     val apkName: String,
     val downloadUrl: String,
+    val fallbackDownloadUrl: String? = null,
     val sha256: String,
     val sizeBytes: Long,
     val releaseNotes: String,

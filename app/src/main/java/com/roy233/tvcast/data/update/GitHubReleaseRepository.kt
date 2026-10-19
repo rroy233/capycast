@@ -1,6 +1,7 @@
 package com.roy233.tvcast.data.update
 
 import android.os.Build
+import com.roy233.tvcast.core.diagnostics.LogHub
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -30,10 +31,14 @@ class GitHubReleaseRepository(
      * @return 更新信息；通道尚无公开发布时返回 `null`。
      */
     suspend fun fetchLatest(channel: UpdateChannel): AppUpdateInfo? = withContext(Dispatchers.IO) {
+        LogHub.i(TAG, "check started channel=${channel.name.lowercase()}")
         val release = when (channel) {
             UpdateChannel.STABLE -> fetchStableRelease()
             UpdateChannel.BETA -> fetchLatestBetaRelease()
-        } ?: return@withContext null
+        } ?: run {
+            LogHub.i(TAG, "no release found channel=${channel.name.lowercase()}")
+            return@withContext null
+        }
 
         val assets = buildList {
             val iterator = release.array("assets").iterator()
@@ -42,16 +47,24 @@ class GitHubReleaseRepository(
         val manifestAsset = assets.firstOrNull { asset -> asset.string("name") == MANIFEST_NAME }
             ?: throw IOException("发布缺少 $MANIFEST_NAME 清单文件")
         val manifestUrl = manifestAsset.string("browser_download_url")
-        val manifest = parseManifest(fetchText(manifestUrl))
+        LogHub.i(TAG, "manifest asset found name=$MANIFEST_NAME")
+        val manifest = parseManifest(fetchText(manifestUrl, "manifest"))
         val apkAsset = assets.first { asset -> asset.string("name") == manifest.apkName }
         validateManifest(channel, release, assets, manifest, apkAsset)
 
+        val apkUrl = apkAsset.string("browser_download_url")
+        LogHub.i(
+            TAG,
+            "release validated version=${manifest.versionName} code=${manifest.versionCode} " +
+                "size=${manifest.sizeBytes} channel=${channel.name.lowercase()}",
+        )
         AppUpdateInfo(
             channel = channel,
             versionName = manifest.versionName,
             versionCode = manifest.versionCode,
             apkName = manifest.apkName,
-            downloadUrl = apkAsset.string("browser_download_url"),
+            downloadUrl = apkUrl,
+            fallbackDownloadUrl = proxyUrl(apkUrl),
             sha256 = manifest.sha256.lowercase(),
             sizeBytes = manifest.sizeBytes,
             releaseNotes = release.stringOrEmpty("body"),
@@ -77,33 +90,95 @@ class GitHubReleaseRepository(
 
     /** 下载并返回一个 GitHub API 响应。 */
     private fun fetchResponse(path: String): ApiResponse {
-        val request = Request.Builder()
-            .url("${BuildConfig.UPDATE_API_BASE_URL}$path")
+        val directUrl = "${BuildConfig.UPDATE_API_BASE_URL}$path"
+        val urls = listOf(directUrl, proxyUrl(directUrl))
+        var lastFailure: IOException? = null
+        urls.forEachIndexed { index, url ->
+            val source = if (index == 0) "github-api" else "proxy-api"
+            LogHub.i(TAG, "request source=$source path=$path")
+            try {
+                client.newCall(apiRequest(url)).execute().use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (response.isSuccessful ||
+                        (index == 0 && response.code == HTTP_NOT_FOUND)
+                    ) {
+                        LogHub.i(TAG, "response source=$source http=${response.code} path=$path")
+                        return ApiResponse(response.code, body)
+                    }
+                    val detail = apiFailureDetail(response.code, response.headers, body)
+                    LogHub.e(TAG, "request failed source=$source $detail path=$path")
+                    // A proxy-side 404 does not prove the canonical API resource is absent.
+                    if (response.code != HTTP_NOT_FOUND || lastFailure == null) {
+                        lastFailure = IOException("GitHub 请求失败（$detail）")
+                    }
+                }
+            } catch (error: IOException) {
+                LogHub.e(TAG, "request error source=$source path=$path", error)
+                lastFailure = error
+            }
+            if (index == 0) LogHub.i(TAG, "retrying through proxy path=$path")
+        }
+        throw lastFailure ?: IOException("GitHub 请求失败")
+    }
+
+    /** 创建 GitHub API 请求。 */
+    private fun apiRequest(url: String): Request =
+        Request.Builder()
+            .url(url)
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "CapyCast-Android-Updater")
             .build()
-        client.newCall(request).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (!response.isSuccessful && response.code != HTTP_NOT_FOUND) {
-                throw IOException("GitHub 请求失败（HTTP ${response.code}）")
-            }
-            return ApiResponse(response.code, body)
+
+    /** 提取 GitHub API 错误摘要和限流响应头，不记录原始响应正文。 */
+    private fun apiFailureDetail(code: Int, headers: okhttp3.Headers, body: String): String {
+        val message = runCatching {
+            JsonParser.parseString(body).asJsonObject
+                .get("message")?.takeUnless { it.isJsonNull }?.asString
+        }.getOrNull()
+            ?.replace(IP_ADDRESS_PATTERN, "<ip>")
+            ?.take(180)
+        val rateLimit = listOfNotNull(
+            headers["X-RateLimit-Remaining"]?.let { "remaining=$it" },
+            headers["X-RateLimit-Reset"]?.let { "reset=$it" },
+            headers["Retry-After"]?.let { "retryAfter=$it" },
+        ).joinToString(" ")
+        return buildString {
+            append("HTTP $code")
+            if (rateLimit.isNotEmpty()) append(" [$rateLimit]")
+            if (!message.isNullOrBlank()) append(": $message")
         }
     }
 
     /** 下载公开发布附件的文本内容。 */
-    private fun fetchText(url: String): String {
+    private fun fetchText(url: String, purpose: String): String {
         require(url.startsWith("https://")) { "更新附件地址必须使用 HTTPS" }
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", "CapyCast-Android-Updater")
-            .build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IOException("更新清单下载失败（HTTP ${response.code}）")
+        val urls = listOf(url, proxyUrl(url))
+        var lastFailure: IOException? = null
+        urls.forEachIndexed { index, candidate ->
+            val source = if (index == 0) "github" else "proxy"
+            LogHub.i(TAG, "fetch $purpose source=$source")
+            try {
+                client.newCall(
+                    Request.Builder()
+                        .url(candidate)
+                        .header("User-Agent", "CapyCast-Android-Updater")
+                        .build(),
+                ).execute().use { response ->
+                    if (response.isSuccessful) {
+                        LogHub.i(TAG, "fetch $purpose success source=$source http=${response.code}")
+                        return response.body?.string()
+                            ?: throw IOException("更新清单内容为空")
+                    }
+                    lastFailure = IOException("更新清单下载失败（HTTP ${response.code}）")
+                    LogHub.e(TAG, "fetch $purpose failed source=$source http=${response.code}")
+                }
+            } catch (error: IOException) {
+                LogHub.e(TAG, "fetch $purpose error source=$source", error)
+                lastFailure = error
             }
-            return response.body?.string() ?: throw IOException("更新清单内容为空")
+            if (index == 0) LogHub.i(TAG, "retrying $purpose through proxy")
         }
+        throw lastFailure ?: IOException("更新清单下载失败")
     }
 
     /** 解析并验证更新清单的字段类型。 */
@@ -159,6 +234,10 @@ class GitHubReleaseRepository(
     private data class ApiResponse(val code: Int, val body: String)
 
     private companion object {
+        /** 更新流程日志标签。 */
+        const val TAG = "UpdateRepository"
+        /** GitHub 访问代理前缀。 */
+        const val PROXY_PREFIX = "https://v4.gh-proxy.org/"
         /** 更新清单文件名。 */
         const val MANIFEST_NAME = "capycast-update.json"
         /** 当前支持的更新清单格式版本。 */
@@ -167,7 +246,13 @@ class GitHubReleaseRepository(
         const val HTTP_NOT_FOUND = 404
         /** SHA-256 十六进制值格式。 */
         val SHA_256_PATTERN = Regex("^[A-Fa-f0-9]{64}$")
+        /** 避免将 GitHub 错误正文中的客户端公网 IPv4 地址写入局域网诊断日志。 */
+        val IP_ADDRESS_PATTERN = Regex("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b")
     }
+
+    /** 将 GitHub HTTPS 地址包装为备用代理地址。 */
+    private fun proxyUrl(url: String): String =
+        if (url.startsWith(PROXY_PREFIX)) url else "$PROXY_PREFIX$url"
 }
 
 /** 读取 JSON 对象中的必填字符串字段。 */

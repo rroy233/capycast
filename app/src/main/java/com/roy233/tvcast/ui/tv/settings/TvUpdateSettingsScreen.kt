@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material.Icon
+import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.SystemUpdate
@@ -44,7 +45,6 @@ import androidx.compose.ui.unit.sp
 import com.roy233.tvcast.feature.update.UpdateChannel
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
-import com.roy233.tvcast.ui.designsystem.FocusableRow
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors
@@ -65,9 +65,36 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
     LaunchedEffect(Unit) {
         checkFocus.requestFocus()
     }
-    val canCheck = update.status != UpdateStatus.CHECKING &&
-        update.status != UpdateStatus.DOWNLOADING &&
-        update.status != UpdateStatus.VERIFYING
+    val progress = if (update.totalBytes > 0L) {
+        (update.downloadedBytes.toFloat() / update.totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val primaryActionText = when (update.status) {
+        UpdateStatus.CHECKING -> "检查中…"
+        UpdateStatus.AVAILABLE -> "下载"
+        UpdateStatus.DOWNLOADING -> "下载中 ${(progress * 100).toInt()}%"
+        UpdateStatus.VERIFYING -> "校验中…"
+        UpdateStatus.READY_TO_INSTALL -> "安装"
+        UpdateStatus.FAILED -> when {
+            update.availableUpdate == null -> "重试检查"
+            update.downloadedApkPath != null -> "安装"
+            else -> "重新下载"
+        }
+        UpdateStatus.IDLE, UpdateStatus.UP_TO_DATE -> "检查更新"
+    }
+    val primaryAction: () -> Unit = when (update.status) {
+        UpdateStatus.AVAILABLE -> actions.onDownloadUpdate
+        UpdateStatus.READY_TO_INSTALL -> actions.onInstallUpdate
+        UpdateStatus.FAILED -> when {
+            update.availableUpdate == null -> actions.onCheckForUpdates
+            update.downloadedApkPath != null -> actions.onInstallUpdate
+            else -> actions.onDownloadUpdate
+        }
+        UpdateStatus.DOWNLOADING -> actions.onCancelUpdateDownload
+        UpdateStatus.VERIFYING, UpdateStatus.CHECKING -> ({})
+        UpdateStatus.IDLE, UpdateStatus.UP_TO_DATE -> actions.onCheckForUpdates
+    }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -95,7 +122,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
         }
 
         item {
-            UpdateStatusCard(update)
+            UpdateStatusCard(update, state.version)
             Spacer(Modifier.height(22.dp))
         }
 
@@ -111,36 +138,12 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                     modifier = Modifier.weight(1f),
                 )
                 WhiteButton(
-                    text = if (canCheck) "检查更新" else "更新进行中",
-                    onClick = { if (canCheck) actions.onCheckForUpdates() },
+                    text = primaryActionText,
+                    onClick = primaryAction,
                     focusRequester = checkFocus,
                 )
             }
             Spacer(Modifier.height(10.dp))
-        }
-
-        item { UpdateAction(update, actions) }
-
-        item {
-            update.availableUpdate?.let { available ->
-                UpdateSection("版本 ${available.versionName}") {
-                    BasicText(
-                        text = "${formatBytes(available.sizeBytes)} · GitHub Release",
-                        style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 17.sp),
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
-                    )
-                    if (available.releaseNotes.isBlank()) {
-                        BasicText(
-                            text = "此版本未提供更新说明。",
-                            style = TvType.body.copy(color = TvColors.textSecondary),
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
-                        )
-                    } else {
-                        MarkdownReleaseNotes(available.releaseNotes)
-                    }
-                }
-            }
-            Spacer(Modifier.height(24.dp))
         }
 
         item {
@@ -279,9 +282,10 @@ private fun UpdateOptionTile(
     }
 }
 
-/** 显示更新流程的状态卡片和下载进度。 */
+/** 在统一信息卡中呈现更新阶段、版本摘要、更新日志和下载进度。 */
 @Composable
-private fun UpdateStatusCard(update: UpdateUiState) {
+private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
+    val accent = updateAccent(update.status)
     val fraction = if (update.totalBytes > 0L) {
         (update.downloadedBytes.toFloat() / update.totalBytes.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -291,79 +295,97 @@ private fun UpdateStatusCard(update: UpdateUiState) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White.copy(alpha = 0.09f))
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .background(accent.copy(alpha = 0.10f))
+            .border(1.dp, accent.copy(alpha = 0.38f), RoundedCornerShape(18.dp))
+            .padding(horizontal = 22.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        BasicText(
-            text = updateStatusTitle(update.status),
-            style = TvType.body.copy(fontWeight = FontWeight.SemiBold),
-        )
-        update.message?.let { message ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                Modifier
+                    .width(9.dp)
+                    .height(9.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(accent),
+            )
+            BasicText(
+                text = updateStatusTitle(update.status),
+                style = TvType.body.copy(color = accent, fontWeight = FontWeight.SemiBold),
+                modifier = Modifier.weight(1f),
+            )
+            if (update.status == UpdateStatus.DOWNLOADING) {
+                BasicText(
+                    text = "${(fraction * 100).toInt()}%",
+                    style = TvType.caption.copy(color = accent, fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                )
+            }
+        }
+
+        update.availableUpdate?.let { available ->
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                BasicText(
+                    text = "v${available.versionName}",
+                    style = TvType.title.copy(color = TvColors.textPrimary, fontSize = 34.sp),
+                )
+                BasicText(
+                    text = "${formatBytes(available.sizeBytes)} · 当前版本 $currentVersion",
+                    style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 16.sp),
+                    modifier = Modifier.padding(bottom = 5.dp),
+                )
+            }
+            BasicText(
+                text = when (update.status) {
+                    UpdateStatus.DOWNLOADING -> "正在获取安装包；按主按钮可取消下载。"
+                    UpdateStatus.VERIFYING -> "正在校验安装包完整性…"
+                    UpdateStatus.READY_TO_INSTALL -> "安装包已校验，可以安装。"
+                    UpdateStatus.FAILED -> update.message ?: "上次操作失败，可重试下载。"
+                    else -> "新版本已就绪，查看更新内容并开始下载。"
+                },
+                style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 16.sp),
+            )
+            BasicText(
+                text = "更新日志",
+                style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 16.sp, fontWeight = FontWeight.Medium),
+                modifier = Modifier.padding(top = 3.dp),
+            )
+            if (available.releaseNotes.isBlank()) {
+                BasicText(
+                    text = "此版本未提供更新说明。",
+                    style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 17.sp),
+                )
+            } else {
+                MarkdownReleaseNotes(available.releaseNotes)
+            }
+        } ?: update.message?.let { message ->
             BasicText(
                 text = message,
                 style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 17.sp),
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+
         if (update.status == UpdateStatus.DOWNLOADING) {
-            Box(
-                Modifier
+            LinearProgressIndicator(
+                progress = fraction,
+                modifier = Modifier
                     .fillMaxWidth()
-                    .height(7.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.White.copy(alpha = 0.16f)),
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth(fraction)
-                        .height(7.dp)
-                        .background(TvColors.pink),
-                )
-            }
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                color = accent,
+                backgroundColor = Color.White.copy(alpha = 0.16f),
+            )
             BasicText(
                 text = "${formatBytes(update.downloadedBytes)} / ${formatBytes(update.totalBytes)} · ${(fraction * 100).toInt()}%",
-                style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 16.sp),
+                style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 16.sp),
             )
         }
-    }
-}
-
-/** 根据更新状态显示可执行操作。 */
-@Composable
-private fun UpdateAction(update: UpdateUiState, actions: TvActions) {
-    when (update.status) {
-        UpdateStatus.AVAILABLE,
-        UpdateStatus.FAILED -> if (update.availableUpdate != null) {
-            UpdateSection("更新操作") {
-                FocusableRow(
-                    title = "下载更新",
-                    value = update.availableUpdate.versionName,
-                    onClick = actions.onDownloadUpdate,
-                )
-            }
-        }
-
-        UpdateStatus.DOWNLOADING,
-        UpdateStatus.VERIFYING -> UpdateSection("更新操作") {
-            FocusableRow(
-                title = "取消下载",
-                onClick = actions.onCancelUpdateDownload,
-                destructive = true,
-                showChevron = false,
-            )
-        }
-
-        UpdateStatus.READY_TO_INSTALL -> UpdateSection("更新操作") {
-            FocusableRow(
-                title = "安装更新",
-                value = update.availableUpdate?.versionName,
-                onClick = actions.onInstallUpdate,
-            )
-        }
-
-        else -> Unit
     }
 }
 
@@ -536,13 +558,25 @@ private fun renderInlineMarkdown(source: String): AnnotatedString = buildAnnotat
 /** 返回更新状态对应的标题。 */
 private fun updateStatusTitle(status: UpdateStatus): String = when (status) {
     UpdateStatus.IDLE -> "选择通道后检查更新"
-    UpdateStatus.CHECKING -> "正在检查 GitHub Release"
+    UpdateStatus.CHECKING -> "正在检查更新"
     UpdateStatus.UP_TO_DATE -> "当前已是最新版本"
     UpdateStatus.AVAILABLE -> "发现可用更新"
-    UpdateStatus.DOWNLOADING -> "正在下载更新"
+    UpdateStatus.DOWNLOADING -> "正在下载新版本"
     UpdateStatus.VERIFYING -> "正在校验安装包"
-    UpdateStatus.READY_TO_INSTALL -> "更新安装包已准备完成"
+    UpdateStatus.READY_TO_INSTALL -> "安装包已准备就绪"
     UpdateStatus.FAILED -> "更新操作未完成"
+}
+
+/** 用颜色区分检查、下载、校验、就绪和失败阶段。 */
+private fun updateAccent(status: UpdateStatus): Color = when (status) {
+    UpdateStatus.IDLE -> TvColors.blue
+    UpdateStatus.CHECKING -> TvColors.blue
+    UpdateStatus.UP_TO_DATE -> TvColors.success
+    UpdateStatus.AVAILABLE -> TvColors.pink
+    UpdateStatus.DOWNLOADING -> TvColors.violet
+    UpdateStatus.VERIFYING -> TvColors.warning
+    UpdateStatus.READY_TO_INSTALL -> TvColors.success
+    UpdateStatus.FAILED -> TvColors.error
 }
 
 /** 将字节数格式化为便于阅读的文件大小。 */
