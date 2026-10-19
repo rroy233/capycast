@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.R
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
@@ -172,9 +173,14 @@ class DlnaRenderer(
         state.durationMs = ms.coerceAtLeast(0L)
     }
 
-    /** 将传输状态标记为停止。 */
-    fun markCastFailed() {
+    /**
+     * 将传输状态标记为停止。
+     *
+     * @param reason 停止原因，用于诊断日志。
+     */
+    fun markCastFailed(reason: String = "") {
         state.transport = "STOPPED"
+        LogHub.i(TAG, "markCastFailed reason=$reason transport=${state.transport}")
     }
 
     // ------------------------------------------------------------------ //
@@ -455,26 +461,36 @@ class DlnaRenderer(
                 s.transport = "TRANSITIONING"
                 LogHub.i(
                     TAG,
-                    "SetAVTransportURI title=${title.take(80)} uri=${uri.take(160)} " +
-                        "longDescription=${longDesc.length}B"
+                    "SetAVTransportURI title=${title.take(80)} " +
+                        "uri=${LogRedaction.url(uri)} metadata=${meta.length}B " +
+                        "longDescription=${longDesc.length}B duration=${s.durationMs}ms",
                 )
+                if (longDesc.isBlank()) {
+                    LogHub.w(TAG, "SetAVTransportURI has no longDescription; cast identity missing")
+                }
                 runCatching { listener.onCast(uri, meta, title, longDesc) }
-                    .onFailure { LogHub.e(TAG, "onCast failed", it) }
+                    .onFailure { LogHub.e(TAG, "onCast failed", it, stack = true) }
                 soapOk(req.service, req.action)
             }
             "Play" -> {
                 s.transport = "PLAYING"
+                LogHub.i(TAG, "Play command transport=${s.transport} title=${s.title.take(60)}")
                 runCatching { listener.onPlay() }
+                    .onFailure { LogHub.e(TAG, "onPlay failed", it, stack = true) }
                 soapOk(req.service, req.action)
             }
             "Pause" -> {
                 s.transport = "PAUSED_PLAYBACK"
+                LogHub.i(TAG, "Pause command transport=${s.transport}")
                 runCatching { listener.onPause() }
+                    .onFailure { LogHub.e(TAG, "onPause failed", it, stack = true) }
                 soapOk(req.service, req.action)
             }
             "Stop" -> {
                 s.transport = "STOPPED"
+                LogHub.i(TAG, "Stop command transport=${s.transport}")
                 runCatching { listener.onStop() }
+                    .onFailure { LogHub.e(TAG, "onStop failed", it, stack = true) }
                 soapOk(req.service, req.action)
             }
             "Seek" -> {
@@ -482,6 +498,7 @@ class DlnaRenderer(
                 val ms = DlnaTime.parse(target)
                 LogHub.i(TAG, "Seek $target -> ${ms}ms")
                 runCatching { listener.onSeek(ms) }
+                    .onFailure { LogHub.e(TAG, "onSeek failed", it, stack = true) }
                 soapOk(req.service, req.action)
             }
             "GetTransportInfo" -> soapOk(
@@ -546,7 +563,9 @@ class DlnaRenderer(
             "SetVolume" -> {
                 val v = req.args["DesiredVolume"]?.toIntOrNull()?.coerceIn(0, 100) ?: 50
                 s.volume = v
+                LogHub.i(TAG, "SetVolume command value=$v")
                 runCatching { listener.onSetVolume(v) }
+                    .onFailure { LogHub.e(TAG, "onSetVolume failed", it, stack = true) }
                 soapOk(req.service, req.action)
             }
             "GetMute" -> soapOk(

@@ -1,11 +1,13 @@
 package com.roy233.tvcast.data.bili
 
+import android.os.SystemClock
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.core.diagnostics.LogRedaction
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import com.roy233.tvcast.data.bili.CdnCandidateSelector
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -17,6 +19,9 @@ import java.util.concurrent.TimeUnit
  * account gets exactly what its cookies are entitled to.
  */
 object BiliApi {
+
+    /** 日志标签。 */
+    private const val TAG = "BiliApi"
 
     /** 播放请求使用的客户端 User-Agent。 */
     const val UA =
@@ -151,8 +156,17 @@ object BiliApi {
         return "${track.width}x${track.height} · $codec"
     }
 
-    /** 发送带有公共请求头和登录 Cookie 的 GET 请求。 */
-    private fun get(url: String): String {
+    /**
+     * 发送带有公共请求头和登录 Cookie 的 GET 请求。
+     *
+     * @param url 请求地址。
+     * @param purpose 请求用途，用于日志区分。
+     */
+    private fun get(url: String, purpose: String): String {
+        val auth = if (cookie.isNotEmpty()) "account" else "guest"
+        val safeUrl = LogRedaction.url(url)
+        val startedAt = SystemClock.elapsedRealtime()
+        LogHub.d(TAG, "http start purpose=$purpose auth=$auth url=$safeUrl")
         val builder = Request.Builder()
             .url(url)
             .header("User-Agent", UA)
@@ -160,33 +174,82 @@ object BiliApi {
             .header("Origin", "https://www.bilibili.com")
             .header("Accept", "application/json, text/plain, */*")
         if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
-        client.newCall(builder.build()).execute().use { resp ->
-            if (!resp.isSuccessful) error("HTTP ${resp.code} for $url")
-            return resp.body?.string() ?: error("empty body for $url")
+        try {
+            client.newCall(builder.build()).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                val elapsed = SystemClock.elapsedRealtime() - startedAt
+                if (!resp.isSuccessful) {
+                    LogHub.e(
+                        TAG,
+                        "http failed purpose=$purpose status=${resp.code} " +
+                            "bytes=${body.length} ms=$elapsed url=$safeUrl " +
+                            "body=${LogRedaction.text(body.take(400))}",
+                    )
+                    val apiMessage = runCatching {
+                        JsonParser.parseString(body).asJsonObject
+                            .get("message")?.asString
+                    }.getOrNull()
+                    val suffix = apiMessage?.let { " ${LogRedaction.text(it).take(120)}" }.orEmpty()
+                    error("HTTP ${resp.code}$suffix ($purpose)")
+                }
+                LogHub.i(
+                    TAG,
+                    "http done purpose=$purpose status=${resp.code} " +
+                        "bytes=${body.length} ms=$elapsed",
+                )
+                if (body.isEmpty()) error("empty body ($purpose)")
+                return body
+            }
+        } catch (failure: IOException) {
+            val elapsed = SystemClock.elapsedRealtime() - startedAt
+            LogHub.e(
+                TAG,
+                "http error purpose=$purpose after=${elapsed}ms url=$safeUrl " +
+                    LogRedaction.reason(failure),
+                failure,
+                stack = true,
+            )
+            throw failure
         }
     }
 
-    /** 请求统一 API 并校验业务状态码。 */
-    private fun api(url: String): JsonObject {
-        val text = get(url)
+    /**
+     * 请求统一 API 并校验业务状态码。
+     *
+     * @param url 请求地址。
+     * @param purpose 请求用途，用于日志区分。
+     */
+    private fun api(url: String, purpose: String): JsonObject {
+        val text = get(url, purpose)
         val root = JsonParser.parseString(text).asJsonObject
         val code = root.get("code")?.asInt ?: -1
         if (code != 0) {
             val msg = root.get("message")?.asString ?: "unknown"
+            LogHub.e(
+                TAG,
+                "api rejected purpose=$purpose code=$code message=$msg " +
+                    "url=${LogRedaction.url(url)}",
+            )
             error("bilibili code=$code message=$msg")
         }
-        return root.getAsJsonObject("data")
+        LogHub.d(TAG, "api ok purpose=$purpose")
+        val data = root.getAsJsonObject("data")
+        if (data == null) {
+            LogHub.e(TAG, "api data missing purpose=$purpose url=${LogRedaction.url(url)}")
+            error("empty data ($purpose)")
+        }
+        return data
     }
 
     /** 根据 BV 标识解析普通视频的可播放轨道。 */
     fun resolve(bvid: String): PlayInfo {
-        val view = api("https://api.bilibili.com/x/web-interface/view?bvid=$bvid")
+        val view = api("https://api.bilibili.com/x/web-interface/view?bvid=$bvid", "view")
         val aid = view.get("aid").asLong
         val cid = view.get("cid").asLong
         val title = view.get("title")?.asString ?: bvid
         val duration = view.get("duration")?.asLong ?: 0L
 
-        val play = api(playUrl(aid, cid))
+        val play = api(playUrl(aid, cid), "playurl")
         return parsePlay(play, aid, cid, title, bvid, duration)
     }
 
@@ -203,7 +266,9 @@ object BiliApi {
         var duration = 0L
         var realCid = cid
         var cover = ""
-        val view = runCatching { api("https://api.bilibili.com/x/web-interface/view?aid=$aid") }
+        val view = runCatching {
+            api("https://api.bilibili.com/x/web-interface/view?aid=$aid", "view")
+        }
             .getOrNull()
         if (view != null) {
             title = view.get("title")?.asString ?: title
@@ -228,10 +293,11 @@ object BiliApi {
         }
         if (realCid <= 0) error("invalid cid=$cid")
         LogHub.i(
-            "BiliApi",
-            "resolveByAidCid aid=$aid cid=$realCid title=${title.take(40)} bvid=$bvid"
+            TAG,
+            "resolveByAidCid aid=$aid cid=$realCid title=${title.take(40)} " +
+                "bvid=$bvid duration=${duration}s cover=${cover.isNotBlank()}",
         )
-        val play = api(playUrl(aid, realCid))
+        val play = api(playUrl(aid, realCid), "playurl")
         return parsePlay(play, aid, realCid, title, bvid, duration, cover)
     }
 
@@ -244,7 +310,10 @@ object BiliApi {
             .header("Accept", "application/json, text/plain, */*")
             .build()
         client.newCall(request).execute().use { resp ->
-            if (!resp.isSuccessful) return ""
+            if (!resp.isSuccessful) {
+                LogHub.d(TAG, "publicCover failed aid=$aid status=${resp.code}")
+                return ""
+            }
             val text = resp.body?.string() ?: return ""
             val data = JsonParser.parseString(text).asJsonObject
                 .getAsJsonObject("data") ?: return ""
@@ -258,15 +327,24 @@ object BiliApi {
         if (epId <= 0) error("invalid epId=$epId")
         val url = "https://api.bilibili.com/pgc/player/web/playurl" +
             "?ep_id=$epId&cid=$cid&qn=127&fnval=4048&fnver=0&fourk=1"
-        val text = get(url)
+        val text = get(url, "pgc-playurl")
         val root = JsonParser.parseString(text).asJsonObject
         val code = root.get("code")?.asInt ?: -1
         if (code != 0) {
             val msg = root.get("message")?.asString ?: "unknown"
+            LogHub.e(TAG, "pgc rejected epId=$epId cid=$cid code=$code message=$msg")
             error("pgc code=$code message=$msg")
         }
-        val result = root.getAsJsonObject("result") ?: error("pgc result missing")
-        LogHub.i("BiliApi", "resolvePgc epId=$epId cid=$cid title=${title.take(40)}")
+        val result = root.getAsJsonObject("result") ?: run {
+            LogHub.e(TAG, "pgc result missing epId=$epId cid=$cid")
+            error("pgc result missing")
+        }
+        LogHub.i(
+            TAG,
+            "resolvePgc epId=$epId cid=$cid title=${title.take(40)} " +
+                "isPreview=${root.get("is_preview")?.asBoolean ?: false} " +
+                "resultKeys=${result.keySet().joinToString(",")}",
+        )
         return parsePlay(result, 0L, cid, title, "", 0L)
     }
 
@@ -291,10 +369,18 @@ object BiliApi {
                 ?: emptyList()
             val audios = dash.getAsJsonArray("audio")?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
                 ?: emptyList()
+            logPlayResponse(play, dash, videos, audios)
             if (videos.isNotEmpty()) {
                 val dashDuration = play.get("duration")?.asLong ?: duration
                 val video = CdnCandidateSelector.pickVideo(videos)
                 val audio = CdnCandidateSelector.pickAudio(audios)
+                LogHub.i(
+                    TAG,
+                    "playurl selected video=${video.id} codec=${video.codecid} " +
+                        "${video.width}x${video.height} host=${LogRedaction.host(video.url)} " +
+                        "pcdn=${video.pcdn} audio=${audio?.id ?: "none"} " +
+                        "audioHost=${LogRedaction.host(audio?.url)}",
+                )
                 return PlayInfo(
                     title = title,
                     bvid = bvid,
@@ -309,6 +395,7 @@ object BiliApi {
                     cover = cover,
                 )
             }
+            LogHub.w(TAG, "playurl dash has no video tracks; trying durl fallback")
         }
 
         // Very old / non-DASH content: progressive mp4/flv.
@@ -321,6 +408,12 @@ object BiliApi {
             )
             val selected = ordered.firstOrNull() ?: url
             val lengthMs = first.get("length")?.asLong ?: 0L
+            LogHub.i(
+                TAG,
+                "playurl progressive durl=${durl.size()} length=${lengthMs}ms " +
+                    "candidates=${ordered.size} host=${LogRedaction.host(selected)} " +
+                    "pcdn=${CdnCandidateSelector.isPcdn(selected)}",
+            )
             val track = Track(
                 0, 0, 0, 0, 0, selected, ordered.drop(1),
                 pcdn = CdnCandidateSelector.isPcdn(selected),
@@ -339,15 +432,60 @@ object BiliApi {
                 cover = cover,
             )
         }
+        LogHub.e(
+            TAG,
+            "playurl no playable stream keys=${play.keySet().joinToString(",")} " +
+                "dash=${dash != null} durl=${durl?.size() ?: 0}",
+        )
         error("no playable stream returned")
     }
+
+    /** 记录播放接口返回的画质、编码和会员音轨信息。 */
+    private fun logPlayResponse(
+        play: JsonObject,
+        dash: JsonObject,
+        videos: List<Track>,
+        audios: List<Track>,
+    ) {
+        val dolby = runCatching {
+            dash.getAsJsonObject("dolby")?.getAsJsonArray("audio")?.size()
+        }.getOrNull()
+        val flac = runCatching {
+            dash.getAsJsonObject("flac")?.getAsJsonArray("audio")?.size()
+        }.getOrNull()
+        LogHub.i(
+            TAG,
+            "playurl dash video=${videos.size} audio=${audios.size} " +
+                "duration=${play.get("duration")?.asLong ?: -1} " +
+                "quality=${play.get("quality")?.asInt ?: -1} " +
+                "acceptQuality=${jsonArrayText(play.getAsJsonArray("accept_quality"))} " +
+                "dolbyAudio=${dolby ?: 0} flacAudio=${flac ?: 0} " +
+                "isDrm=${play.get("is_drm")?.asBoolean ?: false} " +
+                "isPreview=${play.get("is_preview")?.asBoolean ?: false}",
+        )
+        val formats = play.getAsJsonArray("support_formats") ?: return
+        val summary = formats.take(12).joinToString(" ") { element ->
+            val format = runCatching { element.asJsonObject }.getOrNull()
+                ?: return@joinToString "?"
+            val codecs = runCatching {
+                format.getAsJsonArray("codecs")?.joinToString(",") { codec -> codec.asString }
+            }.getOrNull()
+            "qn=${format.get("quality")?.asInt ?: -1}" +
+                if (codecs.isNullOrBlank()) "" else "($codecs)"
+        }
+        LogHub.i(TAG, "playurl supportFormats=$summary")
+    }
+
+    /** 将 JSON 数组压缩为短文本。 */
+    private fun jsonArrayText(array: com.google.gson.JsonArray?): String =
+        array?.joinToString(",") { it.toString() }?.take(160) ?: "-"
 
     /** 用于端到端播放验证的示例 BV 标识。 */
     const val SAMPLE_BVID = "BV1GJ411x7h7"
 
     /** 查询当前登录账号的身份信息。 */
     fun nav(): Nav {
-        val text = get("https://api.bilibili.com/x/web-interface/nav")
+        val text = get("https://api.bilibili.com/x/web-interface/nav", "nav")
         val root = JsonParser.parseString(text).asJsonObject
         val code = root.get("code")?.asInt ?: -1
         if (code != 0) {

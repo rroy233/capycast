@@ -7,6 +7,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 /** 提供 CDN 地址分类、排序和播放轨道选择规则。 */
 object CdnCandidateSelector {
 
+    /** 日志标签。 */
+    private const val TAG = "CdnSelector"
     /** 已知 PCDN 主机后缀。 */
     private val pcdnSuffixes = listOf(
         ".szbdyd.com",
@@ -44,17 +46,23 @@ object CdnCandidateSelector {
         val primary = o.get("baseUrl")?.asString ?: o.get("base_url")?.asString ?: ""
         val ordered = order(listOf(primary) + backupUrls(o))
         val selected = ordered.firstOrNull() ?: primary
+        val id = o.get("id")?.asInt ?: 0
+        val codecid = o.get("codecid")?.asInt ?: 0
+        val width = o.get("width")?.asInt ?: 0
+        val height = o.get("height")?.asInt ?: 0
         LogHub.i(
-            "BiliApi",
-            "cdn id=${o.get("id")?.asInt ?: 0} codec=${o.get("codecid")?.asInt ?: 0} " +
+            TAG,
+            "cdn track id=$id codec=${codecName(codecid)} ${width}x${height} " +
+                "bw=${o.get("bandwidth")?.asLong ?: 0L} " +
                 "selected=${cdnHostOf(selected)} pcdn=${isPcdn(selected)} " +
-                "basePcdn=${isPcdn(primary)} candidates=${ordered.size}"
+                "basePcdn=${isPcdn(primary)} candidates=${ordered.size} " +
+                "hosts=${ordered.take(4).joinToString(",") { cdnHostOf(it) }}",
         )
         return BiliApi.Track(
-            id = o.get("id")?.asInt ?: 0,
-            codecid = o.get("codecid")?.asInt ?: 0,
-            width = o.get("width")?.asInt ?: 0,
-            height = o.get("height")?.asInt ?: 0,
+            id = id,
+            codecid = codecid,
+            width = width,
+            height = height,
             bandwidth = o.get("bandwidth")?.asLong ?: 0L,
             url = selected,
             backup = ordered.drop(1),
@@ -64,23 +72,56 @@ object CdnCandidateSelector {
 
     /** 从视频轨道中选择优先级最高的轨道。 */
     fun pickVideo(list: List<BiliApi.Track>): BiliApi.Track {
-        val usable = list.filter { it.codecid == 7 || it.codecid == 12 }.ifEmpty { list }
-        return usable.sortedWith(
+        val supported = list.filter { it.codecid == 7 || it.codecid == 12 }
+        val skipped = list.filterNot { it.codecid == 7 || it.codecid == 12 }
+        if (skipped.isNotEmpty()) {
+            LogHub.i(
+                TAG,
+                "pickVideo skipped unsupported codecs=" +
+                    skipped.take(8).joinToString(",") { "qn${it.id}:${codecName(it.codecid)}" },
+            )
+        }
+        val usable = supported.ifEmpty { list }
+        val selected = usable.sortedWith(
             compareByDescending<BiliApi.Track> { it.id }
                 .thenBy { it.pcdn }
                 .thenByDescending { it.width.toLong() * it.height }
                 .thenBy { if (it.codecid == 7) 0 else 1 }
         ).first()
+        LogHub.i(
+            TAG,
+            "pickVideo selected qn=${selected.id} ${codecName(selected.codecid)} " +
+                "${selected.width}x${selected.height} pcdn=${selected.pcdn} " +
+                "candidates=${list.size} fallback=${supported.isEmpty()}",
+        )
+        return selected
     }
 
     /** 从音频轨道中选择优先级最高的轨道。 */
     fun pickAudio(list: List<BiliApi.Track>): BiliApi.Track? {
-        if (list.isEmpty()) return null
-        return list.sortedWith(
+        if (list.isEmpty()) {
+            LogHub.i(TAG, "pickAudio no audio tracks")
+            return null
+        }
+        val selected = list.sortedWith(
             compareBy<BiliApi.Track> { it.pcdn }
                 .thenByDescending { if (it.id == 30280) 1 else 0 }
                 .thenByDescending { it.id }
         ).firstOrNull()
+        LogHub.i(
+            TAG,
+            "pickAudio selected id=${selected?.id} codec=${codecName(selected?.codecid ?: 0)} " +
+                "pcdn=${selected?.pcdn} candidates=${list.size}",
+        )
+        return selected
+    }
+
+    /** 将编码标识转换为可读名称。 */
+    private fun codecName(codecid: Int): String = when (codecid) {
+        7 -> "H.264"
+        12 -> "HEVC"
+        13 -> "AV1"
+        else -> "codec$codecid"
     }
 
     /** 判断播放地址是否符合 PCDN 特征。 */

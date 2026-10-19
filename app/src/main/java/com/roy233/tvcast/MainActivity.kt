@@ -1,6 +1,8 @@
 package com.roy233.tvcast
 
+import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -27,7 +29,10 @@ import com.roy233.tvcast.data.local.UiPreferences
 import com.roy233.tvcast.data.auth.AuthTokenStore
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.NvaExtDecoder
+import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.core.diagnostics.LogRedaction
+import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
 import com.roy233.tvcast.feature.update.UpdateCoordinator
 import com.roy233.tvcast.platform.device.DeviceInfoProvider
@@ -88,6 +93,8 @@ class MainActivity : ComponentActivity() {
     private var lastTitle = ""
     /** 最近一次失败操作的重试回调。 */
     private var lastErrorRetry: (() -> Unit)? = null
+    /** 最近一次播放器读取失败告警的单调时刻。 */
+    private var lastPlayerReadWarningAt = 0L
 
     /** 电视界面状态。 */
     private var ui by mutableStateOf(TvUiState())
@@ -223,27 +230,44 @@ class MainActivity : ComponentActivity() {
     private val dlnaListener = object : DlnaRenderer.Listener {
         /** 处理新的投屏媒体请求。 */
         override fun onCast(uri: String, metadata: String, title: String, longDescription: String) {
-            runOnUiThread { handleCast(title, longDescription) }
+            LogHub.i(
+                TAG,
+                "dlna cast uri=${LogRedaction.url(uri)} title=${title.take(80)} " +
+                    "metadata=${metadata.length}B longDescription=${longDescription.length}B",
+            )
+            runOnUiThread { handleCast(uri, title, longDescription) }
         }
 
         /** 处理远端播放命令。 */
         override fun onPlay() {
             pendingPause = false
-            runCatching { if (!player.isPlaying) player.play() }
+            if (::playerEngine.isInitialized) {
+                playerEngine.setPaused(false, "dlna-play")
+            } else {
+                LogHub.w(TAG, "dlna play ignored: player engine unavailable")
+            }
             runOnUiThread { ui = ui.copy(isPlaying = true, hudVisible = true) }
         }
 
         /** 处理远端暂停命令。 */
         override fun onPause() {
             pendingPause = true
-            runCatching { if (player.isPlaying) player.pause() }
+            if (::playerEngine.isInitialized) {
+                playerEngine.setPaused(true, "dlna-pause")
+            } else {
+                LogHub.w(TAG, "dlna pause ignored: player engine unavailable")
+            }
             runOnUiThread { ui = ui.copy(isPlaying = false, hudVisible = true) }
         }
 
         /** 处理远端停止命令。 */
         override fun onStop() {
             pendingPause = false
-            runCatching { player.stop() }
+            if (::playerEngine.isInitialized) {
+                playerEngine.stopPlayback("dlna-stop")
+            } else {
+                LogHub.w(TAG, "dlna stop ignored: player engine unavailable")
+            }
             castActive = false
             current = null
             runOnUiThread {
@@ -271,7 +295,11 @@ class MainActivity : ComponentActivity() {
 
         /** 处理远端跳转命令。 */
         override fun onSeek(positionMs: Long) {
-            runCatching { player.time = positionMs.coerceAtLeast(0L) }
+            if (::playerEngine.isInitialized) {
+                playerEngine.seekTo(positionMs, "dlna-seek")
+            } else {
+                LogHub.w(TAG, "dlna seek ignored: player engine unavailable")
+            }
             runOnUiThread {
                 ui = ui.copy(
                     positionMs = positionMs.coerceAtLeast(0L),
@@ -283,7 +311,11 @@ class MainActivity : ComponentActivity() {
         /** 处理远端音量设置命令。 */
         override fun onSetVolume(volume: Int) {
             val v = volume.coerceIn(0, 100)
-            runCatching { player.volume = v }
+            if (::playerEngine.isInitialized) {
+                playerEngine.setPlayerVolume(v, "dlna-volume")
+            } else {
+                LogHub.w(TAG, "dlna volume ignored: player engine unavailable")
+            }
             runOnUiThread { ui = ui.copy(volume = v, hudVisible = true) }
         }
 
@@ -307,6 +339,17 @@ class MainActivity : ComponentActivity() {
     /** 初始化播放器、投屏服务、界面和账号状态。 */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LogHub.start(this)
+        PlaybackDiagnostics.install(this)
+        DeviceDiagnostics.collectAsync(this)
+        installCrashHandler()
+        LogHub.i(
+            TAG,
+            "app start version=${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE}) " +
+                "device=${Build.MANUFACTURER}/${Build.MODEL} " +
+                "android=${Build.VERSION.RELEASE}/${Build.VERSION.SDK_INT} " +
+                "abis=${Build.SUPPORTED_ABIS.joinToString(",")}",
+        )
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -326,7 +369,6 @@ class MainActivity : ComponentActivity() {
         composeUi.isFocusable = true
         composeUi.post { composeUi.requestFocus() }
 
-        LogHub.start(this)
         dlna = DlnaRenderer(this, dlnaListener, deviceName = castDeviceName)
         dlna.start()
 
@@ -340,87 +382,29 @@ class MainActivity : ComponentActivity() {
         )
         updateCoordinator.initialize()
 
-        playerEngine = VlcPlayerEngine(this, videoLayout) { event ->
-            when (event.type) {
-                MediaPlayer.Event.Playing -> {
-                    LogHub.i(TAG, "vlc playing")
-                    val seek = pendingSeekMs
-                    pendingSeekMs = 0L
-                    runOnUiThread {
-                        ui = ui.copy(
-                            mode = TvMode.PLAYING,
-                            isPlaying = true,
-                            isBuffering = false,
-                            positionMs = if (seek > 0) seek else ui.positionMs,
-                        )
-                        if (seek > 0) {
-                            runCatching { player.time = seek }
-                        }
-                        val duration = runCatching { player.length }.getOrDefault(0L)
-                        if (duration > 0) {
-                            ui = ui.copy(durationMs = duration)
-                        }
-                    }
-                }
-
-                MediaPlayer.Event.Paused -> {
-                    runOnUiThread { ui = ui.copy(isPlaying = false) }
-                }
-
-                MediaPlayer.Event.Stopped -> {
-                    runOnUiThread { ui = ui.copy(isPlaying = false, isBuffering = false) }
-                }
-
-                MediaPlayer.Event.EndReached -> {
-                    castActive = false
-                    current = null
-                    runOnUiThread {
-                        ui = ui.copy(
-                            mode = TvMode.IDLE,
-                            destination = TvDestination.HOME,
-                            sidebarVisible = true,
-                            castTitle = "",
-                            qualityLabel = "",
-                            qualityDetail = "",
-                            qualitySource = "",
-                            audioLabel = "",
-                            isPlaying = false,
-                            isBuffering = false,
-                            positionMs = 0,
-                            durationMs = 0,
-                            hudVisible = false,
-                            tracks = emptyList(),
-                            audios = emptyList(),
-                            toast = "播放结束",
-                            showContinue = ui.rememberPlaybackContent,
-                        )
-                    }
-                }
-
-                MediaPlayer.Event.EncounteredError -> {
-                    LogHub.e(TAG, "vlc encountered error")
-                    val info = current
-                    if (info != null) {
-                        lastErrorRetry = {
-                            play(info, runCatching { player.time }.getOrDefault(0L))
-                        }
-                    }
-                    showError(
-                        title = "播放失败",
-                        message = "设备解码能力不足或网络异常。",
-                        code = "PLAYBACK_FAILED",
-                        canRetry = info != null,
-                        keepVideo = true,
-                    )
-                }
-
-                MediaPlayer.Event.Buffering -> {
-                    val buffering = event.buffering < 100f
-                    runOnUiThread { ui = ui.copy(isBuffering = buffering) }
-                }
-
-                else -> {}
-            }
+        runCatching {
+            VlcPlayerEngine(this, videoLayout) { event -> handlePlayerEvent(event) }
+        }.onSuccess { engine ->
+            playerEngine = engine
+        }.onFailure { error ->
+            LogHub.e(
+                TAG,
+                "player engine init failed: ${LogRedaction.reason(error)}",
+                error,
+                stack = true,
+            )
+            PlaybackDiagnostics.fail(
+                code = "PLAYER_INIT_FAILED",
+                message = "播放器初始化失败",
+                detail = "reason=${LogRedaction.reason(error)} " +
+                    "device=${Build.MANUFACTURER}/${Build.MODEL}",
+            )
+            showError(
+                title = "播放器初始化失败",
+                message = "设备可能缺少必要的解码组件，请查看诊断日志。",
+                code = "PLAYER_INIT_FAILED",
+                canRetry = false,
+            )
         }
 
         val rememberPlaybackContent = uiPreferences.rememberPlaybackContent
@@ -432,6 +416,118 @@ class MainActivity : ComponentActivity() {
         startOrLogin()
         startTicker()
         updateCoordinator.checkAutomaticallyOnLaunch()
+    }
+
+    /** 将 VLC 播放器事件转换为界面状态，并记录关键转换。 */
+    private fun handlePlayerEvent(event: MediaPlayer.Event) {
+        when (event.type) {
+            MediaPlayer.Event.Playing -> {
+                val seek = pendingSeekMs
+                pendingSeekMs = 0L
+                LogHub.i(TAG, "ui playing applySeek=${seek}ms")
+                runOnUiThread {
+                    ui = ui.copy(
+                        mode = TvMode.PLAYING,
+                        isPlaying = true,
+                        isBuffering = false,
+                        positionMs = if (seek > 0) seek else ui.positionMs,
+                    )
+                    if (seek > 0) {
+                        playerEngine.seekTo(seek, "playing-apply-seek")
+                    }
+                    val duration = runCatching { player.length }.getOrDefault(0L)
+                    if (duration > 0) {
+                        ui = ui.copy(durationMs = duration)
+                    }
+                }
+            }
+
+            MediaPlayer.Event.Paused -> {
+                LogHub.d(TAG, "ui paused")
+                runOnUiThread { ui = ui.copy(isPlaying = false) }
+            }
+
+            MediaPlayer.Event.Stopped -> {
+                LogHub.d(TAG, "ui stopped")
+                runOnUiThread { ui = ui.copy(isPlaying = false, isBuffering = false) }
+            }
+
+            MediaPlayer.Event.EndReached -> {
+                LogHub.i(TAG, "ui end reached")
+                castActive = false
+                current = null
+                runOnUiThread {
+                    ui = ui.copy(
+                        mode = TvMode.IDLE,
+                        destination = TvDestination.HOME,
+                        sidebarVisible = true,
+                        castTitle = "",
+                        qualityLabel = "",
+                        qualityDetail = "",
+                        qualitySource = "",
+                        audioLabel = "",
+                        isPlaying = false,
+                        isBuffering = false,
+                        positionMs = 0,
+                        durationMs = 0,
+                        hudVisible = false,
+                        tracks = emptyList(),
+                        audios = emptyList(),
+                        toast = "播放结束",
+                        showContinue = ui.rememberPlaybackContent,
+                    )
+                }
+            }
+
+            MediaPlayer.Event.EncounteredError -> {
+                val snapshot = runCatching { playerEngine.stateSnapshot() }
+                    .getOrDefault("(snapshot unavailable)")
+                LogHub.e(TAG, "ui playback failed code=PLAYBACK_FAILED snapshot=$snapshot")
+                val info = current
+                if (info != null) {
+                    lastErrorRetry = {
+                        play(info, runCatching { player.time }.getOrDefault(0L))
+                    }
+                }
+                showError(
+                    title = "播放失败",
+                    message = "设备解码能力不足或网络异常。",
+                    code = "PLAYBACK_FAILED",
+                    canRetry = info != null,
+                    keepVideo = true,
+                )
+            }
+
+            MediaPlayer.Event.Buffering -> {
+                val buffering = event.buffering < 100f
+                runOnUiThread { ui = ui.copy(isBuffering = buffering) }
+            }
+
+            else -> Unit
+        }
+    }
+
+    /** 安装全局崩溃记录器，把未捕获异常写入持久化诊断历史。 */
+    private fun installCrashHandler() {
+        if (crashHandlerInstalled) return
+        crashHandlerInstalled = true
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            runCatching {
+                PlaybackDiagnostics.recordCrash(thread?.name ?: "unknown", throwable)
+            }
+            runCatching {
+                LogHub.e(
+                    TAG,
+                    "uncaught exception thread=${thread?.name} ${LogRedaction.reason(throwable)}",
+                    throwable,
+                    stack = true,
+                )
+            }
+            if (previous != null) {
+                previous.uncaughtException(thread, throwable)
+            }
+        }
     }
 
     /** 根页面连续两次返回退出；其他返回层级由界面导航处理。 */
@@ -452,7 +548,16 @@ class MainActivity : ComponentActivity() {
 
     /** 根据最近投屏记录重新解析并开始播放。 */
     private fun recast(recent: RecentCast) {
-        if (resolving) return
+        if (resolving) {
+            LogHub.w(TAG, "recast ignored: another resolve is running")
+            return
+        }
+        PlaybackDiagnostics.beginSession("recast")
+        PlaybackDiagnostics.attribute("cast.source", "recent")
+        PlaybackDiagnostics.attribute("recent.aid", recent.aid.toString())
+        PlaybackDiagnostics.attribute("recent.cid", recent.cid.toString())
+        PlaybackDiagnostics.attribute("recent.title", recent.title)
+        LogHub.i(TAG, "recast begin aid=${recent.aid} cid=${recent.cid} title=${recent.title.take(40)}")
         scope.launch {
             resolving = true
             ui = ui.copy(
@@ -470,6 +575,18 @@ class MainActivity : ComponentActivity() {
             }
             resolving = false
             result.onSuccess { play(it, 0L) }.onFailure {
+                LogHub.e(
+                    TAG,
+                    "recast resolve failed: ${LogRedaction.reason(it)}",
+                    it,
+                    stack = true,
+                )
+                PlaybackDiagnostics.fail(
+                    code = "RECAST_FAILED",
+                    message = it.message ?: "视频信息已失效",
+                    detail = "aid=${recent.aid} cid=${recent.cid} " +
+                        "reason=${LogRedaction.reason(it)}",
+                )
                 showError(
                     title = "无法继续投屏",
                     message = it.message ?: "视频信息已失效，请从手机重新投屏。",
@@ -507,7 +624,20 @@ class MainActivity : ComponentActivity() {
     // cast + resolve + play
     // ------------------------------------------------------------------ //
     /** 处理 DLNA 投屏请求并解析其媒体身份。 */
-    private fun handleCast(title: String, longDescription: String) {
+    private fun handleCast(uri: String, title: String, longDescription: String) {
+        PlaybackDiagnostics.beginSession("cast")
+        PlaybackDiagnostics.attribute("cast.source", "dlna")
+        PlaybackDiagnostics.attribute("cast.uri", LogRedaction.url(uri))
+        PlaybackDiagnostics.attribute("cast.title", title)
+        PlaybackDiagnostics.attribute(
+            "cast.longDescriptionBytes",
+            longDescription.length.toString(),
+        )
+        LogHub.i(
+            TAG,
+            "cast received title=${title.take(80)} uri=${LogRedaction.url(uri)} " +
+                "longDescription=${longDescription.length}B",
+        )
         castActive = true
         lastTitle = title
         pendingPause = false
@@ -541,7 +671,13 @@ class MainActivity : ComponentActivity() {
         val nva = NvaExtDecoder.decode(longDescription)
         if (nva == null) {
             LogHub.e(TAG, "cast rejected: nva_ext decode failed")
-            dlna.markCastFailed()
+            PlaybackDiagnostics.fail(
+                code = "NVA_DECODE_FAILED",
+                message = "无法识别这次投屏",
+                detail = "longDescriptionBytes=${longDescription.length} " +
+                    "metadataUri=${LogRedaction.url(uri)}",
+            )
+            dlna.markCastFailed("nva-decode-failed")
             castActive = false
             showError(
                 title = "无法识别这次投屏",
@@ -555,8 +691,17 @@ class MainActivity : ComponentActivity() {
         LogHub.i(
             TAG,
             "cast nva aid=${nva.aid} cid=${nva.cid} bvid=${nva.bvid} " +
-                "eid=${nva.eid} sid=${nva.sid} room=${nva.roomId}"
+                "eid=${nva.eid} sid=${nva.sid} room=${nva.roomId} " +
+                "qn=${nva.qn} desireQn=${nva.userDesireQn} ct=${nva.ct} tp=${nva.tp}",
         )
+        PlaybackDiagnostics.attribute("cast.aid", nva.aid.toString())
+        PlaybackDiagnostics.attribute("cast.cid", nva.cid.toString())
+        PlaybackDiagnostics.attribute("cast.bvid", nva.bvid.orEmpty())
+        PlaybackDiagnostics.attribute("cast.eid", nva.eid.toString())
+        PlaybackDiagnostics.attribute("cast.sid", nva.sid.toString())
+        PlaybackDiagnostics.attribute("cast.roomId", nva.roomId.toString())
+        PlaybackDiagnostics.attribute("cast.requestQn", nva.qn.toString())
+        PlaybackDiagnostics.attribute("cast.desireQn", nva.userDesireQn.toString())
         resolveNvaAndPlay(nva, title)
     }
 
@@ -566,6 +711,19 @@ class MainActivity : ComponentActivity() {
         resolving = true
         lastNva = nva
         lastTitle = title
+        val branch = when {
+            nva.hasUgc -> "ugc"
+            nva.hasPgc && nva.eid > 0 -> "pgc"
+            nva.hasPgc -> "pgc-without-epId"
+            nva.hasLive -> "live"
+            else -> "none"
+        }
+        LogHub.i(
+            TAG,
+            "resolve begin branch=$branch aid=${nva.aid} cid=${nva.cid} " +
+                "bvid=${nva.bvid} eid=${nva.eid} room=${nva.roomId}",
+        )
+        PlaybackDiagnostics.attribute("resolve.branch", branch)
         ui = ui.copy(
             mode = TvMode.LOADING,
             showContinue = ui.rememberPlaybackContent,
@@ -597,16 +755,40 @@ class MainActivity : ComponentActivity() {
                 LogHub.i(
                     TAG,
                     "resolved qn=${info.video.id} ${info.video.width}x${info.video.height} " +
-                        "codec=${info.video.codecid} audio=${info.audio?.id}"
+                        "codec=${info.video.codecid} audio=${info.audio?.id} " +
+                        "duration=${info.durationSec}s videos=${info.videos.size} " +
+                        "audios=${info.audios.size} progressive=${info.progressiveUrl != null}",
+                )
+                PlaybackDiagnostics.attribute("resolve.videos", info.videos.size.toString())
+                PlaybackDiagnostics.attribute("resolve.audios", info.audios.size.toString())
+                PlaybackDiagnostics.attribute(
+                    "resolve.progressive",
+                    (info.progressiveUrl != null).toString(),
                 )
                 dlna.setDurationMs(info.durationSec * 1000)
                 play(info, 0L)
             }.onFailure { t ->
-                LogHub.e(TAG, "cast resolve failed: ${t.message}", t)
-                dlna.markCastFailed()
                 val message = t.message.orEmpty()
                 val live = message.contains("live", ignoreCase = true)
                 val pgc = message.contains("PGC season", ignoreCase = true)
+                val code = when {
+                    live -> "LIVE_UNSUPPORTED"
+                    pgc -> "PGC_UNSUPPORTED"
+                    else -> "RESOLVE_FAILED"
+                }
+                LogHub.e(
+                    TAG,
+                    "cast resolve failed code=$code: ${LogRedaction.reason(t)}",
+                    t,
+                    stack = true,
+                )
+                PlaybackDiagnostics.fail(
+                    code = code,
+                    message = message.ifBlank { "取流失败" },
+                    detail = "branch=$branch aid=${nva.aid} cid=${nva.cid} " +
+                        "reason=${LogRedaction.reason(t)}",
+                )
+                dlna.markCastFailed(code)
                 if (!live && !pgc) {
                     lastErrorRetry = { resolveNvaAndPlay(nva, title) }
                 }
@@ -621,11 +803,7 @@ class MainActivity : ComponentActivity() {
                         pgc -> "请在手机上选择具体剧集后重试。"
                         else -> "请检查网络或账号权益。"
                     },
-                    code = when {
-                        live -> "LIVE_UNSUPPORTED"
-                        pgc -> "PGC_UNSUPPORTED"
-                        else -> "RESOLVE_FAILED"
-                    },
+                    code = code,
                     canRetry = !live && !pgc,
                 )
             }
@@ -634,11 +812,35 @@ class MainActivity : ComponentActivity() {
 
     /** 使用指定播放信息打开播放器并更新界面状态。 */
     private fun play(info: BiliApi.PlayInfo, seekToMs: Long) {
+        if (!::playerEngine.isInitialized) {
+            LogHub.e(
+                TAG,
+                "play ignored: player engine unavailable aid=${info.aid} cid=${info.cid}",
+            )
+            PlaybackDiagnostics.fail(
+                code = "PLAYER_UNAVAILABLE",
+                message = "播放器未初始化",
+                detail = "aid=${info.aid} cid=${info.cid} title=${info.title}",
+            )
+            showError(
+                title = "播放器不可用",
+                message = "应用未能初始化播放器，请重启应用后重试；如仍失败请查看诊断日志。",
+                code = "PLAYER_UNAVAILABLE",
+                canRetry = false,
+            )
+            return
+        }
         current = info
         castActive = true
         lastTitle = info.title
         lastErrorRetry = null
         pendingSeekMs = seekToMs.coerceAtLeast(0L)
+        LogHub.i(
+            TAG,
+            "play begin qn=${info.video.id} codec=${info.video.codecid} " +
+                "${info.video.width}x${info.video.height} audio=${info.audio?.id} " +
+                "seek=${seekToMs}ms progressive=${info.progressiveUrl != null}",
+        )
 
         ui = ui.copy(
             mode = TvMode.PLAYING,
@@ -665,22 +867,54 @@ class MainActivity : ComponentActivity() {
         )
         addRecent(info)
 
-        playerEngine.open(info, seekToMs)
+        val started = playerEngine.open(info, seekToMs)
+        if (!started) {
+            lastErrorRetry = { play(info, seekToMs) }
+            showError(
+                title = "播放失败",
+                message = "无法打开该视频。诊断日志已记录具体原因。",
+                code = "PLAYER_OPEN_FAILED",
+                canRetry = true,
+                keepVideo = false,
+            )
+            return
+        }
 
         if (pendingPause) {
             pendingPause = false
-            runCatching { player.pause() }
+            playerEngine.setPaused(true, "pending-pause")
             ui = ui.copy(isPlaying = false)
         }
         LogHub.setPlay(describe(info))
-        LogHub.i(TAG, "play qn=${info.video.id} ${info.video.width}x${info.video.height}")
+        LogHub.i(TAG, "play opened qn=${info.video.id} ${info.video.width}x${info.video.height}")
     }
 
     /** 切换当前视频清晰度并从当前位置继续播放。 */
     private fun switchQuality(qn: Int) {
-        val info = current ?: return
-        val track = info.videos.firstOrNull { it.id == qn } ?: return
+        val info = current
+        if (info == null) {
+            LogHub.w(TAG, "switchQuality qn=$qn ignored: no current media")
+            return
+        }
+        val track = info.videos.firstOrNull { it.id == qn }
+        if (track == null) {
+            LogHub.w(
+                TAG,
+                "switchQuality qn=$qn not found; available=${info.videos.joinToString(",") { it.id.toString() }}",
+            )
+            return
+        }
         val position = runCatching { player.time }.getOrDefault(ui.positionMs)
+        LogHub.i(
+            TAG,
+            "switchQuality qn=$qn codec=${track.codecid} ${track.width}x${track.height} " +
+                "host=${LogRedaction.host(track.url)} at=${position}ms",
+        )
+        PlaybackDiagnostics.event(
+            "QualitySwitch",
+            "qn=$qn codec=${track.codecid} size=${track.width}x${track.height} " +
+                "host=${LogRedaction.host(track.url)} at=${position}ms",
+        )
         play(info.copy(video = track), position)
         ui = ui.copy(
             panel = PanelKind.QUALITY,
@@ -691,9 +925,28 @@ class MainActivity : ComponentActivity() {
 
     /** 切换当前音轨并从当前位置继续播放。 */
     private fun switchAudio(id: Int) {
-        val info = current ?: return
-        val track = info.audios.firstOrNull { it.id == id } ?: return
+        val info = current
+        if (info == null) {
+            LogHub.w(TAG, "switchAudio id=$id ignored: no current media")
+            return
+        }
+        val track = info.audios.firstOrNull { it.id == id }
+        if (track == null) {
+            LogHub.w(
+                TAG,
+                "switchAudio id=$id not found; available=${info.audios.joinToString(",") { it.id.toString() }}",
+            )
+            return
+        }
         val position = runCatching { player.time }.getOrDefault(ui.positionMs)
+        LogHub.i(
+            TAG,
+            "switchAudio id=$id host=${LogRedaction.host(track.url)} at=${position}ms",
+        )
+        PlaybackDiagnostics.event(
+            "AudioSwitch",
+            "id=$id host=${LogRedaction.host(track.url)} at=${position}ms",
+        )
         play(info.copy(audio = track), position)
         ui = ui.copy(
             panel = PanelKind.AUDIO,
@@ -703,11 +956,16 @@ class MainActivity : ComponentActivity() {
 
     /** 切换播放器的播放与暂停状态。 */
     private fun togglePlayPause() {
-        if (!::playerEngine.isInitialized) return
-        if (ui.mode != TvMode.PLAYING && ui.mode != TvMode.LOADING) return
-        runCatching {
-            if (player.isPlaying) player.pause() else player.play()
+        if (!::playerEngine.isInitialized) {
+            LogHub.w(TAG, "togglePlayPause ignored: player engine unavailable")
+            return
         }
+        if (ui.mode != TvMode.PLAYING && ui.mode != TvMode.LOADING) {
+            LogHub.d(TAG, "togglePlayPause ignored: mode=${ui.mode}")
+            return
+        }
+        val playing = runCatching { player.isPlaying }.getOrDefault(false)
+        playerEngine.setPaused(playing, "remote-toggle")
         ui = ui.copy(
             isPlaying = runCatching { player.isPlaying }.getOrDefault(ui.isPlaying),
             hudVisible = true,
@@ -716,20 +974,29 @@ class MainActivity : ComponentActivity() {
 
     /** 按指定毫秒数调整当前播放位置。 */
     private fun seekBy(ms: Long) {
-        if (!::playerEngine.isInitialized) return
+        if (!::playerEngine.isInitialized) {
+            LogHub.w(TAG, "seekBy ignored: player engine unavailable")
+            return
+        }
         val length = runCatching { player.length }.getOrDefault(0L)
         val max = if (length > 0) length else Long.MAX_VALUE
-        val target = (runCatching { player.time }.getOrDefault(ui.positionMs) + ms)
-            .coerceIn(0L, max)
-        runCatching { player.time = target }
+        val currentPosition = runCatching { player.time }.getOrDefault(ui.positionMs)
+        val target = (currentPosition + ms).coerceIn(0L, max)
+        if (length <= 0) {
+            LogHub.w(TAG, "seekBy with unknown length; target=$target ms")
+        }
+        playerEngine.seekTo(target, "remote-seek")
         ui = ui.copy(positionMs = target, hudVisible = true)
     }
 
     /** 设置播放器音量并同步界面状态。 */
     private fun setVolume(volume: Int) {
-        if (!::playerEngine.isInitialized) return
+        if (!::playerEngine.isInitialized) {
+            LogHub.w(TAG, "setVolume ignored: player engine unavailable")
+            return
+        }
         val v = volume.coerceIn(0, 100)
-        runCatching { player.volume = v }
+        playerEngine.setPlayerVolume(v, "remote-volume")
         ui = ui.copy(volume = v, hudVisible = true)
     }
 
@@ -737,6 +1004,11 @@ class MainActivity : ComponentActivity() {
     private fun retryLastAction() {
         val action = lastErrorRetry
         lastErrorRetry = null
+        LogHub.i(
+            TAG,
+            "retry requested hasAction=${action != null} hasNva=${lastNva != null} " +
+                "current=${current != null}",
+        )
         if (action != null) {
             ui = ui.copy(
                 mode = if (current != null) TvMode.PLAYING else TvMode.LOADING,
@@ -756,7 +1028,12 @@ class MainActivity : ComponentActivity() {
 
     /** 关闭错误状态并恢复空闲界面。 */
     private fun dismissError() {
-        runCatching { if (::playerEngine.isInitialized) player.stop() }
+        LogHub.i(TAG, "dismiss error; current=${current != null} castActive=$castActive")
+        if (::playerEngine.isInitialized) {
+            playerEngine.stopPlayback("dismiss-error")
+        } else {
+            LogHub.w(TAG, "dismiss error without player engine")
+        }
         current = null
         castActive = false
         resolving = false
@@ -782,18 +1059,28 @@ class MainActivity : ComponentActivity() {
 
     /** 停止当前电视播放并返回首页，保持应用与 DLNA 服务继续运行。 */
     private fun stopCasting() {
+        LogHub.i(
+            TAG,
+            "stopCasting requested mode=${ui.mode} current=${current != null} " +
+                "castActive=$castActive",
+        )
         resolveJob?.cancel()
         resolveJob = null
         pendingPause = false
         pendingSeekMs = 0L
-        runCatching { if (::playerEngine.isInitialized) player.stop() }
+        if (::playerEngine.isInitialized) {
+            playerEngine.stopPlayback("user-stop")
+        } else {
+            LogHub.w(TAG, "stopCasting without player engine")
+        }
         current = null
         castActive = false
         resolving = false
         lastNva = null
         lastTitle = ""
         lastErrorRetry = null
-        runCatching { dlna.markCastFailed() }
+        runCatching { dlna.markCastFailed("user-stop") }
+        PlaybackDiagnostics.closeSession("user-stop")
         LogHub.setCast("")
         LogHub.setPlay("")
         ui = ui.copy(
@@ -829,8 +1116,27 @@ class MainActivity : ComponentActivity() {
         canRetry: Boolean,
         keepVideo: Boolean = false,
     ) {
+        val snapshot = if (::playerEngine.isInitialized) {
+            runCatching { playerEngine.stateSnapshot() }.getOrDefault("(unavailable)")
+        } else {
+            "(player engine unavailable)"
+        }
+        LogHub.e(
+            TAG,
+            "showError code=$code canRetry=$canRetry keepVideo=$keepVideo " +
+                "title=$title message=${LogRedaction.text(message)} snapshot=$snapshot",
+        )
+        PlaybackDiagnostics.attribute("ui.errorCode", code)
+        PlaybackDiagnostics.event(
+            "UiError",
+            "code=$code canRetry=$canRetry keepVideo=$keepVideo title=$title",
+        )
         if (!keepVideo) {
-            runCatching { if (::playerEngine.isInitialized) player.stop() }
+            if (::playerEngine.isInitialized) {
+                playerEngine.stopPlayback("show-error:$code")
+            } else {
+                LogHub.w(TAG, "showError cannot stop playback: player engine unavailable")
+            }
             current = null
             castActive = false
         }
@@ -842,7 +1148,7 @@ class MainActivity : ComponentActivity() {
                 isPlaying = false,
                 isBuffering = false,
                 panel = null,
-                    stopCastConfirm = false,
+                stopCastConfirm = false,
             )
         }
     }
@@ -871,10 +1177,18 @@ class MainActivity : ComponentActivity() {
                 if (::playerEngine.isInitialized &&
                     (ui.mode == TvMode.PLAYING || ui.mode == TvMode.LOADING)
                 ) {
-                    val pos = runCatching { player.time }.getOrDefault(ui.positionMs)
-                    val len = runCatching { player.length }.getOrDefault(0L)
-                    val playing = runCatching { player.isPlaying }.getOrDefault(ui.isPlaying)
-                    val volume = runCatching { player.volume }.getOrDefault(ui.volume)
+                    val positionRead = runCatching { player.time }
+                    val lengthRead = runCatching { player.length }
+                    val playingRead = runCatching { player.isPlaying }
+                    val volumeRead = runCatching { player.volume }
+                    positionRead.exceptionOrNull()?.let { logPlayerReadFailure("position", it) }
+                    lengthRead.exceptionOrNull()?.let { logPlayerReadFailure("length", it) }
+                    playingRead.exceptionOrNull()?.let { logPlayerReadFailure("isPlaying", it) }
+                    volumeRead.exceptionOrNull()?.let { logPlayerReadFailure("volume", it) }
+                    val pos = positionRead.getOrDefault(ui.positionMs)
+                    val len = lengthRead.getOrDefault(0L)
+                    val playing = playingRead.getOrDefault(ui.isPlaying)
+                    val volume = volumeRead.getOrDefault(ui.volume)
                     ui = ui.copy(
                         positionMs = pos.coerceAtLeast(0L),
                         durationMs = if (len > 0) len else ui.durationMs,
@@ -892,18 +1206,29 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** 限制播放器属性读取失败日志的频率。 */
+    private fun logPlayerReadFailure(field: String, error: Throwable) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPlayerReadWarningAt < 10_000L) return
+        lastPlayerReadWarningAt = now
+        LogHub.w(TAG, "player read failed field=$field: ${LogRedaction.reason(error)}")
+    }
+
     /** 将播放信息整理为诊断日志摘要。 */
     private fun describe(info: BiliApi.PlayInfo?): String {
         if (info == null) return ""
         val v = info.video
         return "${info.title}\n${info.qualityLabel}  ${v.width}x${v.height}  " +
             "codec=${v.codecid}  ${info.audioLabel}\n" +
-            "aid=${info.aid} cid=${info.cid}  backup=${v.backup.size}"
+            "aid=${info.aid} cid=${info.cid}  duration=${info.durationSec}s  " +
+            "progressive=${info.progressiveUrl != null}  backup=${v.backup.size}\n" +
+            "video=${LogRedaction.host(v.url)}  audio=${LogRedaction.host(info.audio?.url)}"
     }
 
     /** 恢复界面焦点并刷新设备网络信息。 */
     override fun onResume() {
         super.onResume()
+        LogHub.i(TAG, "activity resume castActive=$castActive mode=${ui.mode}")
         if (!composeUi.hasFocus()) {
             composeUi.post { composeUi.requestFocus() }
         }
@@ -913,28 +1238,41 @@ class MainActivity : ComponentActivity() {
     /** 暂停非投屏场景下的本地播放器。 */
     override fun onPause() {
         super.onPause()
-        if (!castActive && ::playerEngine.isInitialized && player.isPlaying) {
-            player.pause()
-            ui = ui.copy(isPlaying = false)
+        LogHub.i(TAG, "activity pause castActive=$castActive mode=${ui.mode}")
+        if (!castActive && ::playerEngine.isInitialized) {
+            val playing = runCatching { player.isPlaying }
+            playing.exceptionOrNull()?.let {
+                LogHub.w(TAG, "onPause read failed: ${LogRedaction.reason(it)}")
+            }
+            if (playing.getOrDefault(false)) {
+                playerEngine.setPaused(true, "activity-pause")
+                ui = ui.copy(isPlaying = false)
+            }
         }
     }
 
     /** 释放投屏、登录、协程和播放器资源。 */
     override fun onDestroy() {
         super.onDestroy()
+        LogHub.i(TAG, "activity destroy")
+        PlaybackDiagnostics.closeSession("activity-destroyed")
         runCatching { dlna.stop() }
         loginCoordinator.cancel()
         updateCoordinator.cancel()
         resolveJob?.cancel()
         tickerJob?.cancel()
         scope.cancel()
-        LogHub.stop()
         runCatching { if (::playerEngine.isInitialized) playerEngine.release() }
+        LogHub.stop()
     }
 
     companion object {
         /** 日志标签。 */
         private const val TAG = "SimpleBili"
+        /** 首页双击返回退出计时窗口。 */
         private const val HOME_BACK_EXIT_WINDOW_MS = HomeBackExitTiming.EXIT_WINDOW_MS
+        /** 是否已经安装全局崩溃记录器。 */
+        @Volatile
+        private var crashHandlerInstalled = false
     }
 }

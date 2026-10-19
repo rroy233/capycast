@@ -19,6 +19,8 @@ import java.util.Locale
  *
  *   http://<device-ip>:8098/state   JSON (device, login, current play)
  *   http://<device-ip>:8098/log     recent log lines
+ *   http://<device-ip>:8098/playback playback diagnostics (tracks, events, native log)
+ *   http://<device-ip>:8098/device  device codec and display capabilities
  *   http://<device-ip>:8098/        HTML, includes the pending QR login URL
  *
  * It deliberately never stores the access_key or cookie values.
@@ -28,7 +30,9 @@ object LogHub {
     /** 诊断 HTTP 服务端口。 */
     private const val PORT = 8098
     /** 内存中保留的最大日志条数。 */
-    private const val MAX_LINES = 1200
+    private const val MAX_LINES = 2400
+    /** 错误日志在内存中保留的最大堆栈帧数。 */
+    private const val STACK_FRAMES = 5
 
     /** 按时间顺序保存的日志行。 */
     private val lines = ArrayDeque<String>()
@@ -73,10 +77,37 @@ object LogHub {
         add("I/$tag", msg)
     }
 
-    /** 记录一条错误级日志及可选异常。 */
-    fun e(tag: String, msg: String, t: Throwable? = null) {
+    /** 记录一条调试级日志，用于播放事件等细节。 */
+    fun d(tag: String, msg: String) {
+        Log.d(tag, msg)
+        add("D/$tag", msg)
+    }
+
+    /** 记录一条警告级日志。 */
+    fun w(tag: String, msg: String) {
+        Log.w(tag, msg)
+        add("W/$tag", msg)
+    }
+
+    /**
+     * 记录一条错误级日志及可选异常。
+     *
+     * @param stack 是否把少量堆栈帧写入内存日志；完整堆栈始终输出到 logcat。
+     */
+    fun e(tag: String, msg: String, t: Throwable? = null, stack: Boolean = false) {
         Log.e(tag, msg, t)
-        add("E/$tag", msg + (t?.let { " | ${it.javaClass.simpleName}: ${it.message}" } ?: ""))
+        val detail = buildString {
+            append(msg)
+            if (t != null) {
+                append(" | ").append(t.javaClass.simpleName).append(": ").append(t.message)
+                if (stack) {
+                    t.stackTrace.take(STACK_FRAMES).forEach { frame ->
+                        append("\n    at ").append(frame)
+                    }
+                }
+            }
+        }
+        add("E/$tag", detail)
     }
 
     /** 更新当前登录账号标识。 */
@@ -122,6 +153,10 @@ object LogHub {
         j.put("dlnaUrl", dlnaUrl)
         j.put("castTitle", castTitle)
         j.put("play", playInfo)
+        j.put("playback", PlaybackDiagnostics.summary())
+        j.put("playbackUrl", "http://${localIp()}:$PORT/playback")
+        j.put("deviceUrl", "http://${localIp()}:$PORT/device")
+        j.put("vlcLogBytes", PlaybackDiagnostics.vlcLogBytes())
         appContext?.let { ctx ->
             val dm = ctx.resources.displayMetrics
             j.put("widthPx", dm.widthPixels)
@@ -163,6 +198,22 @@ object LogHub {
                     newFixedLengthResponse(Response.Status.OK, "text/plain; charset=utf-8", LogHub.dump())
                 "/state", "/json" ->
                     newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", LogHub.stateJson())
+                "/playback", "/playback.json" ->
+                    newFixedLengthResponse(
+                        Response.Status.OK,
+                        "application/json; charset=utf-8",
+                        PlaybackDiagnostics.reportJson(),
+                    )
+                "/device", "/device.json" -> {
+                    val ctx = LogHub.appContext
+                    val body = if (ctx == null) {
+                        "{\"error\":\"diagnostics not initialized\"}"
+                    } else {
+                        runCatching { DeviceDiagnostics.snapshot(ctx).toString(2) }
+                            .getOrElse { "{\"error\":\"device info unavailable\"}" }
+                    }
+                    newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", body)
+                }
                 else -> {
                     val url = LogHub.qrUrl
                     val link = if (url.isNotEmpty()) {
@@ -172,7 +223,8 @@ object LogHub {
                     }
                     val html = "<html><head><meta charset=\"utf-8\"></head><body>" +
                         "<pre>${LogHub.stateJson()}</pre>$link" +
-                        "<p><a href=\"/log\">/log</a> | <a href=\"/state\">/state</a></p>" +
+                        "<p><a href=\"/log\">/log</a> | <a href=\"/state\">/state</a> | " +
+                        "<a href=\"/playback\">/playback</a> | <a href=\"/device\">/device</a></p>" +
                         "</body></html>"
                     newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", html)
                 }
