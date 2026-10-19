@@ -17,7 +17,7 @@ GitHub Actions 生成的 APK、`SHA256SUMS` 与 `capycast-update.json` 都会作
 
 ## 日常发布
 
-1. 在 [`app/build.gradle.kts`](../app/build.gradle.kts) 更新 `APP_VERSION_NAME` 和 `APP_VERSION_CODE`，并在 [`release-notes`](../release-notes) 添加同名 Markdown 发布说明。
+1. 在 [`app/build.gradle.kts`](../app/build.gradle.kts) 更新 `APP_VERSION_NAME` 和 `APP_VERSION_CODE`。如需自定义发布说明，可在 [`release-notes`](../release-notes) 添加同名 Markdown 文件；缺失时 Workflow 会使用 GitHub 自动生成的发布说明。
 2. 将发布提交合并到 `main`。
 3. 在 Actions 中运行 **Publish GitHub Release**，选择与版本号一致的通道：
    - `0.2.0-beta.1` 选择 `beta`；Workflow 会创建预发布 Release 与 Tag `v0.2.0-beta.1`。

@@ -1,7 +1,7 @@
 import java.util.Properties
 
 /** 用户可见的语义化版本号，发布时按实际改动更新。 */
-val APP_VERSION_NAME = "v0.1.1-beta.1"
+val APP_VERSION_NAME = "0.1.1-beta.1"
 
 /** Android 用于比较更新顺序的整数版本号，每次发布 APK 都必须递增。 */
 val APP_VERSION_CODE = 3

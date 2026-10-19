@@ -45,7 +45,7 @@ jobs:
           printf 'name=%s\n' "$version_name" >> "$GITHUB_OUTPUT"
           printf 'code=%s\n' "$version_code" >> "$GITHUB_OUTPUT"
 
-      - name: Validate release channel and notes
+      - name: Validate release channel and tag
         env:
           CHANNEL: ${{ inputs.channel }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
@@ -55,7 +55,6 @@ jobs:
           else
             printf '%s' "$VERSION_NAME" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$'
           fi
-          test -f "release-notes/$VERSION_NAME.md"
           git ls-remote --exit-code --tags origin "refs/tags/v$VERSION_NAME" && exit 1 || true
 
       - name: Ensure versionCode is newer than published APKs
@@ -126,9 +125,15 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
-          prerelease_option=""
+          release_options=()
           if [ "$CHANNEL" = "beta" ]; then
-            prerelease_option="--prerelease"
+            release_options+=(--prerelease)
+          fi
+          notes_file="release-notes/$VERSION_NAME.md"
+          if [ -f "$notes_file" ]; then
+            release_options+=(--notes-file "$notes_file")
+          else
+            release_options+=(--generate-notes)
           fi
           gh release create "v$VERSION_NAME" \
             "capycast-$VERSION_NAME.apk" \
@@ -136,5 +141,4 @@ jobs:
             SHA256SUMS \
             --verify-tag \
             --title "CapyCast $VERSION_NAME" \
-            --notes-file "release-notes/$VERSION_NAME.md" \
-            $prerelease_option
+            "${release_options[@]}"
