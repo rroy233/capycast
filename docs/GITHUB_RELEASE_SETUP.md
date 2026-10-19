@@ -20,7 +20,9 @@ GitHub Actions 生成的 APK、`SHA256SUMS` 与 `capycast-update.json` 都会作
 | 应用通道 | `channel` 参数 | 更新清单中的 `channel` |
 | --- | --- | --- |
 | 正式版 | `release` | `stable` |
-| Beta 版 | `beta` | `beta` |
+| Beta 版 | `beta` | `beta` 或 `stable` |
+
+Beta 通道在客户端会同时比较 `beta` 与 `release`，选取 `versionCode` 更大的发布：正式版发布后 Beta 用户会升级到正式版，之后出现更高版本号的 Beta 时会再次覆盖。服务端若把 `channel=beta` 直接实现为返回全量最新版本，可以省去客户端的一次查询。
 
 版本服务只负责查询发布信息。APK 和 `capycast-update.json` 仍从 GitHub Release 附件地址下载，直连失败时切换到 `https://v4.gh-proxy.org/` 代理。通道尚无公开发布时，版本服务返回 HTTP 404，应用按「暂无更新」处理。
 

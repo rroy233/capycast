@@ -28,16 +28,81 @@ class ReleaseRepository(
     /**
      * 查询指定通道最新的可用更新。
      *
+     * Beta 通道同时比较预发布版与正式版的 versionCode，返回其中较新的一个。
+     *
      * @param channel 要查询的发布通道。
-     * @return 更新信息；通道尚无公开发布时返回 `null`。
+     * @return 更新信息；相关通道均无公开发布时返回 `null`。
      */
     suspend fun fetchLatest(channel: UpdateChannel): AppUpdateInfo? = withContext(Dispatchers.IO) {
         LogHub.i(TAG, "check started channel=${channel.apiValue}")
-        val release = fetchRelease(channel) ?: run {
+        val candidates = when (channel) {
+            UpdateChannel.STABLE -> listOfNotNull(fetchUpdate(UpdateChannel.STABLE))
+            UpdateChannel.BETA -> fetchBetaCandidates()
+        }
+        val newest = candidates.maxWithOrNull(
+            compareBy<AppUpdateInfo> { it.versionCode }
+                .thenBy { if (it.channel == UpdateChannel.STABLE) 1 else 0 },
+        ) ?: run {
             LogHub.i(TAG, "no release found channel=${channel.apiValue}")
             return@withContext null
         }
+        LogHub.i(
+            TAG,
+            "check selected version=${newest.versionName} code=${newest.versionCode} " +
+                "channel=${newest.channel.apiValue} requested=${channel.apiValue}",
+        )
+        newest
+    }
 
+    /** 查询单个通道并组装更新信息。 */
+    private fun fetchUpdate(channel: UpdateChannel): AppUpdateInfo? =
+        fetchRelease(channel)?.let { release -> buildUpdate(channel, release) }
+
+    /**
+     * Beta 通道同时查询 beta 与 release，选取 versionCode 更大的发布。
+     *
+     * 正式版发布后 Beta 用户也能升级到正式版；之后出现更高 versionCode 的
+     * 预发布版时会再次覆盖。
+     */
+    private fun fetchBetaCandidates(): List<AppUpdateInfo> {
+        val beta = runCatching { fetchRelease(UpdateChannel.BETA) }
+        val stable = runCatching { fetchRelease(UpdateChannel.STABLE) }
+        beta.exceptionOrNull()?.let { LogHub.e(TAG, "beta channel query failed", it) }
+        stable.exceptionOrNull()?.let { LogHub.e(TAG, "release channel query failed", it) }
+
+        val betaRelease = beta.getOrNull()
+        val stableRelease = stable.getOrNull()
+        val betaId = betaRelease?.stringOrEmpty("id")
+        val candidates = mutableListOf<AppUpdateInfo>()
+        var lastFailure: Throwable? = null
+
+        if (betaRelease != null) {
+            runCatching { buildUpdate(UpdateChannel.BETA, betaRelease) }
+                .onSuccess { candidates += it }
+                .onFailure {
+                    lastFailure = it
+                    LogHub.e(TAG, "beta release rejected", it)
+                }
+        }
+        if (stableRelease != null &&
+            (betaId.isNullOrBlank() || stableRelease.stringOrEmpty("id") != betaId)
+        ) {
+            runCatching { buildUpdate(UpdateChannel.STABLE, stableRelease) }
+                .onSuccess { candidates += it }
+                .onFailure {
+                    lastFailure = it
+                    LogHub.e(TAG, "release rejected", it)
+                }
+        }
+        if (candidates.isEmpty()) {
+            val error = lastFailure ?: beta.exceptionOrNull() ?: stable.exceptionOrNull()
+            if (error != null) throw error
+        }
+        return candidates
+    }
+
+    /** 将一次发布转换为更新信息。 */
+    private fun buildUpdate(requested: UpdateChannel, release: JsonObject): AppUpdateInfo {
         val assets = release.array("assets")
             .mapNotNull { element -> element.takeIf { it.isJsonObject }?.asJsonObject }
         val manifestAsset = assets.firstOrNull { asset -> asset.stringOrEmpty("name") == MANIFEST_NAME }
@@ -47,16 +112,17 @@ class ReleaseRepository(
         val manifest = parseManifest(fetchText(manifestUrl, "manifest"))
         val apkAsset = assets.firstOrNull { asset -> asset.stringOrEmpty("name") == manifest.apkName }
             ?: throw IOException("发布缺少 ${manifest.apkName} 附件")
-        validateManifest(channel, release, manifest, apkAsset)
+        val actualChannel = validateManifest(requested, release, manifest, apkAsset)
 
         val apkUrl = apkAsset.string("browser_download_url")
         LogHub.i(
             TAG,
             "release validated version=${manifest.versionName} code=${manifest.versionCode} " +
-                "size=${manifest.sizeBytes} channel=${channel.apiValue}",
+                "size=${manifest.sizeBytes} channel=${actualChannel.apiValue} " +
+                "requested=${requested.apiValue}",
         )
-        AppUpdateInfo(
-            channel = channel,
+        return AppUpdateInfo(
+            channel = actualChannel,
             versionName = manifest.versionName,
             versionCode = manifest.versionCode,
             apkName = manifest.apkName,
@@ -170,15 +236,20 @@ class ReleaseRepository(
         )
     }
 
-    /** 校验清单与发布附件之间的一致性。 */
+    /** 校验清单与发布附件之间的一致性，并返回清单声明的实际通道。 */
     private fun validateManifest(
-        channel: UpdateChannel,
+        requested: UpdateChannel,
         release: JsonObject,
         manifest: UpdateManifest,
         apkAsset: JsonObject,
-    ) {
+    ): UpdateChannel {
         require(manifest.schemaVersion == MANIFEST_SCHEMA_VERSION) { "不支持的更新清单格式" }
-        require(manifest.channel == channel.manifestValue) { "更新清单通道不匹配" }
+        val actualChannel = when (manifest.channel) {
+            "stable" -> UpdateChannel.STABLE
+            "beta" -> UpdateChannel.BETA
+            else -> throw IOException("更新清单通道无效")
+        }
+        require(manifest.channel in requested.manifestValues) { "更新清单通道不匹配" }
         require(manifest.versionName == release.string("tag_name").removePrefix("v")) {
             "更新清单版本号与发布 Tag 不一致"
         }
@@ -193,6 +264,7 @@ class ReleaseRepository(
                 "更新清单与发布附件校验值不一致"
             }
         }
+        return actualChannel
     }
 
     /** 将文本解析为 JSON 对象。 */
