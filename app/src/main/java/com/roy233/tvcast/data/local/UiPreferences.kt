@@ -20,8 +20,17 @@ class UiPreferences(context: Context) {
     val roomName: String
         get() = prefs.getString("room_name", "客厅") ?: "客厅"
 
+    /** 是否保留最近一次投屏内容，默认开启以兼容已有使用习惯。 */
+    var rememberPlaybackContent: Boolean
+        get() = prefs.getBoolean(KEY_REMEMBER_PLAYBACK_CONTENT, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_REMEMBER_PLAYBACK_CONTENT, value).apply()
+        }
+
     private companion object {
         /** 偏好文件名。 */
         const val PREFS = "ui_prefs"
+        /** 是否记忆投屏内容的偏好键。 */
+        const val KEY_REMEMBER_PLAYBACK_CONTENT = "remember_playback_content"
     }
 }

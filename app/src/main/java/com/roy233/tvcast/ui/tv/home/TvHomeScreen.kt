@@ -216,9 +216,14 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (featured != null) {
                     WhiteButton(
-                        text = "继续投屏",
+                        text = "继续播放",
                         onClick = { actions.onRecast(featured) },
                         focusRequester = primaryFocus,
+                        compact = compact,
+                    )
+                    GlassButton(
+                        text = "返回",
+                        onClick = actions.onDismissContinue,
                         compact = compact,
                     )
                 } else if (!state.loggedIn) {

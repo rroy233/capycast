@@ -201,6 +201,15 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
 
             item {
                 SettingsSection("播放") {
+                    FocusableRow(
+                        title = "记忆播放内容",
+                        value = if (state.rememberPlaybackContent) "开启" else "关闭",
+                        onClick = {
+                            actions.onSetRememberPlaybackContent(!state.rememberPlaybackContent)
+                        },
+                        showChevron = false,
+                        rowHeight = 50.dp,
+                    )
                     SettingsInfoRow("默认画质", "账号最高")
                     SettingsInfoRow("通道", state.castMode)
                     SettingsInfoRow("版本", state.version)

@@ -49,6 +49,11 @@ class RecentCastStore(context: Context) {
         return list
     }
 
+    /** 清除所有已保存的最近投屏记录。 */
+    fun clear() {
+        prefs.edit().remove(KEY_ITEMS).apply()
+    }
+
     private companion object {
         /** 偏好文件名。 */
         const val PREFS = "recents"

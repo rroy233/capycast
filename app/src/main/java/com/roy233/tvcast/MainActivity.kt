@@ -202,6 +202,23 @@ class MainActivity : ComponentActivity() {
         onCancelStopCast = { ui = ui.copy(stopCastConfirm = false, hudVisible = true) },
         onClearToast = { ui = ui.copy(toast = null) },
         onRecast = { recast(it) },
+        onDismissContinue = { ui = ui.copy(showContinue = false) },
+        onSetRememberPlaybackContent = { enabled ->
+            uiPreferences.rememberPlaybackContent = enabled
+            if (enabled) {
+                ui = ui.copy(
+                    rememberPlaybackContent = true,
+                    showContinue = ui.recents.isNotEmpty(),
+                )
+            } else {
+                recentCastStore.clear()
+                ui = ui.copy(
+                    rememberPlaybackContent = false,
+                    recents = emptyList(),
+                    showContinue = false,
+                )
+            }
+        },
         onHomeBack = { handleHomeBack() },
     )
 
@@ -235,6 +252,8 @@ class MainActivity : ComponentActivity() {
             runOnUiThread {
                 ui = ui.copy(
                     mode = TvMode.IDLE,
+                    destination = TvDestination.HOME,
+                    sidebarVisible = true,
                     castTitle = "",
                     qualityLabel = "",
                     qualityDetail = "",
@@ -248,6 +267,7 @@ class MainActivity : ComponentActivity() {
                     tracks = emptyList(),
                     audios = emptyList(),
                     toast = "投屏已结束",
+                    showContinue = ui.rememberPlaybackContent,
                 )
             }
         }
@@ -360,6 +380,8 @@ class MainActivity : ComponentActivity() {
                     runOnUiThread {
                         ui = ui.copy(
                             mode = TvMode.IDLE,
+                            destination = TvDestination.HOME,
+                            sidebarVisible = true,
                             castTitle = "",
                             qualityLabel = "",
                             qualityDetail = "",
@@ -373,6 +395,7 @@ class MainActivity : ComponentActivity() {
                             tracks = emptyList(),
                             audios = emptyList(),
                             toast = "播放结束",
+                            showContinue = ui.rememberPlaybackContent,
                         )
                     }
                 }
@@ -403,7 +426,12 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        ui = ui.copy(recents = recentCastStore.load())
+        val rememberPlaybackContent = uiPreferences.rememberPlaybackContent
+        ui = ui.copy(
+            rememberPlaybackContent = rememberPlaybackContent,
+            recents = if (rememberPlaybackContent) recentCastStore.load() else emptyList(),
+            showContinue = rememberPlaybackContent,
+        )
         startOrLogin()
         startTicker()
         updateCoordinator.checkAutomaticallyOnLaunch()
@@ -411,6 +439,7 @@ class MainActivity : ComponentActivity() {
 
     /** 将当前播放信息加入最近投屏记录。 */
     private fun addRecent(info: BiliApi.PlayInfo) {
+        if (!ui.rememberPlaybackContent) return
         val list = recentCastStore.add(ui.recents, info)
         ui = ui.copy(recents = list)
     }
@@ -481,7 +510,7 @@ class MainActivity : ComponentActivity() {
         LogHub.setCast(title)
         ui = ui.copy(
             mode = TvMode.LOADING,
-            showContinue = true,
+            showContinue = ui.rememberPlaybackContent,
             castTitle = title.ifBlank { "正在投屏" },
             qualityLabel = "",
             qualityDetail = "",
@@ -533,7 +562,7 @@ class MainActivity : ComponentActivity() {
         lastTitle = title
         ui = ui.copy(
             mode = TvMode.LOADING,
-            showContinue = true,
+            showContinue = ui.rememberPlaybackContent,
             castTitle = title.ifBlank { "正在投屏" },
             error = null,
             hudVisible = true,
@@ -607,7 +636,7 @@ class MainActivity : ComponentActivity() {
 
         ui = ui.copy(
             mode = TvMode.PLAYING,
-            showContinue = true,
+            showContinue = ui.rememberPlaybackContent,
             castTitle = info.title,
             qualityLabel = info.qualityLabel,
             qualityDetail = info.qualityDetail,
@@ -741,6 +770,7 @@ class MainActivity : ComponentActivity() {
             hudVisible = false,
             tracks = emptyList(),
             audios = emptyList(),
+            showContinue = ui.rememberPlaybackContent,
         )
     }
 
@@ -780,6 +810,7 @@ class MainActivity : ComponentActivity() {
             hudVisible = false,
             tracks = emptyList(),
             audios = emptyList(),
+            showContinue = ui.rememberPlaybackContent,
             toast = "投屏已停止",
         )
     }

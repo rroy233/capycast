@@ -121,6 +121,7 @@ data class AudioOption(
  * @property castActive 当前是否存在活动投屏。
  * @property castMode 当前投屏通道说明。
  * @property recents 最近投屏记录。
+ * @property rememberPlaybackContent 是否记忆最近投屏内容。
  * @property showContinue 是否展示继续投屏入口。
  * @property update 应用更新页面的状态。
  */
@@ -167,6 +168,7 @@ data class TvUiState(
     val castActive: Boolean = false,
     val castMode: String = "DLNA 兼容",
     val recents: List<RecentCast> = emptyList(),
+    val rememberPlaybackContent: Boolean = true,
     val showContinue: Boolean = true,
     val update: UpdateUiState = UpdateUiState(),
 )
@@ -209,6 +211,8 @@ data class TvUiState(
  * @property onCancelStopCast 取消停止投屏操作。
  * @property onClearToast 清除提示文本。
  * @property onRecast 重新投屏指定记录。
+ * @property onDismissContinue 收起继续播放入口。
+ * @property onSetRememberPlaybackContent 设置是否记忆最近投屏内容。
  * @property onHomeBack 处理首页返回操作。
  */
 class TvActions(
@@ -247,5 +251,7 @@ class TvActions(
     val onCancelStopCast: () -> Unit = {},
     val onClearToast: () -> Unit = {},
     val onRecast: (RecentCast) -> Unit = {},
+    val onDismissContinue: () -> Unit = {},
+    val onSetRememberPlaybackContent: (Boolean) -> Unit = {},
     val onHomeBack: () -> Unit = {},
 )

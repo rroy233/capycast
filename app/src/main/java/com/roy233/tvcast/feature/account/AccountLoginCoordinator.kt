@@ -207,7 +207,7 @@ class AccountLoginCoordinator(
                 loginQr = null,
                 loginStatus = "",
                 loginSkipped = false,
-                showContinue = true,
+                showContinue = it.rememberPlaybackContent,
                 toast = "已退出登录",
             )
         }
