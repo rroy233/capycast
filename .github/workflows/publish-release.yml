@@ -1,0 +1,140 @@
+name: Publish GitHub Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel matching APP_VERSION_NAME
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.channel }} release
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.channel == 'stable' && 'production' || 'beta' }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Read application version
+        id: version
+        run: |
+          metadata="$(./gradlew -q :app:printReleaseMetadata)"
+          version_name="$(printf '%s\n' "$metadata" | sed -n 's/^versionName=//p')"
+          version_code="$(printf '%s\n' "$metadata" | sed -n 's/^versionCode=//p')"
+          test -n "$version_name"
+          test -n "$version_code"
+          printf 'name=%s\n' "$version_name" >> "$GITHUB_OUTPUT"
+          printf 'code=%s\n' "$version_code" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release channel and notes
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          if [ "$CHANNEL" = "stable" ]; then
+            printf '%s' "$VERSION_NAME" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+          else
+            printf '%s' "$VERSION_NAME" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$'
+          fi
+          test -f "release-notes/$VERSION_NAME.md"
+          git ls-remote --exit-code --tags origin "refs/tags/v$VERSION_NAME" && exit 1 || true
+
+      - name: Ensure versionCode is newer than published APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          max_code=0
+          for manifest_url in $(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | .assets[]? | select(.name == "capycast-update.json") | .browser_download_url'); do
+            published_code="$(curl --fail --location --silent "$manifest_url" | jq -r '.versionCode')"
+            test "$published_code" -gt 0
+            if [ "$published_code" -gt "$max_code" ]; then
+              max_code="$published_code"
+            fi
+          done
+          test "$VERSION_CODE" -gt "$max_code"
+
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/capycast-release.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/capycast-release.jks" \
+            "$ANDROID_KEYSTORE_PASSWORD" \
+            "$ANDROID_KEY_ALIAS" \
+            "$ANDROID_KEY_PASSWORD" > keystore.properties
+
+      - name: Build and verify release APK
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          ./gradlew :app:assembleRelease
+          apk="app/build/outputs/apk/release/app-release.apk"
+          test -f "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
+          cp "$apk" "capycast-$VERSION_NAME.apk"
+          sha256sum "capycast-$VERSION_NAME.apk" > SHA256SUMS
+
+      - name: Create update manifest
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          apk="capycast-$VERSION_NAME.apk"
+          sha256="$(sha256sum "$apk" | awk '{print $1}')"
+          size="$(stat --format=%s "$apk")"
+          printf '{\n  "schemaVersion": 1,\n  "channel": "%s",\n  "versionName": "%s",\n  "versionCode": %s,\n  "apkName": "%s",\n  "sha256": "%s",\n  "sizeBytes": %s,\n  "minSdk": 21\n}\n' \
+            "$CHANNEL" "$VERSION_NAME" "$VERSION_CODE" "$apk" "$sha256" "$size" > capycast-update.json
+
+      - name: Create version tag
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git tag --annotate "v$VERSION_NAME" --message "Release $VERSION_NAME"
+          git push origin "v$VERSION_NAME"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ inputs.channel }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          prerelease_option=""
+          if [ "$CHANNEL" = "beta" ]; then
+            prerelease_option="--prerelease"
+          fi
+          gh release create "v$VERSION_NAME" \
+            "capycast-$VERSION_NAME.apk" \
+            capycast-update.json \
+            SHA256SUMS \
+            --verify-tag \
+            --title "CapyCast $VERSION_NAME" \
+            --notes-file "release-notes/$VERSION_NAME.md" \
+            $prerelease_option

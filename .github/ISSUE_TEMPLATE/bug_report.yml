@@ -1,0 +1,105 @@
+name: Bug 报告
+description: 报告可以稳定复现的异常、崩溃或设备兼容问题
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。完整的设备和复现信息能显著提高定位效率。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已搜索现有 Issue，确认没有内容相同的问题。
+          required: true
+        - label: 我正在使用最新正式版或最新 Beta 版。
+          required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: CapyCast 版本
+      description: 可在应用侧边栏或设置中查看。
+      placeholder: 例如 0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: channel
+    attributes:
+      label: 更新通道
+      options:
+        - 正式版
+        - Beta 版
+        - 自行构建
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: 电视或盒子型号
+      placeholder: 例如 Chromecast with Google TV 4K
+    validations:
+      required: true
+
+  - type: input
+    id: android_version
+    attributes:
+      label: Android 版本
+      placeholder: 例如 Android TV 12
+    validations:
+      required: true
+
+  - type: input
+    id: phone_app
+    attributes:
+      label: 手机与 B 站 App 信息
+      description: 请填写手机系统和 B 站 App 版本；与手机端无关时可填写“不适用”。
+      placeholder: 例如 Android 16 / B 站 8.x.x
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开……
+        2. 选择……
+        3. 出现……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 如有错误提示，请完整抄录。
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志与补充材料
+      description: 可拖入日志、截图或录屏。请先移除 Cookie、二维码、账号标识、局域网地址等敏感信息。
+      render: shell
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我已检查提交内容，其中不包含 Cookie、访问令牌、登录二维码或其他敏感信息。
+          required: true
+

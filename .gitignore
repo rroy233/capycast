@@ -1,0 +1,80 @@
+# Gradle / Kotlin caches and generated build output
+/.gradle/
+/.kotlin/
+**/build/
+
+# Local SDK and machine-specific configuration
+/local.properties
+/.idea/
+/.fleet/
+/.vscode/
+*.iml
+
+# Local tools, research material, captures, and early design drafts
+/.tools/
+/.reference/
+/.docs/
+captures/
+*.pcap
+*.pcapng
+
+# Android Studio / native build output
+.externalNativeBuild/
+.cxx/
+/app/release/
+*.apk
+*.aab
+*.apks
+*.idsig
+*.dm
+output-metadata.json
+
+# Ignore downloaded AARs except the vendored libVLC dependency required to build
+*.aar
+!/app/libs/libvlc-all-3.6.5.aar
+
+# Signing keys and local credential files
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*.p8
+/app/debug.keystore
+/keystore.properties
+/key.properties
+/signing.properties
+/secrets.properties
+*.secrets.properties
+
+# Environment files; examples and templates may be committed
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Service configuration and service-account credentials
+google-services.json
+GoogleService-Info.plist
+firebase-adminsdk-*.json
+service-account*.json
+credentials*.json
+
+# Logs, heap dumps, crash reports, and temporary editor files
+*.log
+*.hprof
+hs_err_pid*
+*.swp
+*.swo
+*~
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# Operating-system metadata
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
