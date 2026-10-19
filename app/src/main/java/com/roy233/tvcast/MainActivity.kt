@@ -384,7 +384,7 @@ class MainActivity : ComponentActivity() {
         ui = ui.copy(recents = recentCastStore.load())
         startOrLogin()
         startTicker()
-        updateCoordinator.checkAutomaticallyIfDue()
+        updateCoordinator.checkAutomaticallyOnLaunch()
     }
 
     /** 将当前播放信息加入最近投屏记录。 */

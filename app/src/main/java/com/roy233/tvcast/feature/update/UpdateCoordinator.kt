@@ -9,7 +9,7 @@ import android.os.SystemClock
 import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.data.local.UpdatePreferences
-import com.roy233.tvcast.data.update.GitHubReleaseRepository
+import com.roy233.tvcast.data.update.ReleaseRepository
 import com.roy233.tvcast.platform.installer.ApkUpdateInstaller
 import com.roy233.tvcast.ui.model.TvUiState
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +34,7 @@ class UpdateCoordinator(
     private val readState: () -> TvUiState,
     private val writeState: (TvUiState) -> Unit,
     private val preferences: UpdatePreferences = UpdatePreferences(context),
-    private val repository: GitHubReleaseRepository = GitHubReleaseRepository(),
+    private val repository: ReleaseRepository = ReleaseRepository(),
     private val installer: ApkUpdateInstaller = ApkUpdateInstaller(context),
 ) {
 
@@ -80,7 +80,7 @@ class UpdateCoordinator(
     /** 切换更新发布通道并清除当前查询结果。 */
     fun selectChannel(channel: UpdateChannel) {
         if (channel == readState().update.channel) return
-        LogHub.i(TAG, "channel selected=${channel.name.lowercase()}")
+        LogHub.i(TAG, "channel selected=${channel.apiValue}")
         cancelDownload(removeTask = true)
         preferences.channel = channel
         setUpdateState {
@@ -102,12 +102,13 @@ class UpdateCoordinator(
         setUpdateState { it.copy(automaticCheck = enabled) }
     }
 
-    /** 在距离上次自动检查至少一天时执行后台更新检查。 */
-    fun checkAutomaticallyIfDue() {
-        val dueAt = preferences.lastAutomaticCheckAt + AUTO_CHECK_INTERVAL_MS
-        if (preferences.automaticCheckEnabled && System.currentTimeMillis() >= dueAt) {
-            checkForUpdates(manual = false)
+    /** 在应用启动时按用户设置检查更新。 */
+    fun checkAutomaticallyOnLaunch() {
+        if (!preferences.automaticCheckEnabled) {
+            LogHub.i(TAG, "auto check skipped: disabled")
+            return
         }
+        checkForUpdates(manual = false)
     }
 
     /** 查询当前通道是否存在可用更新。 */
@@ -116,7 +117,7 @@ class UpdateCoordinator(
         val channel = readState().update.channel
         LogHub.i(
             TAG,
-            "check requested channel=${channel.name.lowercase()} manual=$manual " +
+            "check requested channel=${channel.apiValue} manual=$manual " +
                 "currentVersion=${BuildConfig.VERSION_NAME} code=${BuildConfig.VERSION_CODE}",
         )
         setUpdateState {
@@ -132,10 +133,9 @@ class UpdateCoordinator(
         scope.launch {
             runCatching { repository.fetchLatest(channel) }
                 .onSuccess { update ->
-                    if (!manual) preferences.lastAutomaticCheckAt = System.currentTimeMillis()
                     when {
                         update == null -> {
-                            LogHub.i(TAG, "check complete no release channel=${channel.name.lowercase()}")
+                            LogHub.i(TAG, "check complete no release channel=${channel.apiValue}")
                             showNoUpdate(manual)
                         }
                         update.versionCode <= BuildConfig.VERSION_CODE.toLong() -> {
@@ -153,7 +153,7 @@ class UpdateCoordinator(
                     }
                 }
                 .onFailure { error ->
-                    LogHub.e(TAG, "check failed channel=${channel.name.lowercase()}", error)
+                    LogHub.e(TAG, "check failed channel=${channel.apiValue}", error)
                     setUpdateState {
                         it.copy(
                             status = UpdateStatus.FAILED,
@@ -234,6 +234,7 @@ class UpdateCoordinator(
 
     /** 显示当前通道没有可用更新的状态。 */
     private fun showNoUpdate(manual: Boolean) {
+        if (!manual) showToast("已是最新版本")
         setUpdateState {
             it.copy(
                 status = UpdateStatus.UP_TO_DATE,
@@ -244,6 +245,7 @@ class UpdateCoordinator(
 
     /** 显示可下载更新，并优先使用有效缓存。 */
     private fun showAvailableUpdate(update: AppUpdateInfo, manual: Boolean) {
+        if (!manual) showToast("发现新版本 ${update.versionName}")
         scope.launch {
             val cacheFile = cacheFile(update)
             if (installer.verify(cacheFile, update).isSuccess) {
@@ -256,7 +258,7 @@ class UpdateCoordinator(
                         downloadedApkPath = null,
                         downloadedBytes = 0L,
                         totalBytes = update.sizeBytes,
-                        message = if (manual) "发现新版本 ${update.versionName}" else "发现新版本 ${update.versionName}",
+                        message = "发现新版本 ${update.versionName}",
                     )
                 }
             }
@@ -478,6 +480,12 @@ class UpdateCoordinator(
         writeState(state.copy(update = transform(state.update)))
     }
 
+    /** 在界面底部显示短暂提示，复用全局提示组件。 */
+    private fun showToast(message: String) {
+        val state = readState()
+        writeState(state.copy(toast = message))
+    }
+
     /** 下载任务状态的快照。 */
     private data class DownloadSnapshot(
         val status: Int,
@@ -489,8 +497,6 @@ class UpdateCoordinator(
     private companion object {
         /** 更新流程日志标签。 */
         const val TAG = "UpdateCoordinator"
-        /** 自动检查间隔为 24 小时。 */
-        const val AUTO_CHECK_INTERVAL_MS = 24L * 60L * 60L * 1000L
         /** 下载进度轮询间隔。 */
         const val DOWNLOAD_POLL_INTERVAL_MS = 350L
         /** 直连下载无进度达到该时长后切换到备用代理。 */

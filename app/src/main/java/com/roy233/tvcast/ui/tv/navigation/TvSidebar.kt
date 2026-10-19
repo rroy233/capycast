@@ -231,6 +231,7 @@ internal fun Sidebar(
                     }
                 },
                 focusRequester = settingsFocus,
+                badge = state.update.availableUpdate != null,
             )
 
             Spacer(Modifier.weight(1f))
@@ -254,6 +255,7 @@ private fun SidebarItem(
     selected: Boolean,
     onClick: () -> Unit,
     focusRequester: FocusRequester,
+    badge: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val interactionFocused by interaction.collectIsFocusedAsState()
@@ -311,6 +313,17 @@ private fun SidebarItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        if (badge) {
+            Spacer(Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(TvColors.error)
+                    .border(1.dp, Color.White.copy(alpha = 0.9f), CircleShape)
+                    .semantics { contentDescription = "有新版本" },
+            )
+        }
     }
 }
 

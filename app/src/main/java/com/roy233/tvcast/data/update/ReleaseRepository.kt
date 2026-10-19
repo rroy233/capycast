@@ -1,14 +1,14 @@
 package com.roy233.tvcast.data.update
 
 import android.os.Build
-import com.roy233.tvcast.core.diagnostics.LogHub
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
-import com.google.gson.JsonParser
 import com.roy233.tvcast.BuildConfig
+import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.update.AppUpdateInfo
 import com.roy233.tvcast.feature.update.UpdateChannel
 import com.roy233.tvcast.feature.update.UpdateManifest
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -16,11 +16,12 @@ import okhttp3.Request
 import java.io.IOException
 
 /**
- * 从 GitHub Releases 查询公开发布信息和更新清单。
+ * 通过版本服务查询公开发布信息和更新清单。
  *
- * 发布清单提供 APK 文件名、版本号和 SHA-256，用于将 Release 元数据与下载文件关联。
+ * 版本服务按通道返回最新的发布数据。APK 与更新清单仍从发布附件地址下载，
+ * 直连失败时再切换到备用代理。
  */
-class GitHubReleaseRepository(
+class ReleaseRepository(
     private val client: OkHttpClient = OkHttpClient(),
 ) {
 
@@ -31,32 +32,28 @@ class GitHubReleaseRepository(
      * @return 更新信息；通道尚无公开发布时返回 `null`。
      */
     suspend fun fetchLatest(channel: UpdateChannel): AppUpdateInfo? = withContext(Dispatchers.IO) {
-        LogHub.i(TAG, "check started channel=${channel.name.lowercase()}")
-        val release = when (channel) {
-            UpdateChannel.STABLE -> fetchStableRelease()
-            UpdateChannel.BETA -> fetchLatestBetaRelease()
-        } ?: run {
-            LogHub.i(TAG, "no release found channel=${channel.name.lowercase()}")
+        LogHub.i(TAG, "check started channel=${channel.apiValue}")
+        val release = fetchRelease(channel) ?: run {
+            LogHub.i(TAG, "no release found channel=${channel.apiValue}")
             return@withContext null
         }
 
-        val assets = buildList {
-            val iterator = release.array("assets").iterator()
-            while (iterator.hasNext()) add(iterator.next().asJsonObject)
-        }
-        val manifestAsset = assets.firstOrNull { asset -> asset.string("name") == MANIFEST_NAME }
+        val assets = release.array("assets")
+            .mapNotNull { element -> element.takeIf { it.isJsonObject }?.asJsonObject }
+        val manifestAsset = assets.firstOrNull { asset -> asset.stringOrEmpty("name") == MANIFEST_NAME }
             ?: throw IOException("发布缺少 $MANIFEST_NAME 清单文件")
         val manifestUrl = manifestAsset.string("browser_download_url")
         LogHub.i(TAG, "manifest asset found name=$MANIFEST_NAME")
         val manifest = parseManifest(fetchText(manifestUrl, "manifest"))
-        val apkAsset = assets.first { asset -> asset.string("name") == manifest.apkName }
-        validateManifest(channel, release, assets, manifest, apkAsset)
+        val apkAsset = assets.firstOrNull { asset -> asset.stringOrEmpty("name") == manifest.apkName }
+            ?: throw IOException("发布缺少 ${manifest.apkName} 附件")
+        validateManifest(channel, release, manifest, apkAsset)
 
         val apkUrl = apkAsset.string("browser_download_url")
         LogHub.i(
             TAG,
             "release validated version=${manifest.versionName} code=${manifest.versionCode} " +
-                "size=${manifest.sizeBytes} channel=${channel.name.lowercase()}",
+                "size=${manifest.sizeBytes} channel=${channel.apiValue}",
         )
         AppUpdateInfo(
             channel = channel,
@@ -72,96 +69,73 @@ class GitHubReleaseRepository(
         )
     }
 
-    /** 查询最新正式发布。 */
-    private fun fetchStableRelease(): JsonObject? {
-        val response = fetchResponse("/repos/${BuildConfig.UPDATE_REPOSITORY}/releases/latest")
-        if (response.code == HTTP_NOT_FOUND) return null
-        return parseObject(response.body)
-    }
-
-    /** 查询公开 Beta 列表中的最新预发布版本。 */
-    private fun fetchLatestBetaRelease(): JsonObject? {
-        val response = fetchResponse("/repos/${BuildConfig.UPDATE_REPOSITORY}/releases?per_page=30")
-        val releases = JsonParser.parseString(response.body).asJsonArray
-        return releases
-            .map { it.asJsonObject }
-            .firstOrNull { it.boolean("prerelease") && !it.boolean("draft") }
-    }
-
-    /** 下载并返回一个 GitHub API 响应。 */
-    private fun fetchResponse(path: String): ApiResponse {
-        val directUrl = "${BuildConfig.UPDATE_API_BASE_URL}$path"
-        val urls = listOf(directUrl, proxyUrl(directUrl))
-        var lastFailure: IOException? = null
-        urls.forEachIndexed { index, url ->
-            val source = if (index == 0) "github-api" else "proxy-api"
-            LogHub.i(TAG, "request source=$source path=$path")
-            try {
-                client.newCall(apiRequest(url)).execute().use { response ->
-                    val body = response.body?.string().orEmpty()
-                    if (response.isSuccessful ||
-                        (index == 0 && response.code == HTTP_NOT_FOUND)
-                    ) {
-                        LogHub.i(TAG, "response source=$source http=${response.code} path=$path")
-                        return ApiResponse(response.code, body)
-                    }
-                    val detail = apiFailureDetail(response.code, response.headers, body)
-                    LogHub.e(TAG, "request failed source=$source $detail path=$path")
-                    // A proxy-side 404 does not prove the canonical API resource is absent.
-                    if (response.code != HTTP_NOT_FOUND || lastFailure == null) {
-                        lastFailure = IOException("GitHub 请求失败（$detail）")
-                    }
-                }
-            } catch (error: IOException) {
-                LogHub.e(TAG, "request error source=$source path=$path", error)
-                lastFailure = error
-            }
-            if (index == 0) LogHub.i(TAG, "retrying through proxy path=$path")
-        }
-        throw lastFailure ?: IOException("GitHub 请求失败")
-    }
-
-    /** 创建 GitHub API 请求。 */
-    private fun apiRequest(url: String): Request =
-        Request.Builder()
+    /** 向版本服务查询指定通道的最新发布。 */
+    private fun fetchRelease(channel: UpdateChannel): JsonObject? {
+        val url = "${BuildConfig.UPDATE_API_BASE_URL}/version/release" +
+            "?app_id=${BuildConfig.UPDATE_APP_ID}&channel=${channel.apiValue}"
+        LogHub.i(TAG, "request source=version-api channel=${channel.apiValue}")
+        val request = Request.Builder()
             .url(url)
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "CapyCast-Android-Updater")
+            .header("Accept", "application/json")
+            .header("User-Agent", USER_AGENT)
             .build()
+        val response = try {
+            client.newCall(request).execute()
+        } catch (error: IOException) {
+            LogHub.e(TAG, "request error source=version-api channel=${channel.apiValue}", error)
+            throw IOException("无法连接版本服务，请检查网络后重试。", error)
+        }
+        return response.use { result ->
+            val body = result.body?.string().orEmpty()
+            when {
+                // 通道尚无公开发布时，版本服务以 404 表示没有可用版本。
+                result.code == HTTP_NOT_FOUND -> {
+                    LogHub.i(TAG, "response source=version-api http=404 channel=${channel.apiValue}")
+                    null
+                }
 
-    /** 提取 GitHub API 错误摘要和限流响应头，不记录原始响应正文。 */
-    private fun apiFailureDetail(code: Int, headers: okhttp3.Headers, body: String): String {
+                !result.isSuccessful -> {
+                    val detail = apiFailureDetail(result.code, body)
+                    LogHub.e(TAG, "request failed source=version-api $detail channel=${channel.apiValue}")
+                    throw IOException("版本服务请求失败（$detail）")
+                }
+
+                else -> {
+                    LogHub.i(TAG, "response source=version-api http=${result.code} channel=${channel.apiValue}")
+                    parseObject(body)
+                }
+            }
+        }
+    }
+
+    /** 提取版本服务错误摘要，不记录原始响应正文。 */
+    private fun apiFailureDetail(code: Int, body: String): String {
         val message = runCatching {
-            JsonParser.parseString(body).asJsonObject
-                .get("message")?.takeUnless { it.isJsonNull }?.asString
+            val json = JsonParser.parseString(body).asJsonObject
+            json.getAsJsonObject("error")
+                ?.get("message")?.takeUnless { it.isJsonNull }?.asString
+                ?: json.get("message")?.takeUnless { it.isJsonNull }?.asString
         }.getOrNull()
             ?.replace(IP_ADDRESS_PATTERN, "<ip>")
             ?.take(180)
-        val rateLimit = listOfNotNull(
-            headers["X-RateLimit-Remaining"]?.let { "remaining=$it" },
-            headers["X-RateLimit-Reset"]?.let { "reset=$it" },
-            headers["Retry-After"]?.let { "retryAfter=$it" },
-        ).joinToString(" ")
-        return buildString {
-            append("HTTP $code")
-            if (rateLimit.isNotEmpty()) append(" [$rateLimit]")
-            if (!message.isNullOrBlank()) append(": $message")
-        }
+        return if (message.isNullOrBlank()) "HTTP $code" else "HTTP $code: $message"
     }
 
     /** 下载公开发布附件的文本内容。 */
     private fun fetchText(url: String, purpose: String): String {
         require(url.startsWith("https://")) { "更新附件地址必须使用 HTTPS" }
-        val urls = listOf(url, proxyUrl(url))
+        val candidates = buildList {
+            add(url to "official")
+            proxyUrl(url)?.let { proxy -> add(proxy to "proxy") }
+        }
         var lastFailure: IOException? = null
-        urls.forEachIndexed { index, candidate ->
-            val source = if (index == 0) "github" else "proxy"
+        candidates.forEachIndexed { index, (candidate, source) ->
             LogHub.i(TAG, "fetch $purpose source=$source")
             try {
                 client.newCall(
                     Request.Builder()
                         .url(candidate)
-                        .header("User-Agent", "CapyCast-Android-Updater")
+                        .header("User-Agent", USER_AGENT)
                         .build(),
                 ).execute().use { response ->
                     if (response.isSuccessful) {
@@ -176,7 +150,7 @@ class GitHubReleaseRepository(
                 LogHub.e(TAG, "fetch $purpose error source=$source", error)
                 lastFailure = error
             }
-            if (index == 0) LogHub.i(TAG, "retrying $purpose through proxy")
+            if (index == 0 && candidates.size > 1) LogHub.i(TAG, "retrying $purpose through proxy")
         }
         throw lastFailure ?: IOException("更新清单下载失败")
     }
@@ -196,29 +170,27 @@ class GitHubReleaseRepository(
         )
     }
 
-    /** 校验清单与 GitHub Release 附件之间的一致性。 */
+    /** 校验清单与发布附件之间的一致性。 */
     private fun validateManifest(
         channel: UpdateChannel,
         release: JsonObject,
-        assets: List<JsonObject>,
         manifest: UpdateManifest,
         apkAsset: JsonObject,
     ) {
         require(manifest.schemaVersion == MANIFEST_SCHEMA_VERSION) { "不支持的更新清单格式" }
-        require(manifest.channel == channel.name.lowercase()) { "更新清单通道不匹配" }
+        require(manifest.channel == channel.manifestValue) { "更新清单通道不匹配" }
         require(manifest.versionName == release.string("tag_name").removePrefix("v")) {
-            "更新清单版本号与 GitHub Tag 不一致"
+            "更新清单版本号与发布 Tag 不一致"
         }
         require(manifest.versionCode > 0L) { "更新清单版本号无效" }
         require(manifest.sizeBytes > 0L) { "更新清单文件大小无效" }
         require(manifest.minSdk <= Build.VERSION.SDK_INT) { "此更新不支持当前 Android 版本" }
         require(SHA_256_PATTERN.matches(manifest.sha256)) { "更新清单 SHA-256 格式无效" }
-        require(assets.any { asset -> asset.string("name") == manifest.apkName }) { "发布缺少 APK 附件" }
 
         val assetDigest = apkAsset.stringOrEmpty("digest").removePrefix("sha256:")
         if (assetDigest.isNotBlank()) {
             require(assetDigest.equals(manifest.sha256, ignoreCase = true)) {
-                "更新清单与 GitHub 附件校验值不一致"
+                "更新清单与发布附件校验值不一致"
             }
         }
     }
@@ -227,38 +199,42 @@ class GitHubReleaseRepository(
     private fun parseObject(content: String): JsonObject = try {
         JsonParser.parseString(content).asJsonObject
     } catch (exception: Exception) {
-        throw IOException("GitHub 返回了无法识别的发布数据", exception)
+        throw IOException("版本服务返回了无法识别的发布数据", exception)
     }
-
-    /** GitHub API 的状态码和响应文本。 */
-    private data class ApiResponse(val code: Int, val body: String)
 
     private companion object {
         /** 更新流程日志标签。 */
         const val TAG = "UpdateRepository"
-        /** GitHub 访问代理前缀。 */
+        /** GitHub 访问代理前缀，仅用于发布附件下载。 */
         const val PROXY_PREFIX = "https://v4.gh-proxy.org/"
         /** 更新清单文件名。 */
         const val MANIFEST_NAME = "capycast-update.json"
         /** 当前支持的更新清单格式版本。 */
         const val MANIFEST_SCHEMA_VERSION = 1
-        /** GitHub 未找到资源的状态码。 */
+        /** 版本服务表示通道暂无发布的状态码。 */
         const val HTTP_NOT_FOUND = 404
+        /** 更新器请求使用的 User-Agent。 */
+        const val USER_AGENT = "CapyCast-Android-Updater"
         /** SHA-256 十六进制值格式。 */
         val SHA_256_PATTERN = Regex("^[A-Fa-f0-9]{64}$")
-        /** 避免将 GitHub 错误正文中的客户端公网 IPv4 地址写入局域网诊断日志。 */
+        /** 避免将错误正文中的客户端公网 IPv4 地址写入局域网诊断日志。 */
         val IP_ADDRESS_PATTERN = Regex("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b")
     }
 
-    /** 将 GitHub HTTPS 地址包装为备用代理地址。 */
-    private fun proxyUrl(url: String): String =
-        if (url.startsWith(PROXY_PREFIX)) url else "$PROXY_PREFIX$url"
+    /** 为 GitHub 发布附件地址生成备用代理地址；其他地址不代理。 */
+    private fun proxyUrl(url: String): String? = when {
+        url.startsWith(PROXY_PREFIX) || !url.startsWith(GITHUB_PREFIX) -> null
+        else -> "$PROXY_PREFIX$url"
+    }
 }
+
+/** GitHub 发布附件的地址前缀。 */
+private const val GITHUB_PREFIX = "https://github.com/"
 
 /** 读取 JSON 对象中的必填字符串字段。 */
 private fun JsonObject.string(name: String): String =
     get(name)?.takeUnless { it.isJsonNull }?.asString?.takeIf { it.isNotBlank() }
-        ?: throw IOException("GitHub 发布数据缺少 $name")
+        ?: throw IOException("发布数据缺少 $name")
 
 /** 读取 JSON 对象中的可选字符串字段。 */
 private fun JsonObject.stringOrEmpty(name: String): String =
@@ -268,19 +244,15 @@ private fun JsonObject.stringOrEmpty(name: String): String =
 private fun JsonObject.long(name: String): Long = try {
     get(name)?.takeUnless { it.isJsonNull }?.asLong ?: throw NumberFormatException()
 } catch (exception: Exception) {
-    throw IOException("GitHub 发布数据中的 $name 无效", exception)
+    throw IOException("发布数据中的 $name 无效", exception)
 }
 
 /** 读取 JSON 对象中的必填整数字段。 */
 private fun JsonObject.int(name: String): Int = try {
     get(name)?.takeUnless { it.isJsonNull }?.asInt ?: throw NumberFormatException()
 } catch (exception: Exception) {
-    throw IOException("GitHub 发布数据中的 $name 无效", exception)
+    throw IOException("发布数据中的 $name 无效", exception)
 }
-
-/** 读取 JSON 对象中的布尔字段，字段不存在时返回 `false`。 */
-private fun JsonObject.boolean(name: String): Boolean =
-    get(name)?.takeUnless { it.isJsonNull }?.asBoolean ?: false
 
 /** 读取 JSON 对象中的数组字段，字段不存在时返回空数组。 */
 private fun JsonObject.array(name: String): JsonArray =

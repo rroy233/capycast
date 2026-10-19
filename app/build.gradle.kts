@@ -37,8 +37,8 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
-        buildConfigField("String", "UPDATE_REPOSITORY", "\"rroy233/capycast\"")
-        buildConfigField("String", "UPDATE_API_BASE_URL", "\"https://api.github.com\"")
+        buildConfigField("String", "UPDATE_API_BASE_URL", "\"https://api.roy233.com\"")
+        buildConfigField("String", "UPDATE_APP_ID", "\"capycast\"")
     }
 
     /** 读取未纳入版本控制的发布签名配置。 */

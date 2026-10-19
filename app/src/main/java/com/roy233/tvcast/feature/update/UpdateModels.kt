@@ -1,12 +1,22 @@
 package com.roy233.tvcast.feature.update
 
-/** 表示用户选择的 GitHub 发布通道。 */
-enum class UpdateChannel(val displayName: String) {
+/**
+ * 表示用户选择的发布通道。
+ *
+ * @property displayName 界面展示的通道名称。
+ * @property apiValue 版本服务查询参数中使用的通道名称。
+ * @property manifestValue 更新清单中记录的通道名称。
+ */
+enum class UpdateChannel(
+    val displayName: String,
+    val apiValue: String,
+    val manifestValue: String,
+) {
     /** 面向日常使用的稳定版本。 */
-    STABLE("正式版"),
+    STABLE("正式版", "release", "stable"),
 
     /** 公开发布、可能包含未稳定功能的预发布版本。 */
-    BETA("Beta 版"),
+    BETA("Beta 版", "beta", "beta"),
 }
 
 /** 表示应用更新流程当前所处的阶段。 */
@@ -14,7 +24,7 @@ enum class UpdateStatus {
     /** 尚未执行更新操作。 */
     IDLE,
 
-    /** 正在从 GitHub 查询发布信息。 */
+    /** 正在从版本服务查询发布信息。 */
     CHECKING,
 
     /** 当前通道没有更高版本。 */
@@ -37,7 +47,7 @@ enum class UpdateStatus {
 }
 
 /**
- * 描述 GitHub Release 中可安装的应用更新。
+ * 描述版本服务返回的可安装应用更新。
  *
  * @property channel 发布所属通道。
  * @property versionName 用户可见的版本号。
@@ -47,8 +57,8 @@ enum class UpdateStatus {
  * @property fallbackDownloadUrl APK 的备用代理下载地址。
  * @property sha256 APK 的 SHA-256 校验值。
  * @property sizeBytes APK 文件大小，单位为字节。
- * @property releaseNotes GitHub Release 的 Markdown 更新说明。
- * @property releaseUrl GitHub Release 页面地址。
+ * @property releaseNotes 发布说明的 Markdown 内容。
+ * @property releaseUrl 发布页面地址。
  */
 data class AppUpdateInfo(
     val channel: UpdateChannel,

@@ -1,6 +1,6 @@
 # GitHub 发布配置
 
-本项目通过 GitHub Actions 构建签名 APK，并将公开 GitHub Release 同时作为正式版和 Beta 版的分发源。应用固定查询仓库 `rroy233/capycast`。
+本项目通过 GitHub Actions 构建签名 APK，并将公开 GitHub Release 同时作为正式版和 Beta 版的分发源。应用通过版本服务 `https://api.roy233.com/version/release` 查询最新版本，查询时固定传入 `app_id=capycast`。
 
 ## 首次配置
 
@@ -13,7 +13,16 @@
 3. `ANDROID_KEYSTORE_BASE64` 使用本机 `.android-keys` 目录中的发布证书文件进行 Base64 编码后填写。证书文件、密码和 `keystore.properties` 均不提交到仓库。
 4. 将 `production` 环境设置为需要人工审批；`beta` 保持公开发布即可。
 
-GitHub Actions 生成的 APK、`SHA256SUMS` 与 `capycast-update.json` 都会作为公开 Release 附件上传。应用先读取更新清单，再校验 APK 的 SHA-256、包名和版本号。
+GitHub Actions 生成的 APK、`SHA256SUMS` 与 `capycast-update.json` 都会作为公开 Release 附件上传。应用先向版本服务查询发布数据，再下载更新清单校验 APK 的 SHA-256、包名和版本号。
+
+版本服务的通道参数与应用内的通道选项对应如下：
+
+| 应用通道 | `channel` 参数 | 更新清单中的 `channel` |
+| --- | --- | --- |
+| 正式版 | `release` | `stable` |
+| Beta 版 | `beta` | `beta` |
+
+版本服务只负责查询发布信息。APK 和 `capycast-update.json` 仍从 GitHub Release 附件地址下载，直连失败时切换到 `https://v4.gh-proxy.org/` 代理。通道尚无公开发布时，版本服务返回 HTTP 404，应用按「暂无更新」处理。
 
 ## 日常发布
 
