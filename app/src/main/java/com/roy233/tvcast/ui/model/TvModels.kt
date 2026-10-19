@@ -11,7 +11,7 @@ enum class TvMode { IDLE, LOADING, PLAYING, ERROR }
 enum class TvDestination { HOME, SETTINGS }
 
 /** 表示设置页当前打开的层级。 */
-enum class SettingsPage { ROOT, UPDATE }
+enum class SettingsPage { ROOT, UPDATE, UPDATE_NOTES }
 
 /** 表示播放控制面板的层级。 */
 enum class PanelKind { ROOT, QUALITY, AUDIO }
@@ -182,6 +182,8 @@ data class TvUiState(
  * @property onNavigateSettings 导航到设置页。
  * @property onOpenUpdateSettings 打开应用更新二级页面。
  * @property onCloseUpdateSettings 返回设置主页。
+ * @property onOpenUpdateNotes 打开当前更新的更新日志。
+ * @property onCloseUpdateNotes 从更新日志返回应用更新页面。
  * @property onSelectUpdateChannel 选择更新通道。
  * @property onSetAutoUpdateCheck 设置是否自动检查更新。
  * @property onCheckForUpdates 手动检查更新。
@@ -219,6 +221,8 @@ class TvActions(
     val onNavigateSettings: () -> Unit = {},
     val onOpenUpdateSettings: () -> Unit = {},
     val onCloseUpdateSettings: () -> Unit = {},
+    val onOpenUpdateNotes: () -> Unit = {},
+    val onCloseUpdateNotes: () -> Unit = {},
     val onSelectUpdateChannel: (UpdateChannel) -> Unit = {},
     val onSetAutoUpdateCheck: (Boolean) -> Unit = {},
     val onCheckForUpdates: () -> Unit = {},

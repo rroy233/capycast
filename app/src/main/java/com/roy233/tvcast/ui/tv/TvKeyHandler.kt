@@ -42,6 +42,8 @@ object TvKeyHandler {
 
                 state.error != null -> actions.onDismissError()
                 state.mode == TvMode.PLAYING -> actions.onRequestExit()
+                state.destination == TvDestination.SETTINGS && state.settingsPage == SettingsPage.UPDATE_NOTES ->
+                    actions.onCloseUpdateNotes()
                 state.destination == TvDestination.SETTINGS && state.settingsPage == SettingsPage.UPDATE ->
                     actions.onCloseUpdateSettings()
                 state.destination == TvDestination.SETTINGS -> actions.onNavigateHome()

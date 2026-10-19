@@ -77,6 +77,19 @@ class UpdateCoordinator(
         writeState(state.copy(settingsPage = com.roy233.tvcast.ui.model.SettingsPage.ROOT))
     }
 
+    /** 打开当前可用更新的更新日志页面。 */
+    fun openNotes() {
+        val state = readState()
+        if (state.update.availableUpdate == null) return
+        writeState(state.copy(settingsPage = com.roy233.tvcast.ui.model.SettingsPage.UPDATE_NOTES))
+    }
+
+    /** 从更新日志返回应用更新页面。 */
+    fun closeNotes() {
+        val state = readState()
+        writeState(state.copy(settingsPage = com.roy233.tvcast.ui.model.SettingsPage.UPDATE))
+    }
+
     /** 切换更新发布通道并清除当前查询结果。 */
     fun selectChannel(channel: UpdateChannel) {
         if (channel == readState().update.channel) return

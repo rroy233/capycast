@@ -2,6 +2,8 @@ package com.roy233.tvcast.ui.tv.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,16 +26,24 @@ import androidx.compose.material.Icon
 import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -61,6 +72,7 @@ import com.roy233.tvcast.ui.tv.tvFocusRegion
 @Composable
 internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
     val update = state.update
+    val releaseNotes = update.availableUpdate?.releaseNotes.orEmpty()
     val checkFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         checkFocus.requestFocus()
@@ -124,6 +136,13 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
         item {
             UpdateStatusCard(update, state.version)
             Spacer(Modifier.height(22.dp))
+        }
+
+        if (releaseNotes.isNotBlank()) {
+            item {
+                ReleaseNotesEntry(releaseNotes, actions.onOpenUpdateNotes)
+                Spacer(Modifier.height(14.dp))
+            }
         }
 
         item {
@@ -349,18 +368,11 @@ private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
                 },
                 style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 16.sp),
             )
-            BasicText(
-                text = "更新日志",
-                style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 16.sp, fontWeight = FontWeight.Medium),
-                modifier = Modifier.padding(top = 3.dp),
-            )
             if (available.releaseNotes.isBlank()) {
                 BasicText(
                     text = "此版本未提供更新说明。",
                     style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 17.sp),
                 )
-            } else {
-                MarkdownReleaseNotes(available.releaseNotes)
             }
         } ?: update.message?.let { message ->
             BasicText(
@@ -389,6 +401,74 @@ private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
     }
 }
 
+/** 显示可聚焦的更新日志入口。 */
+@Composable
+private fun ReleaseNotesEntry(notes: String, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused = interaction.collectIsFocusedAsState().value
+    val shape = RoundedCornerShape(16.dp)
+    val preview = releaseNotesPreview(notes)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                if (focused) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.06f)
+            )
+            .border(
+                width = 2.dp,
+                color = if (focused) TvColors.pink else Color.White.copy(alpha = 0.08f),
+                shape = shape,
+            )
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics(mergeDescendants = true) { }
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Description,
+            contentDescription = null,
+            tint = if (focused) TvColors.pink else TvColors.textSecondary,
+            modifier = Modifier.size(24.dp),
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            BasicText(
+                text = "查看更新日志",
+                style = TvType.body.copy(fontSize = 20.sp, fontWeight = FontWeight.Medium),
+            )
+            if (preview.isNotBlank()) {
+                BasicText(
+                    text = preview,
+                    style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 15.sp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Icon(
+            imageVector = Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = if (focused) TvColors.pink else TvColors.textTertiary,
+        )
+    }
+}
+
+/** 提取更新日志首行作为入口摘要。 */
+private fun releaseNotesPreview(notes: String): String = notes.lineSequence()
+    .map { line -> line.trim().trimStart('#', '*', '-', '>', ' ') }
+    .firstOrNull { it.isNotBlank() && !it.startsWith("```") }
+    .orEmpty()
+    .take(90)
+
 /** 显示带标题的更新设置分组。 */
 @Composable
 private fun UpdateSection(title: String, content: @Composable () -> Unit) {
@@ -411,95 +491,243 @@ private fun UpdateSection(title: String, content: @Composable () -> Unit) {
     }
 }
 
-/** 渲染 GitHub Release 常用的标题、列表、代码和粗体 Markdown 语法。 */
+/** 显示可逐段聚焦翻阅的完整更新日志。 */
 @Composable
-private fun MarkdownReleaseNotes(markdown: String) {
-    Column(
-        modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
+    val available = state.update.availableUpdate
+    val notes = available?.releaseNotes.orEmpty()
+    val blocks = remember(notes) { parseReleaseNotes(notes) }
+    val firstFocus = remember { FocusRequester() }
+    val backFocus = remember { FocusRequester() }
+    val firstFocusable = blocks.indexOfFirst { it.kind != ReleaseNoteKind.DIVIDER }
+    LaunchedEffect(firstFocusable) {
+        runCatching {
+            if (firstFocusable >= 0) firstFocus.requestFocus() else backFocus.requestFocus()
+        }
+    }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 80.dp, vertical = 52.dp)
+            .tvFocusRegion(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        var inCodeBlock = false
-        markdown.lineSequence().forEach { line ->
-            when {
-                line.startsWith("```") -> inCodeBlock = !inCodeBlock
-                line.isBlank() -> Spacer(Modifier.height(4.dp))
-                line == "---" || line == "***" || line == "___" -> Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(Color.White.copy(alpha = 0.16f)),
-                )
-                inCodeBlock -> BasicText(
-                    text = line,
-                    style = TvType.caption.copy(
-                        color = TvColors.textSecondary,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 16.sp,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.25f))
-                        .padding(8.dp),
-                )
-
-                line.startsWith("#") -> {
-                    val level = line.takeWhile { it == '#' }.length
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
                     BasicText(
-                        text = renderInlineMarkdown(line.drop(level).trim()),
-                        style = TvType.body.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = if (level == 1) 25.sp else 21.sp,
-                        ),
+                        text = "更新日志",
+                        style = TvType.title.copy(fontSize = 48.sp),
                     )
+                    available?.let {
+                        BasicText(
+                            text = "v${it.versionName}",
+                            style = TvType.caption.copy(
+                                color = TvColors.textSecondary,
+                                fontSize = 18.sp,
+                            ),
+                        )
+                    }
                 }
-
-                line.startsWith("- ") || line.startsWith("* ") -> Row(
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    BasicText("•", style = TvType.body.copy(color = TvColors.pink))
-                    BasicText(
-                        text = renderInlineMarkdown(line.drop(2)),
-                        style = TvType.body.copy(color = TvColors.textSecondary),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-
-                ORDERED_LIST_PATTERN.containsMatchIn(line) -> Row(
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    val match = requireNotNull(ORDERED_LIST_PATTERN.find(line))
-                    BasicText(
-                        text = match.value.trim(),
-                        style = TvType.body.copy(color = TvColors.pink),
-                    )
-                    BasicText(
-                        text = renderInlineMarkdown(line.drop(match.value.length)),
-                        style = TvType.body.copy(color = TvColors.textSecondary),
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-
-                line.startsWith("> ") -> BasicText(
-                    text = renderInlineMarkdown(line.drop(2)),
-                    style = TvType.body.copy(
-                        color = TvColors.textSecondary,
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.06f))
-                        .padding(10.dp),
+                WhiteButton(
+                    text = "返回",
+                    onClick = actions.onCloseUpdateNotes,
+                    focusRequester = backFocus,
+                    compact = true,
                 )
-
-                else -> BasicText(
-                    text = renderInlineMarkdown(line),
+            }
+            Spacer(Modifier.height(18.dp))
+        }
+        if (blocks.isEmpty()) {
+            item {
+                BasicText(
+                    text = "此版本未提供更新说明。",
                     style = TvType.body.copy(color = TvColors.textSecondary),
                 )
             }
+        } else {
+            blocks.forEachIndexed { index, block ->
+                item(key = index) {
+                    ReleaseNoteBlock(
+                        block = block,
+                        focusRequester = if (index == firstFocusable) firstFocus else null,
+                    )
+                }
+            }
+        }
+        item {
+            Spacer(Modifier.height(20.dp))
+            BasicText(
+                text = "按返回键回到更新页面",
+                style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 15.sp),
+            )
         }
     }
+}
+
+/** 显示一条可聚焦的更新日志内容。 */
+@Composable
+private fun ReleaseNoteBlock(block: ReleaseNote, focusRequester: FocusRequester?) {
+    if (block.kind == ReleaseNoteKind.DIVIDER) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp)
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.16f)),
+        )
+        return
+    }
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (focused) Color.White.copy(alpha = 0.07f) else Color.Transparent)
+            .onFocusChanged { focused = it.isFocused }
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusable()
+            .semantics(mergeDescendants = true) { }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        when (block.kind) {
+            ReleaseNoteKind.BULLET -> {
+                BasicText("•", style = TvType.body.copy(color = TvColors.pink))
+                BasicText(
+                    text = block.text,
+                    style = TvType.body.copy(color = TvColors.textSecondary),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            ReleaseNoteKind.ORDERED -> {
+                BasicText(block.prefix, style = TvType.body.copy(color = TvColors.pink))
+                BasicText(
+                    text = block.text,
+                    style = TvType.body.copy(color = TvColors.textSecondary),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            ReleaseNoteKind.CODE -> BasicText(
+                text = block.text,
+                style = TvType.caption.copy(
+                    color = TvColors.textSecondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 16.sp,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.25f))
+                    .padding(10.dp),
+            )
+
+            ReleaseNoteKind.QUOTE -> BasicText(
+                text = block.text,
+                style = TvType.body.copy(
+                    color = TvColors.textSecondary,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White.copy(alpha = 0.06f))
+                    .padding(10.dp),
+            )
+
+            ReleaseNoteKind.HEADING -> BasicText(
+                text = block.text,
+                style = TvType.body.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = if (block.level == 1) 25.sp else 21.sp,
+                ),
+            )
+
+            ReleaseNoteKind.TEXT -> BasicText(
+                text = block.text,
+                style = TvType.body.copy(color = TvColors.textSecondary),
+            )
+
+            ReleaseNoteKind.DIVIDER -> Unit
+        }
+    }
+}
+
+/** 更新日志的块类型。 */
+private enum class ReleaseNoteKind { HEADING, BULLET, ORDERED, QUOTE, CODE, DIVIDER, TEXT }
+
+/** 更新日志中的一段可聚焦内容。 */
+private data class ReleaseNote(
+    val kind: ReleaseNoteKind,
+    val text: AnnotatedString = AnnotatedString(""),
+    val prefix: String = "",
+    val level: Int = 0,
+)
+
+/** 将更新日志 Markdown 解析为可逐段聚焦的块。 */
+private fun parseReleaseNotes(markdown: String): List<ReleaseNote> {
+    val blocks = mutableListOf<ReleaseNote>()
+    val code = mutableListOf<String>()
+    var inCode = false
+    markdown.lineSequence().forEach { raw ->
+        val line = raw.trimEnd()
+        when {
+            line.startsWith("```") -> {
+                if (inCode) {
+                    blocks += ReleaseNote(ReleaseNoteKind.CODE, AnnotatedString(code.joinToString("\n")))
+                    code.clear()
+                }
+                inCode = !inCode
+            }
+
+            inCode -> code += line
+            line.isBlank() -> Unit
+            line == "---" || line == "***" || line == "___" ->
+                blocks += ReleaseNote(ReleaseNoteKind.DIVIDER)
+
+            line.startsWith("#") -> {
+                val level = line.takeWhile { it == '#' }.length
+                blocks += ReleaseNote(
+                    kind = ReleaseNoteKind.HEADING,
+                    text = renderInlineMarkdown(line.drop(level).trim()),
+                    level = level,
+                )
+            }
+
+            line.startsWith("- ") || line.startsWith("* ") -> blocks += ReleaseNote(
+                kind = ReleaseNoteKind.BULLET,
+                text = renderInlineMarkdown(line.drop(2)),
+            )
+
+            ORDERED_LIST_PATTERN.containsMatchIn(line) -> {
+                val match = requireNotNull(ORDERED_LIST_PATTERN.find(line))
+                blocks += ReleaseNote(
+                    kind = ReleaseNoteKind.ORDERED,
+                    text = renderInlineMarkdown(line.drop(match.value.length)),
+                    prefix = match.value.trim(),
+                )
+            }
+
+            line.startsWith("> ") -> blocks += ReleaseNote(
+                kind = ReleaseNoteKind.QUOTE,
+                text = renderInlineMarkdown(line.drop(2)),
+            )
+
+            else -> blocks += ReleaseNote(
+                kind = ReleaseNoteKind.TEXT,
+                text = renderInlineMarkdown(line),
+            )
+        }
+    }
+    if (code.isNotEmpty()) {
+        blocks += ReleaseNote(ReleaseNoteKind.CODE, AnnotatedString(code.joinToString("\n")))
+    }
+    return blocks
 }
 
 /** 将 Markdown 行中的粗体和行内代码转换为带样式文本。 */

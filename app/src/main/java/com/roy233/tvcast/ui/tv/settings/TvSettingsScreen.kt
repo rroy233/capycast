@@ -140,6 +140,10 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
         UpdateSettingsScreen(state, actions)
         return
     }
+    if (state.settingsPage == SettingsPage.UPDATE_NOTES) {
+        UpdateNotesScreen(state, actions)
+        return
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < 500.dp
         val hPad = if (compact) 32.dp else 80.dp

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -16,6 +17,7 @@ import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -66,7 +68,7 @@ class UpdateSettingsFocusTest {
     }
 
     @Test
-    fun availableUpdateShowsVersionNotesAndDownloadAction() {
+    fun availableUpdateShowsVersionAndNotesEntry() {
         val release = sampleUpdate()
         composeRule.setContent {
             UpdateSettingsScreen(
@@ -82,9 +84,73 @@ class UpdateSettingsFocusTest {
         }
 
         composeRule.onNodeWithText("v1.2.3").assertExists()
-        composeRule.onNodeWithText("更新日志").assertExists()
-        composeRule.onNodeWithText("适配电视遥控器").assertExists()
+        composeRule.onNodeWithText("查看更新日志").assertExists()
+        composeRule.onNodeWithText("改进").assertExists()
         composeRule.onNodeWithText("下载").assertExists()
+    }
+
+    @Test
+    fun updateNotesEntryOpensNotesPage() {
+        var opened = false
+        composeRule.setContent {
+            UpdateSettingsScreen(
+                state = TvUiState(
+                    update = UpdateUiState(
+                        status = UpdateStatus.AVAILABLE,
+                        availableUpdate = sampleUpdate(),
+                    ),
+                ),
+                actions = TvActions(onOpenUpdateNotes = { opened = true }),
+            )
+        }
+
+        composeRule.onNodeWithText("查看更新日志").performClick()
+        composeRule.runOnIdle { assertTrue(opened) }
+    }
+
+    @Test
+    fun updateNotesPageShowsFullReleaseNotes() {
+        composeRule.setContent {
+            UpdateNotesScreen(
+                state = TvUiState(
+                    update = UpdateUiState(
+                        status = UpdateStatus.AVAILABLE,
+                        availableUpdate = sampleUpdate(),
+                    ),
+                ),
+                actions = TvActions(),
+            )
+        }
+
+        composeRule.onNodeWithText("更新日志").assertExists()
+        composeRule.onNodeWithText("v1.2.3").assertExists()
+        composeRule.onNodeWithText("改进").assertExists()
+        composeRule.onNodeWithText("适配电视遥控器", substring = true).assertExists()
+        composeRule.onNodeWithText("返回").assertExists()
+    }
+
+    @Test
+    fun updateNotesPageMovesFocusThroughEntries() {
+        val notes = "# 改进\n" + (1..12).joinToString("\n") { "- 条目 $it" }
+        composeRule.setContent {
+            UpdateNotesScreen(
+                state = TvUiState(
+                    update = UpdateUiState(
+                        status = UpdateStatus.AVAILABLE,
+                        availableUpdate = sampleUpdate(notes),
+                    ),
+                ),
+                actions = TvActions(),
+            )
+        }
+
+        composeRule.onNodeWithText("改进").assertIsFocused()
+        composeRule.onNodeWithText("改进")
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithText("条目 1", substring = true).assertIsFocused()
+        composeRule.onNodeWithText("条目 1", substring = true)
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithText("条目 2", substring = true).assertIsFocused()
     }
 
     @Test
@@ -131,7 +197,7 @@ class UpdateSettingsFocusTest {
         composeRule.onNodeWithText("安装").assertExists()
     }
 
-    private fun sampleUpdate() = AppUpdateInfo(
+    private fun sampleUpdate(notes: String = "# 改进\n- 适配电视遥控器") = AppUpdateInfo(
         channel = UpdateChannel.STABLE,
         versionName = "1.2.3",
         versionCode = 123L,
@@ -139,7 +205,7 @@ class UpdateSettingsFocusTest {
         downloadUrl = "https://github.com/rroy233/capycast/releases/download/v1.2.3/capycast-1.2.3.apk",
         sha256 = "a".repeat(64),
         sizeBytes = 1_000L,
-        releaseNotes = "# 改进\n- 适配电视遥控器",
+        releaseNotes = notes,
         releaseUrl = "https://github.com/rroy233/capycast/releases/tag/v1.2.3",
     )
 }

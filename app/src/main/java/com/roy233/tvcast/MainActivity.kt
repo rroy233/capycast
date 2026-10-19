@@ -143,6 +143,8 @@ class MainActivity : ComponentActivity() {
         },
         onOpenUpdateSettings = { updateCoordinator.openSettings() },
         onCloseUpdateSettings = { updateCoordinator.closeSettings() },
+        onOpenUpdateNotes = { updateCoordinator.openNotes() },
+        onCloseUpdateNotes = { updateCoordinator.closeNotes() },
         onSelectUpdateChannel = { channel -> updateCoordinator.selectChannel(channel) },
         onSetAutoUpdateCheck = { enabled -> updateCoordinator.setAutomaticCheck(enabled) },
         onCheckForUpdates = { updateCoordinator.checkForUpdates() },
