@@ -156,7 +156,7 @@ internal fun LoadingScreen() {
 internal fun PlayingScreen(state: TvUiState, actions: TvActions, enabled: Boolean) {
     val playFocus = remember { FocusRequester() }
     val videoFocus = remember { FocusRequester() }
-    val modal = state.panel != null || state.error != null || state.exitConfirm
+    val modal = state.panel != null || state.error != null || state.stopCastConfirm
 
     LaunchedEffect(state.hudVisible, modal, enabled) {
         if (!enabled || modal) return@LaunchedEffect

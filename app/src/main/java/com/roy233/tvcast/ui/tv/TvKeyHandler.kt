@@ -12,8 +12,77 @@ import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 
+/** 当前页面按一次返回键应执行的层级动作。 */
+internal enum class TvBackAction {
+    CANCEL_STOP_CAST_CONFIRM,
+    DISMISS_ERROR,
+    BACK_PANEL,
+    CLOSE_PANEL,
+    CLOSE_HELP,
+    CLOSE_UPDATE_NOTES,
+    CLOSE_UPDATE_SETTINGS,
+    NAVIGATE_HOME,
+    REQUEST_STOP_CAST,
+    CLOSE_SIDEBAR,
+    HOME_BACK,
+}
+
+/** 识别限定时间内的连续两次主页返回。 */
+internal class DoubleBackExitGate(private val intervalMs: Long) {
+    private var previousPressAtMs: Long? = null
+
+    fun press(nowMs: Long): Boolean {
+        val previousPress = previousPressAtMs
+        if (previousPress != null && nowMs >= previousPress && nowMs - previousPress <= intervalMs) {
+            previousPressAtMs = null
+            return true
+        }
+        previousPressAtMs = nowMs
+        return false
+    }
+
+    fun reset() {
+        previousPressAtMs = null
+    }
+}
+
 /** 处理电视遥控器按键并将其转换为界面操作。 */
 object TvKeyHandler {
+
+    /** 按照由上到下的界面层级，解析返回键的唯一目标。 */
+    internal fun resolveBackAction(state: TvUiState): TvBackAction = when {
+        state.stopCastConfirm -> TvBackAction.CANCEL_STOP_CAST_CONFIRM
+        state.error != null -> TvBackAction.DISMISS_ERROR
+        state.panel != null && state.panel != PanelKind.ROOT -> TvBackAction.BACK_PANEL
+        state.panel == PanelKind.ROOT -> TvBackAction.CLOSE_PANEL
+        state.helpVisible -> TvBackAction.CLOSE_HELP
+        state.mode == TvMode.PLAYING || (state.mode == TvMode.LOADING && state.castActive) ->
+            TvBackAction.REQUEST_STOP_CAST
+        state.destination == TvDestination.SETTINGS &&
+            state.settingsPage == SettingsPage.UPDATE_NOTES -> TvBackAction.CLOSE_UPDATE_NOTES
+        state.destination == TvDestination.SETTINGS &&
+            state.settingsPage == SettingsPage.UPDATE -> TvBackAction.CLOSE_UPDATE_SETTINGS
+        state.destination == TvDestination.SETTINGS -> TvBackAction.NAVIGATE_HOME
+        state.destination == TvDestination.HOME && state.sidebarVisible -> TvBackAction.CLOSE_SIDEBAR
+        else -> TvBackAction.HOME_BACK
+    }
+
+    /** 将解析后的返回层级分发到宿主操作。 */
+    internal fun dispatchBack(state: TvUiState, actions: TvActions) {
+        when (resolveBackAction(state)) {
+            TvBackAction.CANCEL_STOP_CAST_CONFIRM -> actions.onCancelStopCast()
+            TvBackAction.DISMISS_ERROR -> actions.onDismissError()
+            TvBackAction.BACK_PANEL -> actions.onOpenPanel(PanelKind.ROOT)
+            TvBackAction.CLOSE_PANEL -> actions.onClosePanel()
+            TvBackAction.CLOSE_HELP -> actions.onCloseHelp()
+            TvBackAction.CLOSE_UPDATE_NOTES -> actions.onCloseUpdateNotes()
+            TvBackAction.CLOSE_UPDATE_SETTINGS -> actions.onCloseUpdateSettings()
+            TvBackAction.NAVIGATE_HOME -> actions.onNavigateHome()
+            TvBackAction.REQUEST_STOP_CAST -> actions.onRequestStopCast()
+            TvBackAction.CLOSE_SIDEBAR -> actions.onCloseSidebar()
+            TvBackAction.HOME_BACK -> actions.onHomeBack()
+        }
+    }
 
     /**
      * 根据按键、当前界面状态和模态状态分发一次按键操作。
@@ -33,22 +102,7 @@ object TvKeyHandler {
         if (event.type != KeyEventType.KeyDown) return false
 
         if (event.key == Key.Back || event.key == Key.Escape) {
-            when {
-                state.exitConfirm -> actions.onCancelExit()
-                state.helpVisible -> actions.onCloseHelp()
-                state.panel != null ->
-                    if (state.panel == PanelKind.ROOT) actions.onClosePanel()
-                    else actions.onOpenPanel(PanelKind.ROOT)
-
-                state.error != null -> actions.onDismissError()
-                state.mode == TvMode.PLAYING -> actions.onRequestExit()
-                state.destination == TvDestination.SETTINGS && state.settingsPage == SettingsPage.UPDATE_NOTES ->
-                    actions.onCloseUpdateNotes()
-                state.destination == TvDestination.SETTINGS && state.settingsPage == SettingsPage.UPDATE ->
-                    actions.onCloseUpdateSettings()
-                state.destination == TvDestination.SETTINGS -> actions.onNavigateHome()
-                else -> actions.onHomeBack()
-            }
+            dispatchBack(state, actions)
             return true
         }
 

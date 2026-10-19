@@ -105,7 +105,7 @@ data class AudioOption(
  * @property volume 当前音量值。
  * @property hudVisible 播放控制栏是否可见。
  * @property panel 当前打开的控制面板。
- * @property exitConfirm 是否显示退出确认。
+ * @property stopCastConfirm 是否显示停止投屏确认。
  * @property error 当前待展示的错误信息。
  * @property loginQr 登录二维码位图。
  * @property loginStatus 登录流程状态文本。
@@ -151,7 +151,7 @@ data class TvUiState(
     val volume: Int = 50,
     val hudVisible: Boolean = false,
     val panel: PanelKind? = null,
-    val exitConfirm: Boolean = false,
+    val stopCastConfirm: Boolean = false,
     val error: TvError? = null,
     val loginQr: Bitmap? = null,
     val loginStatus: String = "正在获取二维码…",
@@ -204,10 +204,9 @@ data class TvUiState(
  * @property onSelectAudio 选择音轨。
  * @property onRetry 重试当前失败操作。
  * @property onDismissError 关闭错误提示。
- * @property onRequestExit 请求退出播放。
- * @property onConfirmExit 确认退出播放。
- * @property onCancelExit 取消退出操作。
- * @property onExitApp 退出应用。
+ * @property onRequestStopCast 请求停止当前投屏。
+ * @property onConfirmStopCast 确认停止当前投屏。
+ * @property onCancelStopCast 取消停止投屏操作。
  * @property onClearToast 清除提示文本。
  * @property onRecast 重新投屏指定记录。
  * @property onHomeBack 处理首页返回操作。
@@ -243,10 +242,9 @@ class TvActions(
     val onSelectAudio: (Int) -> Unit = {},
     val onRetry: () -> Unit = {},
     val onDismissError: () -> Unit = {},
-    val onRequestExit: () -> Unit = {},
-    val onConfirmExit: () -> Unit = {},
-    val onCancelExit: () -> Unit = {},
-    val onExitApp: () -> Unit = {},
+    val onRequestStopCast: () -> Unit = {},
+    val onConfirmStopCast: () -> Unit = {},
+    val onCancelStopCast: () -> Unit = {},
     val onClearToast: () -> Unit = {},
     val onRecast: (RecentCast) -> Unit = {},
     val onHomeBack: () -> Unit = {},

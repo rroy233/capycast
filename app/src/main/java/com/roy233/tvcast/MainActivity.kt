@@ -1,8 +1,10 @@
 package com.roy233.tvcast
 
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,6 +19,8 @@ import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.tv.TvRoot
+import com.roy233.tvcast.ui.tv.DoubleBackExitGate
+import com.roy233.tvcast.ui.tv.TvKeyHandler
 import com.roy233.tvcast.data.local.RecentCastStore
 import com.roy233.tvcast.data.local.UiPreferences
 import com.roy233.tvcast.data.auth.AuthTokenStore
@@ -88,6 +92,8 @@ class MainActivity : ComponentActivity() {
     private var ui by mutableStateOf(TvUiState())
     /** 最近投屏记录存储。 */
     private val recentCastStore by lazy { RecentCastStore(this) }
+    /** 首页双击返回退出计时。 */
+    private val homeBackExitGate = DoubleBackExitGate(HOME_BACK_EXIT_WINDOW_MS)
     /** 设备身份偏好读取器。 */
     private val uiPreferences by lazy { UiPreferences(this) }
     /** 设备信息读取器。 */
@@ -123,9 +129,16 @@ class MainActivity : ComponentActivity() {
     private val actions = TvActions(
         onLogin = { startQrLogin() },
         onSkipLogin = { skipLogin() },
-        onOpenSidebar = { ui = ui.copy(sidebarVisible = true) },
-        onCloseSidebar = { ui = ui.copy(sidebarVisible = false) },
+        onOpenSidebar = {
+            homeBackExitGate.reset()
+            ui = ui.copy(sidebarVisible = true)
+        },
+        onCloseSidebar = {
+            homeBackExitGate.reset()
+            ui = ui.copy(sidebarVisible = false)
+        },
         onNavigateHome = {
+            homeBackExitGate.reset()
             ui = ui.copy(
                 destination = TvDestination.HOME,
                 settingsPage = SettingsPage.ROOT,
@@ -134,6 +147,7 @@ class MainActivity : ComponentActivity() {
             )
         },
         onNavigateSettings = {
+            homeBackExitGate.reset()
             ui = ui.copy(
                 destination = TvDestination.SETTINGS,
                 settingsPage = SettingsPage.ROOT,
@@ -164,7 +178,7 @@ class MainActivity : ComponentActivity() {
             if (ui.mode == TvMode.PLAYING &&
                 ui.panel == null &&
                 ui.error == null &&
-                !ui.exitConfirm
+                !ui.stopCastConfirm
             ) {
                 ui = ui.copy(hudVisible = false)
             }
@@ -173,7 +187,7 @@ class MainActivity : ComponentActivity() {
             ui = ui.copy(
                 panel = kind,
                 hudVisible = true,
-                exitConfirm = false,
+                stopCastConfirm = false,
             )
         },
         onClosePanel = { ui = ui.copy(panel = null, hudVisible = true) },
@@ -181,13 +195,14 @@ class MainActivity : ComponentActivity() {
         onSelectAudio = { id -> switchAudio(id) },
         onRetry = { retryLastAction() },
         onDismissError = { dismissError() },
-        onRequestExit = { finish() },
-        onConfirmExit = { finish() },
-        onCancelExit = { ui = ui.copy(exitConfirm = false, hudVisible = true) },
-        onExitApp = { finish() },
+        onRequestStopCast = {
+            ui = ui.copy(stopCastConfirm = true, hudVisible = true)
+        },
+        onConfirmStopCast = { stopCasting() },
+        onCancelStopCast = { ui = ui.copy(stopCastConfirm = false, hudVisible = true) },
         onClearToast = { ui = ui.copy(toast = null) },
         onRecast = { recast(it) },
-        onHomeBack = { finish() },
+        onHomeBack = { handleHomeBack() },
     )
 
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
@@ -277,6 +292,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                TvKeyHandler.dispatchBack(ui, actions)
+            }
+        })
 
         videoLayout = findViewById(R.id.videoLayout)
         composeUi = findViewById(R.id.composeUi)
@@ -475,7 +495,7 @@ class MainActivity : ComponentActivity() {
             durationMs = 0,
             hudVisible = true,
             panel = null,
-            exitConfirm = false,
+            stopCastConfirm = false,
             error = null,
             loginQr = null,
             loginStatus = "",
@@ -606,7 +626,7 @@ class MainActivity : ComponentActivity() {
             hudVisible = true,
             panel = null,
             error = null,
-            exitConfirm = false,
+            stopCastConfirm = false,
         )
         addRecent(info)
 
@@ -724,6 +744,46 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    /** 停止当前电视播放并返回首页，保持应用与 DLNA 服务继续运行。 */
+    private fun stopCasting() {
+        resolveJob?.cancel()
+        resolveJob = null
+        pendingPause = false
+        pendingSeekMs = 0L
+        runCatching { if (::playerEngine.isInitialized) player.stop() }
+        current = null
+        castActive = false
+        resolving = false
+        lastNva = null
+        lastTitle = ""
+        lastErrorRetry = null
+        runCatching { dlna.markCastFailed() }
+        LogHub.setCast("")
+        LogHub.setPlay("")
+        ui = ui.copy(
+            mode = TvMode.IDLE,
+            destination = TvDestination.HOME,
+            settingsPage = SettingsPage.ROOT,
+            sidebarVisible = true,
+            panel = null,
+            stopCastConfirm = false,
+            error = null,
+            castTitle = "",
+            qualityLabel = "",
+            qualityDetail = "",
+            qualitySource = "",
+            audioLabel = "",
+            isPlaying = false,
+            isBuffering = false,
+            positionMs = 0L,
+            durationMs = 0L,
+            hudVisible = false,
+            tracks = emptyList(),
+            audios = emptyList(),
+            toast = "投屏已停止",
+        )
+    }
+
     /** 展示错误信息并根据参数决定是否保留视频画面。 */
     private fun showError(
         title: String,
@@ -745,9 +805,19 @@ class MainActivity : ComponentActivity() {
                 isPlaying = false,
                 isBuffering = false,
                 panel = null,
-                    exitConfirm = false,
+                    stopCastConfirm = false,
             )
         }
+    }
+
+    /** 首页连续两次返回退出，首按显示明确提示。 */
+    private fun handleHomeBack() {
+        val now = SystemClock.elapsedRealtime()
+        if (homeBackExitGate.press(now)) {
+            finish()
+            return
+        }
+        ui = ui.copy(toast = "再按一次返回键退出")
     }
 
     // ------------------------------------------------------------------ //
@@ -828,5 +898,6 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** 日志标签。 */
         private const val TAG = "SimpleBili"
+        private const val HOME_BACK_EXIT_WINDOW_MS = 2_000L
     }
 }

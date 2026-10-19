@@ -133,7 +133,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
     val backdrop = rememberLayerBackdrop()
     val ambient = state.mode == TvMode.IDLE
     val modal = state.panel != null || state.error != null ||
-        state.exitConfirm || state.helpVisible
+        state.stopCastConfirm || state.helpVisible
     val focusManager = LocalFocusManager.current
     val density = LocalDensity.current
     val swipeThreshold = with(density) { 72.dp.toPx() }
@@ -261,14 +261,14 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                     onSecondary = if (error.canRetry) actions.onDismissError else null,
                 )
             }
-            if (state.exitConfirm) {
+            if (state.stopCastConfirm) {
                 GlassAlert(
-                    title = "停止投屏并退出？",
-                    message = "投屏将结束，手机上的播放也会停止。",
-                    primaryLabel = "停止并退出",
-                    onPrimary = actions.onConfirmExit,
+                    title = "停止当前投屏？",
+                    message = "电视将停止当前播放并返回主页。",
+                    primaryLabel = "停止投屏",
+                    onPrimary = actions.onConfirmStopCast,
                     secondaryLabel = "继续观看",
-                    onSecondary = actions.onCancelExit,
+                    onSecondary = actions.onCancelStopCast,
                     destructive = true,
                 )
             }
@@ -298,7 +298,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
         state.isPlaying,
         state.panel,
         state.error,
-        state.exitConfirm,
+        state.stopCastConfirm,
         state.mode,
     ) {
         if (state.mode == TvMode.PLAYING &&
@@ -306,7 +306,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
             state.isPlaying &&
             state.panel == null &&
             state.error == null &&
-            !state.exitConfirm
+            !state.stopCastConfirm
         ) {
             delay(4000)
             actions.onHideHud()
