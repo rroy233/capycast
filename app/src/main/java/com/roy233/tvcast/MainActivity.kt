@@ -3,7 +3,10 @@ package com.roy233.tvcast
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -33,6 +36,12 @@ import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
+import com.roy233.tvcast.core.danmaku.AiShieldLevel
+import com.roy233.tvcast.core.danmaku.DanmakuController
+import com.roy233.tvcast.core.danmaku.DanmakuSettings
+import com.roy233.tvcast.core.danmaku.DfmDanmakuEngine
+import com.roy233.tvcast.core.danmaku.MediaClock
+import com.roy233.tvcast.data.local.DanmakuPreferences
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
 import com.roy233.tvcast.feature.update.UpdateCoordinator
 import com.roy233.tvcast.platform.device.DeviceInfoProvider
@@ -51,6 +60,7 @@ import kotlinx.coroutines.withContext
 import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
 import com.roy233.tvcast.platform.player.VlcPlayerEngine
+import master.flame.danmaku.ui.widget.DanmakuView
 
 /**
  * 应用主界面及投屏生命周期控制器。
@@ -65,6 +75,17 @@ class MainActivity : ComponentActivity() {
     private val player: MediaPlayer get() = playerEngine.player
     /** 视频渲染布局。 */
     private lateinit var videoLayout: VLCVideoLayout
+    /** 弹幕渲染视图。 */
+    private lateinit var danmakuView: DanmakuView
+    /** 弹幕会话控制器。 */
+    private lateinit var danmakuController: DanmakuController
+    /** 弹幕媒体时钟。 */
+    private val danmakuClock = MediaClock()
+    /** 当前弹幕设置。 */
+    private var danmakuSettings = DanmakuSettings()
+    /** 最近一次已知的视频宽高。 */
+    private var videoWidth = 0
+    private var videoHeight = 0
     /** Compose 界面承载视图。 */
     private lateinit var composeUi: ComposeView
     /** DLNA 投屏渲染器。 */
@@ -104,6 +125,8 @@ class MainActivity : ComponentActivity() {
     private val homeBackExitGate = DoubleBackExitGate(HOME_BACK_EXIT_WINDOW_MS)
     /** 设备身份偏好读取器。 */
     private val uiPreferences by lazy { UiPreferences(this) }
+    /** 弹幕设置读取器。 */
+    private val danmakuPreferences by lazy { DanmakuPreferences(this) }
     /** 设备信息读取器。 */
     private val deviceInfo by lazy { DeviceInfoProvider(this) }
     /** 对外显示并广播的投屏设备名称。 */
@@ -176,6 +199,27 @@ class MainActivity : ComponentActivity() {
         onLogout = { logout() },
         onPlayPause = { togglePlayPause() },
         onSeekBy = { seekBy(it) },
+        onToggleDanmaku = {
+            updateDanmakuSettings(danmakuSettings.copy(enabled = !danmakuSettings.enabled))
+        },
+        onSetDanmakuAiShield = {
+            updateDanmakuSettings(danmakuSettings.copy(aiShield = it))
+        },
+        onSetDanmakuArea = {
+            updateDanmakuSettings(danmakuSettings.copy(areaRatio = it))
+        },
+        onSetDanmakuMaxOnScreen = {
+            updateDanmakuSettings(danmakuSettings.copy(maxOnScreen = it))
+        },
+        onSetDanmakuOpacity = {
+            updateDanmakuSettings(danmakuSettings.copy(opacity = it))
+        },
+        onSetDanmakuFontScale = {
+            updateDanmakuSettings(danmakuSettings.copy(fontScale = it))
+        },
+        onSetDanmakuDuration = {
+            updateDanmakuSettings(danmakuSettings.copy(durationSec = it))
+        },
         onSetVolume = { setVolume(it) },
         onShowHud = { ui = ui.copy(hudVisible = true) },
         onHideHud = {
@@ -305,6 +349,9 @@ class MainActivity : ComponentActivity() {
                     positionMs = positionMs.coerceAtLeast(0L),
                     hudVisible = true,
                 )
+                if (::danmakuController.isInitialized) {
+                    danmakuController.onSeek(positionMs.coerceAtLeast(0L))
+                }
             }
         }
 
@@ -359,6 +406,8 @@ class MainActivity : ComponentActivity() {
         })
 
         videoLayout = findViewById(R.id.videoLayout)
+        danmakuView = findViewById(R.id.danmakuView)
+        danmakuSettings = danmakuPreferences.load()
         composeUi = findViewById(R.id.composeUi)
         composeUi.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
@@ -379,6 +428,13 @@ class MainActivity : ComponentActivity() {
             ip = LogHub.localIp(),
             version = deviceInfo.versionName(),
             dlnaUrl = dlna.descriptionUrl,
+            danmakuEnabled = danmakuSettings.enabled,
+            danmakuAiShield = danmakuSettings.aiShield,
+            danmakuAreaRatio = danmakuSettings.areaRatio,
+            danmakuMaxOnScreen = danmakuSettings.maxOnScreen,
+            danmakuOpacity = danmakuSettings.opacity,
+            danmakuFontScale = danmakuSettings.fontScale,
+            danmakuDurationSec = danmakuSettings.durationSec,
         )
         updateCoordinator.initialize()
 
@@ -386,6 +442,15 @@ class MainActivity : ComponentActivity() {
             VlcPlayerEngine(this, videoLayout) { event -> handlePlayerEvent(event) }
         }.onSuccess { engine ->
             playerEngine = engine
+            val danmakuEngine = DfmDanmakuEngine(danmakuView, danmakuClock)
+            danmakuController = DanmakuController(scope, danmakuEngine, danmakuClock)
+            danmakuController.applySettings(danmakuSettings)
+            danmakuView.visibility = if (danmakuSettings.enabled) View.VISIBLE else View.GONE
+            videoLayout.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                layoutDanmaku()
+            }
+            videoLayout.post { layoutDanmaku() }
+            danmakuView.post { danmakuController.prepare() }
         }.onFailure { error ->
             LogHub.e(
                 TAG,
@@ -439,17 +504,37 @@ class MainActivity : ComponentActivity() {
                     if (duration > 0) {
                         ui = ui.copy(durationMs = duration)
                     }
+                    refreshVideoSize()
+                    if (::danmakuController.isInitialized) {
+                        val position = if (seek > 0) {
+                            seek
+                        } else {
+                            runCatching { player.time }.getOrDefault(ui.positionMs)
+                        }
+                        danmakuController.onPlaying(position)
+                        if (seek > 0) danmakuController.onSeek(seek)
+                    }
                 }
             }
 
             MediaPlayer.Event.Paused -> {
                 LogHub.d(TAG, "ui paused")
-                runOnUiThread { ui = ui.copy(isPlaying = false) }
+                runOnUiThread {
+                    ui = ui.copy(isPlaying = false)
+                    if (::danmakuController.isInitialized) {
+                        danmakuController.onPaused(
+                            runCatching { player.time }.getOrDefault(ui.positionMs),
+                        )
+                    }
+                }
             }
 
             MediaPlayer.Event.Stopped -> {
                 LogHub.d(TAG, "ui stopped")
-                runOnUiThread { ui = ui.copy(isPlaying = false, isBuffering = false) }
+                runOnUiThread {
+                    ui = ui.copy(isPlaying = false, isBuffering = false)
+                    if (::danmakuController.isInitialized) danmakuController.close()
+                }
             }
 
             MediaPlayer.Event.EndReached -> {
@@ -457,6 +542,7 @@ class MainActivity : ComponentActivity() {
                 castActive = false
                 current = null
                 runOnUiThread {
+                    if (::danmakuController.isInitialized) danmakuController.close()
                     ui = ui.copy(
                         mode = TvMode.IDLE,
                         destination = TvDestination.HOME,
@@ -496,11 +582,20 @@ class MainActivity : ComponentActivity() {
                     canRetry = info != null,
                     keepVideo = true,
                 )
+                if (::danmakuController.isInitialized) danmakuController.close()
             }
 
             MediaPlayer.Event.Buffering -> {
                 val buffering = event.buffering < 100f
-                runOnUiThread { ui = ui.copy(isBuffering = buffering) }
+                runOnUiThread {
+                    ui = ui.copy(isBuffering = buffering)
+                    if (::danmakuController.isInitialized) {
+                        danmakuController.onBuffering(
+                            buffering,
+                            runCatching { player.time }.getOrDefault(ui.positionMs),
+                        )
+                    }
+                }
             }
 
             else -> Unit
@@ -880,6 +975,12 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        if (::danmakuController.isInitialized) {
+            danmakuController.open(info.aid, info.cid, info.durationSec * 1000, seekToMs)
+            danmakuController.applySettings(danmakuSettings)
+            layoutDanmaku()
+        }
+
         if (pendingPause) {
             pendingPause = false
             playerEngine.setPaused(true, "pending-pause")
@@ -986,7 +1087,86 @@ class MainActivity : ComponentActivity() {
             LogHub.w(TAG, "seekBy with unknown length; target=$target ms")
         }
         playerEngine.seekTo(target, "remote-seek")
+        if (::danmakuController.isInitialized) {
+            danmakuController.onSeek(target)
+        }
         ui = ui.copy(positionMs = target, hudVisible = true)
+    }
+
+    /** 更新弹幕设置并持久化。 */
+    private fun updateDanmakuSettings(newSettings: DanmakuSettings) {
+        danmakuSettings = newSettings
+        danmakuPreferences.save(newSettings)
+        if (::danmakuController.isInitialized) {
+            danmakuController.applySettings(newSettings)
+        }
+        if (::danmakuView.isInitialized) {
+            danmakuView.visibility = if (newSettings.enabled) View.VISIBLE else View.GONE
+        }
+        ui = ui.copy(
+            danmakuEnabled = newSettings.enabled,
+            danmakuAiShield = newSettings.aiShield,
+            danmakuAreaRatio = newSettings.areaRatio,
+            danmakuMaxOnScreen = newSettings.maxOnScreen,
+            danmakuOpacity = newSettings.opacity,
+            danmakuFontScale = newSettings.fontScale,
+            danmakuDurationSec = newSettings.durationSec,
+        )
+        layoutDanmaku()
+    }
+
+    /** 按视频内容区和显示区域摆放弹幕视图。 */
+    private fun layoutDanmaku() {
+        if (!::videoLayout.isInitialized || !::danmakuView.isInitialized) return
+        val screenW = videoLayout.width.takeIf { it > 0 }
+            ?: resources.displayMetrics.widthPixels
+        val screenH = videoLayout.height.takeIf { it > 0 }
+            ?: resources.displayMetrics.heightPixels
+        if (screenW <= 0 || screenH <= 0) return
+
+        var contentW = screenW
+        var contentH = screenH
+        var left = 0
+        var top = 0
+        if (videoWidth > 0 && videoHeight > 0) {
+            val videoAspect = videoWidth.toFloat() / videoHeight
+            val screenAspect = screenW.toFloat() / screenH
+            if (videoAspect > screenAspect) {
+                contentW = screenW
+                contentH = (screenW / videoAspect).toInt()
+                top = (screenH - contentH) / 2
+            } else {
+                contentH = screenH
+                contentW = (screenH * videoAspect).toInt()
+                left = (screenW - contentW) / 2
+            }
+        }
+        if (contentW <= 0 || contentH <= 0) return
+
+        val areaH = (contentH * danmakuSettings.areaRatio).toInt().coerceIn(1, contentH)
+        val params = danmakuView.layoutParams as? FrameLayout.LayoutParams
+            ?: FrameLayout.LayoutParams(contentW, areaH)
+        params.width = contentW
+        params.height = areaH
+        params.leftMargin = left
+        params.topMargin = top
+        params.gravity = Gravity.TOP or Gravity.START
+        danmakuView.layoutParams = params
+        if (::danmakuController.isInitialized) {
+            danmakuController.setContentHeight(contentH)
+            danmakuView.post { danmakuController.prepare() }
+        }
+    }
+
+    /** 从播放器读取视频尺寸，变化时重新摆放弹幕视图。 */
+    private fun refreshVideoSize() {
+        if (!::playerEngine.isInitialized) return
+        val size = playerEngine.videoSize() ?: return
+        if (size.first == videoWidth && size.second == videoHeight) return
+        videoWidth = size.first
+        videoHeight = size.second
+        ui = ui.copy(videoWidth = videoWidth, videoHeight = videoHeight)
+        layoutDanmaku()
     }
 
     /** 设置播放器音量并同步界面状态。 */
@@ -1195,6 +1375,12 @@ class MainActivity : ComponentActivity() {
                         isPlaying = playing,
                         volume = volume,
                     )
+                    if (playing && !ui.isBuffering) {
+                        refreshVideoSize()
+                        if (::danmakuController.isInitialized) {
+                            danmakuController.onPlayerTime(pos.coerceAtLeast(0L))
+                        }
+                    }
                 }
                 if (tick % 10 == 0) {
                     ui = ui.copy(
@@ -1261,6 +1447,7 @@ class MainActivity : ComponentActivity() {
         updateCoordinator.cancel()
         resolveJob?.cancel()
         tickerJob?.cancel()
+        runCatching { if (::danmakuController.isInitialized) danmakuController.release() }
         scope.cancel()
         runCatching { if (::playerEngine.isInitialized) playerEngine.release() }
         LogHub.stop()

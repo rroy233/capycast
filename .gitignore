@@ -32,6 +32,7 @@ output-metadata.json
 # Ignore downloaded AARs except the vendored libVLC dependency required to build
 *.aar
 !/app/libs/libvlc-all-3.6.5.aar
+!/app/libs/DanmakuFlameMaster-0.9.25.aar
 
 # Signing keys and local credential files
 *.jks

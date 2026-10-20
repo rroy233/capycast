@@ -93,6 +93,8 @@ android {
 dependencies {
     // Local copy of the official libVLC 3.6.5 AAR (includes DASH demuxer).
     implementation(files("libs/libvlc-all-3.6.5.aar"))
+    // DanmakuFlameMaster 0.9.25 AAR (Apache-2.0), the engine used by 云视听.
+    implementation(files("libs/DanmakuFlameMaster-0.9.25.aar"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
@@ -117,6 +119,7 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("junit:junit:4.13.2")
 }
 
 /** 输出工作流校验与发布所需的版本元数据。 */

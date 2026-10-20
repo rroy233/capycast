@@ -11,6 +11,15 @@
         android:focusable="false"
         android:focusableInTouchMode="false" />
 
+    <master.flame.danmaku.ui.widget.DanmakuView
+        android:id="@+id/danmakuView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        android:clickable="false"
+        android:focusable="false"
+        android:focusableInTouchMode="false" />
+
     <androidx.compose.ui.platform.ComposeView
         android:id="@+id/composeUi"
         android:layout_width="match_parent"
