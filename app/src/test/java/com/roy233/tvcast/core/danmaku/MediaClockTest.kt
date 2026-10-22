@@ -72,12 +72,32 @@ class MediaClockTest {
     }
 
     @Test
+    fun mediumSampleErrorSlewsWithoutJumping() {
+        clock.durationMs = 100_000L
+        clock.start(1_000L)
+        advance(100L)
+
+        assertFalse(clock.onPlayerSample(1_500L))
+        assertEquals(1_120L, clock.nowMs())
+    }
+
+    @Test
     fun largeSampleErrorRebases() {
         clock.durationMs = 100_000L
         clock.start(1_000L)
         advance(100L)
         assertTrue(clock.onPlayerSample(5_000L))
         assertEquals(5_000L, clock.nowMs())
+    }
+
+    @Test
+    fun frozenClockIgnoresPlayerSamplesUntilPlayingIsConfirmed() {
+        clock.durationMs = 100_000L
+        clock.pause(1_000L)
+
+        assertFalse(clock.onPlayerSample(5_000L))
+        assertTrue(clock.isFrozen)
+        assertEquals(1_000L, clock.nowMs())
     }
 
     @Test

@@ -450,7 +450,6 @@ class MainActivity : ComponentActivity() {
                 layoutDanmaku()
             }
             videoLayout.post { layoutDanmaku() }
-            danmakuView.post { danmakuController.prepare() }
         }.onFailure { error ->
             LogHub.e(
                 TAG,
@@ -1115,7 +1114,7 @@ class MainActivity : ComponentActivity() {
         layoutDanmaku()
     }
 
-    /** 按视频内容区和显示区域摆放弹幕视图。 */
+    /** 按实际视频渲染容器和显示区域摆放弹幕视图。 */
     private fun layoutDanmaku() {
         if (!::videoLayout.isInitialized || !::danmakuView.isInitialized) return
         val screenW = videoLayout.width.takeIf { it > 0 }
@@ -1124,37 +1123,28 @@ class MainActivity : ComponentActivity() {
             ?: resources.displayMetrics.heightPixels
         if (screenW <= 0 || screenH <= 0) return
 
-        var contentW = screenW
-        var contentH = screenH
-        var left = 0
-        var top = 0
-        if (videoWidth > 0 && videoHeight > 0) {
-            val videoAspect = videoWidth.toFloat() / videoHeight
-            val screenAspect = screenW.toFloat() / screenH
-            if (videoAspect > screenAspect) {
-                contentW = screenW
-                contentH = (screenW / videoAspect).toInt()
-                top = (screenH - contentH) / 2
-            } else {
-                contentH = screenH
-                contentW = (screenH * videoAspect).toInt()
-                left = (screenW - contentW) / 2
-            }
-        }
-        if (contentW <= 0 || contentH <= 0) return
-
-        val areaH = (contentH * danmakuSettings.areaRatio).toInt().coerceIn(1, contentH)
+        // VLCVideoLayout 已经是视频的实际输出容器，可能包含旋转、像素宽高比与
+        // 缩放策略。轨道原始分辨率只用于信息展示，不能拿来反推弹幕视口。
+        val areaH = (screenH * danmakuSettings.areaRatio).toInt().coerceIn(1, screenH)
         val params = danmakuView.layoutParams as? FrameLayout.LayoutParams
-            ?: FrameLayout.LayoutParams(contentW, areaH)
-        params.width = contentW
+            ?: FrameLayout.LayoutParams(screenW, areaH)
+        params.width = screenW
         params.height = areaH
-        params.leftMargin = left
-        params.topMargin = top
+        params.leftMargin = 0
+        params.topMargin = 0
         params.gravity = Gravity.TOP or Gravity.START
         danmakuView.layoutParams = params
         if (::danmakuController.isInitialized) {
-            danmakuController.setContentHeight(contentH)
-            danmakuView.post { danmakuController.prepare() }
+            danmakuController.setContentHeight(screenH)
+            val expectedWidth = screenW
+            val expectedHeight = areaH
+            danmakuView.post {
+                if (danmakuView.width != expectedWidth || danmakuView.height != expectedHeight) {
+                    return@post
+                }
+                LogHub.d(TAG, "prepare danmaku viewport=${expectedWidth}x$expectedHeight")
+                danmakuController.prepare()
+            }
         }
     }
 

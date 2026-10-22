@@ -44,6 +44,7 @@ class DfmDanmakuEngine(
     private var contentHeightPx = 1080
     private var prepared = false
     private var dfmReady = false
+    private var paused = false
     private val pending = ArrayList<DanmakuItem>()
 
     init {
@@ -63,7 +64,7 @@ class DfmDanmakuEngine(
                     // start() 会清空 handler 队列，必须在 PREPARE 完成后再调用；
                     // 随后 resume() 才会真正进入 UPDATE 循环。
                     view.start(clock.nowMs())
-                    view.resume()
+                    if (!paused) view.resume() else view.pause()
                     flushPending()
                     LogHub.d(TAG, "dfm started t=${view.currentTime} pending=${pending.size}")
                 }
@@ -110,7 +111,7 @@ class DfmDanmakuEngine(
             LogHub.i(TAG, "prepare skip prepared=$prepared size=${view.width}x${view.height}")
             return
         }
-        val parser = ListDanmakuParser(emptyList()).apply { setTimer(this@DfmDanmakuEngine.mediaTimer) }
+        val parser = ListDanmakuParser(emptyList()).apply { setTimer(mediaTimer) }
         view.prepare(parser, danmakuContext)
         prepared = true
         LogHub.i(
@@ -149,7 +150,11 @@ class DfmDanmakuEngine(
         pending.clear()
         if (prepared) view.removeAllDanmakus(true)
         addSegment(items, level)
-        if (prepared) view.seekTo(clock.nowMs())
+        if (prepared && dfmReady) {
+            view.seekTo(clock.nowMs())
+            // DFM 的 seek 会结束更新循环；播放中的重建必须显式恢复。
+            if (!paused) view.resume()
+        }
     }
 
     /** 应用显示设置。 */
@@ -174,6 +179,7 @@ class DfmDanmakuEngine(
 
     /** 暂停。 */
     fun pause() {
+        paused = true
         if (prepared) {
             LogHub.d(TAG, "pause t=${view.currentTime}")
             view.pause()
@@ -182,6 +188,7 @@ class DfmDanmakuEngine(
 
     /** 恢复。 */
     fun resume() {
+        paused = false
         if (prepared) {
             LogHub.d(TAG, "resume t=${view.currentTime} prepared=${view.isPrepared}")
             view.resume()

@@ -65,22 +65,30 @@ class MediaClock(
     }
 
     /**
-     * 喂入一次播放器采样。
+     * 喂入播放器的低频进度采样。
      *
-     * 小误差忽略，避免弹幕随采样抖动；大误差视为 seek/漂移，重新锚定。
+     * 渲染时钟本身由单调时钟推进。播放器进度只负责抑制长期漂移：小误差忽略，
+     * 中等误差逐步收敛，只有明显断层才重锚。调用方不能把返回值当作 seek，
+     * 因为正常起播和网络波动也可能带来较大的采样差。
      *
-     * @return true 表示发生了硬重锚，调用方应让 DFM 清屏重排。
+     * @return true 表示发生硬重锚，便于记录诊断信息。
      */
     fun onPlayerSample(mediaMs: Long): Boolean {
         if (frozen) {
-            rebase(mediaMs)
-            return true
+            return false
         }
         val predicted = nowMs()
-        if (abs(mediaMs - predicted) > RESYNC_THRESHOLD_MS) {
+        val error = mediaMs - predicted
+        val absError = abs(error)
+        if (absError <= IGNORE_THRESHOLD_MS) return false
+        if (absError >= HARD_RESYNC_THRESHOLD_MS) {
             rebase(mediaMs)
             return true
         }
+        // 以当前预测位置为基准重设锚点，保持时钟单调前进；若从旧锚点加误差，
+        // 每次采样都会把已走过的墙钟时间丢掉，表现为反向抖动。
+        anchorMediaMs = clamp(predicted + (error * SLEW_FACTOR).toLong())
+        anchorNanos = nanoTime()
         return false
     }
 
@@ -98,7 +106,13 @@ class MediaClock(
     }
 
     companion object {
-        /** 超过该误差就认为需要重新锚定，单位毫秒。 */
-        const val RESYNC_THRESHOLD_MS = 150L
+        /** 小于该误差的进度采样波动不校正，单位毫秒。 */
+        const val IGNORE_THRESHOLD_MS = 80L
+
+        /** 只有超过该误差才立即重锚，单位毫秒。 */
+        const val HARD_RESYNC_THRESHOLD_MS = 1_500L
+
+        /** 中等误差每次采样修正的比例。 */
+        const val SLEW_FACTOR = 0.05f
     }
 }
