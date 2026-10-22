@@ -1,10 +1,10 @@
 import java.util.Properties
 
 /** 用户可见的语义化版本号，发布时按实际改动更新。 */
-val APP_VERSION_NAME = "0.1.3-beta.1"
+val APP_VERSION_NAME = "0.1.3-beta.2"
 
 /** Android 用于比较更新顺序的整数版本号，每次发布 APK 都必须递增。 */
-val APP_VERSION_CODE = 8
+val APP_VERSION_CODE = 9
 
 /** 支持正式版与 Beta 预发布版本的语义化版本号格式。 */
 private val semanticVersionPattern = Regex("^\\d+\\.\\d+\\.\\d+(?:-beta\\.\\d+)?$")
