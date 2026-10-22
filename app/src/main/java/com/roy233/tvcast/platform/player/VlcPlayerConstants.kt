@@ -21,8 +21,14 @@ internal const val VLC_NO_OPENING_MS = 6_000L
 /** 未收到 Playing 事件的告警阈值，单位为毫秒。 */
 internal const val VLC_NO_PLAYING_MS = 20_000L
 
-/** 未收到视频输出事件的告警阈值，单位为毫秒。 */
-internal const val VLC_NO_VOUT_MS = 15_000L
+/** 播放已开始却未获得有效视频输出时，触发播放器重建的等待时间，单位为毫秒。 */
+internal const val VLC_VOUT_RECOVERY_MS = 5_000L
+
+/** 等待视频布局完成测量并可用于绑定 Surface 的最长时间，单位为毫秒。 */
+internal const val VLC_SURFACE_READY_TIMEOUT_MS = 5_000L
+
+/** 自动重建视频输出的最大次数，避免设备持续异常时无限循环。 */
+internal const val VLC_MAX_VOUT_RECOVERY_ATTEMPTS = 1
 
 /** 播放进度停滞的告警阈值，单位为毫秒。 */
 internal const val VLC_STALL_MS = 12_000L
