@@ -18,12 +18,14 @@ import org.videolan.libvlc.interfaces.IMedia
  * @param state 当前播放会话状态。
  * @param reporter 用于输出轨道、原生日志和状态快照的报告器。
  * @param handler 主线程处理器。
+ * @param onVideoOutputFailure 视频输出未建立或无法显示时的恢复回调。
  */
 internal class VlcPlaybackMonitor(
     private val player: MediaPlayer,
     private val state: VlcPlaybackState,
     private val reporter: VlcPlaybackReporter,
     private val handler: Handler,
+    private val onVideoOutputFailure: (String) -> Unit,
 ) {
 
     /** 周期性播放监控任务。 */
@@ -155,15 +157,7 @@ internal class VlcPlaybackMonitor(
             reporter.logTrackSnapshot("watchdog-no-playing")
             reporter.logNativeLogTail("watchdog-no-playing", 25)
         }
-        if (state.playingSeen && !state.voutSeen && now - state.playingAt > VLC_NO_VOUT_MS) {
-            warnOnce(
-                "noVout",
-                "no video output ${now - state.playingAt}ms after Playing; " +
-                    "possible audio-only playback, decoder or surface failure",
-            )
-            reporter.logTrackSnapshot("watchdog-no-vout")
-            sampleStats(force = true)
-        }
+        checkVideoOutput(now)
         if (state.playingSeen &&
             runCatching { player.isPlaying }.getOrDefault(false) &&
             state.lastProgressAt > 0L &&
@@ -193,6 +187,43 @@ internal class VlcPlaybackMonitor(
             )
         }
         sampleStats(force = false)
+    }
+
+    /**
+     * 检查是否已经建立有效视频输出，并在解码成功而画面无法显示时请求重建。
+     *
+     * `Vout` 事件的数量为 0 只代表旧输出被移除，不能视为视频输出就绪。这里以
+     * 正数输出数和 displayedPictures 为准，避免播放器继续处于“有声音、无画面”的状态。
+     */
+    private fun checkVideoOutput(now: Long) {
+        if (!state.playingSeen || state.voutRecoveryRequested) return
+        val playingElapsed = now - state.playingAt
+        if (!state.voutSeen && playingElapsed > VLC_VOUT_RECOVERY_MS) {
+            requestVideoOutputRecovery(
+                "no usable video output ${playingElapsed}ms after Playing",
+            )
+            return
+        }
+        val stats = state.lastStats ?: return
+        val decoded = stats.optLong("decodedVideo")
+        val displayed = stats.optLong("displayedPictures")
+        if (playingElapsed > VLC_VOUT_RECOVERY_MS && decoded > 0L && displayed <= 0L) {
+            requestVideoOutputRecovery(
+                "decoded=$decoded video frames but displayed=$displayed after ${playingElapsed}ms",
+            )
+        }
+    }
+
+    /** 输出完整故障现场后，仅请求一次由引擎执行的播放器重建。 */
+    private fun requestVideoOutputRecovery(reason: String) {
+        if (state.voutRecoveryRequested) return
+        state.voutRecoveryRequested = true
+        LogHub.e(TAG, "video output recovery requested: $reason")
+        PlaybackDiagnostics.event("VoutRecovery", "requested reason=$reason")
+        reporter.logTrackSnapshot("vout-recovery-requested")
+        sampleStats(force = true)
+        reporter.logNativeLogTail("vout-recovery-requested", 40)
+        onVideoOutputFailure(reason)
     }
 
     /**
