@@ -1,9 +1,9 @@
 package com.roy233.tvcast.ui.tv.player
 
 import android.graphics.Bitmap
+import com.roy233.tvcast.R
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
-import com.roy233.tvcast.ui.model.AudioOption
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.RecentCast
 import com.roy233.tvcast.ui.model.TrackOption
@@ -59,13 +59,10 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Logout
-import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -91,6 +88,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -102,6 +100,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -260,19 +259,10 @@ internal fun PlayingScreen(state: TvUiState, actions: TvActions, enabled: Boolea
                                     ),
                                 )
                                 Spacer(Modifier.weight(1f))
-                                BasicText(
-                                    text = state.audioLabel,
-                                    style = TvType.caption.copy(
-                                        color = TvColors.textTertiary,
-                                        fontSize = 14.sp,
-                                    ),
-                                    maxLines = 1,
-                                )
                             }
                             Row(
                                 modifier = Modifier.weight(1f),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                             ) {
                                 PrimaryPlayButton(
                                     isPlaying = state.isPlaying,
@@ -280,41 +270,34 @@ internal fun PlayingScreen(state: TvUiState, actions: TvActions, enabled: Boolea
                                     size = 64.dp,
                                     focusRequester = playFocus,
                                 )
-                                GlassIconButton(
-                                    icon = Icons.Rounded.Replay10,
-                                    contentDescription = "快退 10 秒",
-                                    onClick = { actions.onSeekBy(-10_000L) },
-                                    enabled = enabled,
-                                    size = 56.dp,
-                                )
-                                GlassIconButton(
-                                    icon = Icons.Rounded.Forward10,
-                                    contentDescription = "快进 10 秒",
-                                    onClick = { actions.onSeekBy(10_000L) },
-                                    enabled = enabled,
-                                    size = 56.dp,
-                                )
-                                GlassIconButton(
-                                    icon = Icons.Rounded.HighQuality,
-                                    contentDescription = "清晰度 ${state.qualityLabel}",
-                                    onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
-                                    enabled = enabled,
-                                    size = 56.dp,
-                                )
-                                GlassIconButton(
-                                    icon = Icons.Rounded.Audiotrack,
-                                    contentDescription = "音轨 ${state.audioLabel}",
-                                    onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
-                                    enabled = enabled,
-                                    size = 56.dp,
-                                )
-                                GlassIconButton(
-                                    icon = Icons.Rounded.Settings,
-                                    contentDescription = "播放设置",
-                                    onClick = { actions.onOpenPanel(PanelKind.ROOT) },
-                                    enabled = enabled,
-                                    size = 56.dp,
-                                )
+                                Spacer(Modifier.weight(1f))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    GlassIconButton(
+                                        icon = Icons.Rounded.HighQuality,
+                                        contentDescription = "清晰度 ${state.qualityLabel}",
+                                        onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
+                                        enabled = enabled,
+                                        size = 56.dp,
+                                    )
+                                    GlassIconButton(
+                                        icon = ImageVector.vectorResource(R.drawable.ic_danmu),
+                                        contentDescription = if (state.danmakuEnabled) "关闭弹幕" else "开启弹幕",
+                                        onClick = actions.onToggleDanmaku,
+                                        enabled = enabled,
+                                        selected = state.danmakuEnabled,
+                                        size = 56.dp,
+                                    )
+                                    GlassIconButton(
+                                        icon = Icons.Rounded.Settings,
+                                        contentDescription = "播放设置",
+                                        onClick = { actions.onOpenPanel(PanelKind.ROOT) },
+                                        enabled = enabled,
+                                        size = 56.dp,
+                                    )
+                                }
                             }
                         }
                     }

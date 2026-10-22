@@ -200,7 +200,9 @@ class MainActivity : ComponentActivity() {
         onPlayPause = { togglePlayPause() },
         onSeekBy = { seekBy(it) },
         onToggleDanmaku = {
-            updateDanmakuSettings(danmakuSettings.copy(enabled = !danmakuSettings.enabled))
+            val enabled = !danmakuSettings.enabled
+            updateDanmakuSettings(danmakuSettings.copy(enabled = enabled))
+            ui = ui.copy(toast = if (enabled) "弹幕已开启" else "弹幕已关闭")
         },
         onSetDanmakuAiShield = {
             updateDanmakuSettings(danmakuSettings.copy(aiShield = it))
