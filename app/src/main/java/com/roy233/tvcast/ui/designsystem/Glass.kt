@@ -413,6 +413,8 @@ fun GlassIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    selected: Boolean = false,
+    selectedColor: Color = TvColors.pink,
     size: Dp = TvDimens.iconButtonSize,
     focusRequester: FocusRequester? = null,
 ) {
@@ -449,17 +451,33 @@ fun GlassIconButton(
                 onClick = onClick,
             ),
         shape = CircleShape,
-        tint = Color(0x33000000),
-        borderAlpha = if (focused) 0.95f else 0.28f,
-        highlightAlpha = if (focused) 0.75f else 0.44f,
+        tint = if (selected) selectedColor.copy(alpha = 0.30f) else Color(0x33000000),
+        borderAlpha = when {
+            focused -> 0.95f
+            selected -> 0.72f
+            else -> 0.28f
+        },
+        highlightAlpha = when {
+            focused -> 0.75f
+            selected -> 0.60f
+            else -> 0.44f
+        },
         shadow = if (focused) 26.dp else 10.dp,
-        shadowColor = if (focused) Color.White.copy(alpha = 0.20f) else Color.Black,
+        shadowColor = when {
+            focused -> Color.White.copy(alpha = 0.20f)
+            selected -> selectedColor.copy(alpha = 0.34f)
+            else -> Color.Black
+        },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (enabled) Color.White else TvColors.textDisabled,
+            tint = when {
+                !enabled -> TvColors.textDisabled
+                selected -> selectedColor
+                else -> Color.White
+            },
             modifier = Modifier.size(size * 0.38f),
         )
     }

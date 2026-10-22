@@ -8,6 +8,8 @@ import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.model.AudioOption
 import com.roy233.tvcast.ui.model.PanelKind
+import com.roy233.tvcast.core.danmaku.AiShieldLevel
+import kotlin.math.roundToInt
 import com.roy233.tvcast.ui.model.RecentCast
 import com.roy233.tvcast.ui.model.TrackOption
 import com.roy233.tvcast.ui.model.TvActions
@@ -243,6 +245,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                 PanelKind.ROOT -> "播放设置"
                                 PanelKind.QUALITY -> "清晰度"
                                 PanelKind.AUDIO -> "音轨"
+                                PanelKind.DANMAKU -> "弹幕设置"
                             },
                             style = TvType.section,
                             modifier = Modifier.weight(1f),
@@ -275,6 +278,15 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                     title = "音轨",
                                     value = state.audioLabel.ifBlank { "自动" },
                                     onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
+                                )
+                                FocusableRow(
+                                    title = "弹幕设置",
+                                    value = if (!state.danmakuEnabled) {
+                                        "已关闭"
+                                    } else {
+                                        aiShieldLabel(state.danmakuAiShield)
+                                    },
+                                    onClick = { actions.onOpenPanel(PanelKind.DANMAKU) },
                                 )
                                 BasicText(
                                     text = "aid ${state.aid} · cid ${state.cid}",
@@ -309,6 +321,70 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                     )
                                 }
                             }
+
+                            PanelKind.DANMAKU -> {
+                                FocusableRow(
+                                    title = "弹幕",
+                                    value = if (state.danmakuEnabled) "开" else "关",
+                                    selected = state.danmakuEnabled,
+                                    onClick = actions.onToggleDanmaku,
+                                    focusRequester = firstFocus,
+                                )
+                                FocusableRow(
+                                    title = "智能云屏蔽",
+                                    value = aiShieldLabel(state.danmakuAiShield),
+                                    onClick = {
+                                        actions.onSetDanmakuAiShield(
+                                            nextAiShield(state.danmakuAiShield),
+                                        )
+                                    },
+                                )
+                                FocusableRow(
+                                    title = "显示区域",
+                                    value = areaLabel(state.danmakuAreaRatio),
+                                    onClick = {
+                                        actions.onSetDanmakuArea(
+                                            nextArea(state.danmakuAreaRatio),
+                                        )
+                                    },
+                                )
+                                FocusableRow(
+                                    title = "同屏数量",
+                                    value = maxOnScreenLabel(state.danmakuMaxOnScreen),
+                                    onClick = {
+                                        actions.onSetDanmakuMaxOnScreen(
+                                            nextMaxOnScreen(state.danmakuMaxOnScreen),
+                                        )
+                                    },
+                                )
+                                FocusableRow(
+                                    title = "不透明度",
+                                    value = opacityLabel(state.danmakuOpacity),
+                                    onClick = {
+                                        actions.onSetDanmakuOpacity(
+                                            nextOpacity(state.danmakuOpacity),
+                                        )
+                                    },
+                                )
+                                FocusableRow(
+                                    title = "字号",
+                                    value = fontScaleLabel(state.danmakuFontScale),
+                                    onClick = {
+                                        actions.onSetDanmakuFontScale(
+                                            nextFontScale(state.danmakuFontScale),
+                                        )
+                                    },
+                                )
+                                FocusableRow(
+                                    title = "速度",
+                                    value = durationLabel(state.danmakuDurationSec),
+                                    onClick = {
+                                        actions.onSetDanmakuDuration(
+                                            nextDuration(state.danmakuDurationSec),
+                                        )
+                                    },
+                                )
+                            }
                         }
                     }
 
@@ -322,5 +398,75 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
             }
         }
     }
+}
+
+private fun aiShieldLabel(level: AiShieldLevel): String = when (level) {
+    AiShieldLevel.OFF -> "关"
+    AiShieldLevel.LOW -> "低"
+    AiShieldLevel.MEDIUM -> "中"
+    AiShieldLevel.HIGH -> "高"
+}
+
+private fun nextAiShield(level: AiShieldLevel): AiShieldLevel = when (level) {
+    AiShieldLevel.OFF -> AiShieldLevel.LOW
+    AiShieldLevel.LOW -> AiShieldLevel.MEDIUM
+    AiShieldLevel.MEDIUM -> AiShieldLevel.HIGH
+    AiShieldLevel.HIGH -> AiShieldLevel.OFF
+}
+
+private fun areaLabel(ratio: Float): String = when {
+    ratio <= 0.30f -> "1/4 屏"
+    ratio <= 0.55f -> "半屏"
+    ratio <= 0.80f -> "3/4 屏"
+    else -> "全屏"
+}
+
+private fun nextArea(ratio: Float): Float = when {
+    ratio <= 0.30f -> 0.50f
+    ratio <= 0.55f -> 0.75f
+    ratio <= 0.80f -> 1.0f
+    else -> 0.25f
+}
+
+private fun maxOnScreenLabel(max: Int): String = if (max <= 0) "不限" else max.toString()
+
+private fun nextMaxOnScreen(max: Int): Int = when (max) {
+    30 -> 60
+    60 -> 100
+    100 -> 0
+    else -> 30
+}
+
+private fun opacityLabel(opacity: Float): String = "${(opacity * 100).roundToInt()}%"
+
+private fun nextOpacity(opacity: Float): Float {
+    val step = ((opacity * 100).roundToInt() + 20) / 20 * 20
+    return if (step > 100) 20f / 100f else step / 100f
+}
+
+private fun fontScaleLabel(scale: Float): String = when {
+    scale <= 0.80f -> "小"
+    scale <= 1.05f -> "标准"
+    scale <= 1.30f -> "大"
+    else -> "超大"
+}
+
+private fun nextFontScale(scale: Float): Float = when {
+    scale <= 0.80f -> 1.0f
+    scale <= 1.05f -> 1.25f
+    scale <= 1.30f -> 1.5f
+    else -> 0.75f
+}
+
+private fun durationLabel(seconds: Float): String = when {
+    seconds >= 10f -> "慢"
+    seconds >= 7f -> "适中"
+    else -> "快"
+}
+
+private fun nextDuration(seconds: Float): Float = when {
+    seconds >= 10f -> 8f
+    seconds >= 7f -> 5f
+    else -> 12f
 }
 

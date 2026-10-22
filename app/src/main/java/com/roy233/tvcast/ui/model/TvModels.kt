@@ -1,6 +1,7 @@
 package com.roy233.tvcast.ui.model
 
 import android.graphics.Bitmap
+import com.roy233.tvcast.core.danmaku.AiShieldLevel
 import com.roy233.tvcast.feature.update.UpdateChannel
 import com.roy233.tvcast.feature.update.UpdateUiState
 
@@ -14,7 +15,7 @@ enum class TvDestination { HOME, SETTINGS }
 enum class SettingsPage { ROOT, UPDATE, UPDATE_NOTES }
 
 /** 表示播放控制面板的层级。 */
-enum class PanelKind { ROOT, QUALITY, AUDIO }
+enum class PanelKind { ROOT, QUALITY, AUDIO, DANMAKU }
 
 /**
  * 保存最近一次投屏内容的摘要信息。
@@ -149,9 +150,18 @@ data class TvUiState(
     val isBuffering: Boolean = false,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
+    val videoWidth: Int = 0,
+    val videoHeight: Int = 0,
     val volume: Int = 50,
     val hudVisible: Boolean = false,
     val panel: PanelKind? = null,
+    val danmakuEnabled: Boolean = true,
+    val danmakuAiShield: AiShieldLevel = AiShieldLevel.OFF,
+    val danmakuAreaRatio: Float = 0.25f,
+    val danmakuMaxOnScreen: Int = 60,
+    val danmakuOpacity: Float = 1f,
+    val danmakuFontScale: Float = 1f,
+    val danmakuDurationSec: Float = 8f,
     val stopCastConfirm: Boolean = false,
     val error: TvError? = null,
     val loginQr: Bitmap? = null,
@@ -237,6 +247,13 @@ class TvActions(
     val onLogout: () -> Unit = {},
     val onPlayPause: () -> Unit = {},
     val onSeekBy: (Long) -> Unit = {},
+    val onToggleDanmaku: () -> Unit = {},
+    val onSetDanmakuAiShield: (AiShieldLevel) -> Unit = {},
+    val onSetDanmakuArea: (Float) -> Unit = {},
+    val onSetDanmakuMaxOnScreen: (Int) -> Unit = {},
+    val onSetDanmakuOpacity: (Float) -> Unit = {},
+    val onSetDanmakuFontScale: (Float) -> Unit = {},
+    val onSetDanmakuDuration: (Float) -> Unit = {},
     val onSetVolume: (Int) -> Unit = {},
     val onShowHud: () -> Unit = {},
     val onHideHud: () -> Unit = {},

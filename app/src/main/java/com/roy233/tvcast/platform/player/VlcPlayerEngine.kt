@@ -491,6 +491,17 @@ class VlcPlayerEngine(
     }
 
     /**
+     * 返回当前视频轨道的像素尺寸。
+     *
+     * @return 宽高；轨道尚未就绪时返回 null。
+     */
+    fun videoSize(): Pair<Int, Int>? {
+        val track = runCatching { player.currentVideoTrack }.getOrNull() ?: return null
+        if (track.width <= 0 || track.height <= 0) return null
+        return track.width to track.height
+    }
+
+    /**
      * 返回当前播放器状态的单行快照。
      *
      * @return 包含播放器状态、媒体和统计摘要的文本。
