@@ -207,7 +207,8 @@ internal class VlcEventRecorder(
      * @param now 当前单调时刻。
      */
     private fun handleVout(event: MediaPlayer.Event, now: Long) {
-        val first = !state.voutSeen
+        val count = event.voutCount
+        val first = count > 0 && !state.voutSeen
         if (first) {
             state.voutSeen = true
             state.voutAt = now
@@ -227,9 +228,15 @@ internal class VlcEventRecorder(
             }
             reporter.logTrackSnapshot("first-vout")
         }
+        if (count <= 0) {
+            monitor.warnOnce(
+                "zeroVout",
+                "video output event reported count=$count; waiting for a usable vout",
+            )
+        }
         PlaybackDiagnostics.event(
             "Vout",
-            "count=${event.voutCount} first=$first view=${reporter.viewSize()}",
+            "count=$count first=$first view=${reporter.viewSize()}",
         )
     }
 

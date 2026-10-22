@@ -36,8 +36,11 @@ internal class VlcPlaybackState {
     /** 最近一次收到 Playing 事件的时刻。 */
     var playingAt: Long = 0L
 
-    /** 是否已经收到视频输出事件。 */
+    /** 是否已经收到至少一个可用的视频输出。 */
     var voutSeen: Boolean = false
+
+    /** 是否已经把本次会话的视频输出异常交给播放器执行恢复。 */
+    var voutRecoveryRequested: Boolean = false
 
     /** 第一次收到视频输出事件的时刻。 */
     var voutAt: Long = 0L
@@ -101,6 +104,7 @@ internal class VlcPlaybackState {
         openingSeen = false
         playingSeen = false
         voutSeen = false
+        voutRecoveryRequested = false
         firstPlayingLogged = false
         openingAt = 0L
         playingAt = 0L

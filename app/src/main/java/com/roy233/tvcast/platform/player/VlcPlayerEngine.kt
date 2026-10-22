@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.View
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
@@ -42,41 +43,66 @@ class VlcPlayerEngine(
     private val nativeLogFile = PlaybackDiagnostics.vlcLogFile(appContext)
     /** libVLC 启动参数。 */
     private val libVlcOptions = VlcRuntimeLogger.options(nativeLogFile)
-    /** VLC 原生运行时实例。 */
+    /** VLC 原生运行时实例。播放器重建期间保持该实例，避免额外的 native 初始化抖动。 */
     private val libVlc = LibVLC(appContext, libVlcOptions)
 
-    /** 对外提供的 VLC 播放器实例。 */
-    val player = MediaPlayer(libVlc)
+    /** 当前 VLC 播放器实例；视频输出失败时会以新实例替换。 */
+    private lateinit var internalPlayer: MediaPlayer
+
+    /** 对外提供当前播放器实例，供活动页读取位置和轨道信息。 */
+    val player: MediaPlayer
+        get() = internalPlayer
 
     /** 一次播放会话的共享状态。 */
     private val state = VlcPlaybackState()
     /** 播放状态、轨道和原生日志报告器。 */
-    private val reporter = VlcPlaybackReporter(player, state, videoLayout)
+    private lateinit var reporter: VlcPlaybackReporter
     /** 周期看门狗。 */
-    private val monitor = VlcPlaybackMonitor(player, state, reporter, handler)
+    private lateinit var monitor: VlcPlaybackMonitor
     /** 播放器事件记录器。 */
-    private val eventRecorder = VlcEventRecorder(player, state, monitor, reporter)
+    private lateinit var eventRecorder: VlcEventRecorder
     /** 媒体构建器。 */
     private val mediaFactory = VlcMediaFactory(libVlc)
 
+    /** 最近一次外部播放请求；vout 重建后据此恢复原媒体与位置。 */
+    private var lastOpenRequest: OpenRequest? = null
+
+    /** Surface 未就绪时延迟执行的播放请求。 */
+    private var pendingOpenRequest: OpenRequest? = null
+
+    /** 延迟播放请求开始等待 Surface 的时间。 */
+    private var surfaceWaitStartedAt: Long = 0L
+
+    /** 当前会话已经执行的视频输出自动重建次数。 */
+    private var voutRecoveryAttempts: Int = 0
+
+    /** 已释放后忽略所有异步恢复任务。 */
+    private var released: Boolean = false
+
+    /** 防止同一故障由多个监控周期重复排队重建。 */
+    private var recoveryQueued: Boolean = false
+
+    /** 等待布局完成后重试已延迟的播放请求。 */
+    private val surfaceOpenRunnable = Runnable { openWhenSurfaceReady("surface-wait") }
+
     /** 将播放器绑定到视频布局并注册事件监听器。 */
     init {
-        VlcRuntimeLogger.logStartup(
-            appContext,
-            player,
-            videoLayout,
-            nativeLogFile,
-            libVlcOptions,
-        )
-        runCatching {
-            player.attachViews(videoLayout, null, false, false)
-            state.viewsAttached = true
-            LogHub.i(TAG, "video surface attached size=${reporter.viewSize()}")
-        }.onFailure {
-            LogHub.e(TAG, "attachViews failed", it, stack = true)
-            PlaybackDiagnostics.runtime("views.attached", "false")
+        createPlayer("initial")
+        videoLayout.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            openWhenSurfaceReady("layout-change")
         }
-        player.setEventListener { event -> dispatchEvent(event) }
+        videoLayout.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) {
+                LogHub.i(TAG, "video layout attached size=${reporter.viewSize()}")
+                openWhenSurfaceReady("view-attached")
+            }
+
+            override fun onViewDetachedFromWindow(view: View) {
+                LogHub.w(TAG, "video layout detached; future opens wait for a new Surface")
+                state.viewsAttached = false
+            }
+        })
+        videoLayout.post { openWhenSurfaceReady("initial-layout") }
     }
 
     /**
@@ -87,6 +113,52 @@ class VlcPlayerEngine(
      * @return 是否已经成功发起播放。
      */
     fun open(info: BiliApi.PlayInfo, seekToMs: Long): Boolean {
+        if (released) {
+            LogHub.e(TAG, "open rejected after engine release")
+            PlaybackDiagnostics.fail(
+                code = "PLAYER_RELEASED",
+                message = "播放器已经释放",
+                detail = "open ignored after release",
+            )
+            return false
+        }
+        val request = OpenRequest(info, seekToMs.coerceAtLeast(0L))
+        lastOpenRequest = request
+        pendingOpenRequest = null
+        voutRecoveryAttempts = 0
+        return openOrWaitForSurface(request, "open")
+    }
+
+    /**
+     * 在视频布局拥有有效尺寸后打开媒体。Surface 尚未就绪时保留请求并在布局回调中重试。
+     */
+    private fun openOrWaitForSurface(request: OpenRequest, reason: String): Boolean {
+        if (!ensureViewsAttached(reason)) {
+            pendingOpenRequest = request
+            if (surfaceWaitStartedAt == 0L) {
+                surfaceWaitStartedAt = SystemClock.elapsedRealtime()
+                LogHub.i(
+                    TAG,
+                    "open deferred reason=$reason view=${reporter.viewSize()} " +
+                        "attached=${videoLayout.isAttachedToWindow}",
+                )
+                PlaybackDiagnostics.event(
+                    "Surface",
+                    "open deferred reason=$reason view=${reporter.viewSize()}",
+                )
+            }
+            handler.removeCallbacks(surfaceOpenRunnable)
+            handler.postDelayed(surfaceOpenRunnable, SURFACE_RETRY_INTERVAL_MS)
+            return true
+        }
+        pendingOpenRequest = null
+        surfaceWaitStartedAt = 0L
+        handler.removeCallbacks(surfaceOpenRunnable)
+        return openPrepared(request)
+    }
+
+    /** 执行已经通过 Surface 就绪检查的媒体打开流程。 */
+    private fun openPrepared(request: OpenRequest): Boolean {
         val startedAt = SystemClock.elapsedRealtime()
         monitor.stop()
         state.reset(startedAt)
@@ -97,7 +169,7 @@ class VlcPlayerEngine(
                 "player.viewsAttached",
                 state.viewsAttached.toString(),
             )
-            val media = mediaFactory.create(info, seekToMs)
+            val media = mediaFactory.create(request.info, request.seekToMs)
             createdMedia = media
             val previous = state.currentMedia
             state.currentMedia = media
@@ -130,6 +202,171 @@ class VlcPlayerEngine(
             monitor.stop()
             false
         }
+    }
+
+    /** 创建播放器并注册当前实例独有的监控、事件记录与视频 Surface 绑定。 */
+    private fun createPlayer(reason: String) {
+        internalPlayer = MediaPlayer(libVlc)
+        reporter = VlcPlaybackReporter(internalPlayer, state, videoLayout)
+        monitor = VlcPlaybackMonitor(
+            internalPlayer,
+            state,
+            reporter,
+            handler,
+            ::requestVoutRecovery,
+        )
+        eventRecorder = VlcEventRecorder(internalPlayer, state, monitor, reporter)
+        internalPlayer.setEventListener { event -> dispatchEvent(event) }
+        VlcRuntimeLogger.logStartup(
+            appContext,
+            internalPlayer,
+            videoLayout,
+            nativeLogFile,
+            libVlcOptions,
+        )
+        state.viewsAttached = false
+        LogHub.i(TAG, "player instance created reason=$reason view=${reporter.viewSize()}")
+        PlaybackDiagnostics.event("PlayerInstance", "created reason=$reason view=${reporter.viewSize()}")
+        ensureViewsAttached("player-created:$reason")
+    }
+
+    /**
+     * 仅在布局已附着且拥有可用尺寸时绑定 libVLC 视频视图。
+     *
+     * VLCVideoLayout 在 Activity 的 onCreate 阶段通常为 0×0。等待布局就绪可避免
+     * 首次投屏把播放器绑定到尚未创建完成的 Android Surface。
+     */
+    private fun ensureViewsAttached(reason: String): Boolean {
+        if (state.viewsAttached) return true
+        val ready = videoLayout.isAttachedToWindow && videoLayout.width > 0 && videoLayout.height > 0
+        if (!ready) {
+            LogHub.d(
+                TAG,
+                "video surface not ready reason=$reason view=${reporter.viewSize()} " +
+                    "attached=${videoLayout.isAttachedToWindow}",
+            )
+            return false
+        }
+        return runCatching {
+            internalPlayer.attachViews(videoLayout, null, false, false)
+            state.viewsAttached = true
+            LogHub.i(TAG, "video surface attached reason=$reason size=${reporter.viewSize()}")
+            PlaybackDiagnostics.event(
+                "Surface",
+                "attached reason=$reason view=${reporter.viewSize()}",
+            )
+            true
+        }.getOrElse {
+            LogHub.e(TAG, "attachViews failed reason=$reason", it, stack = true)
+            PlaybackDiagnostics.runtime("views.attached", "false")
+            PlaybackDiagnostics.event(
+                "Surface",
+                "attach failed reason=$reason detail=${LogRedaction.reason(it)}",
+            )
+            false
+        }
+    }
+
+    /** Surface 就绪回调：开始已延迟的播放，或记录等待超时。 */
+    private fun openWhenSurfaceReady(reason: String) {
+        if (released) return
+        val request = pendingOpenRequest ?: return
+        if (ensureViewsAttached(reason)) {
+            pendingOpenRequest = null
+            surfaceWaitStartedAt = 0L
+            handler.removeCallbacks(surfaceOpenRunnable)
+            LogHub.i(TAG, "deferred open resumed reason=$reason view=${reporter.viewSize()}")
+            PlaybackDiagnostics.event("Surface", "deferred open resumed reason=$reason")
+            openPrepared(request)
+            return
+        }
+        val waited = SystemClock.elapsedRealtime() - surfaceWaitStartedAt
+        if (surfaceWaitStartedAt > 0L && waited >= VLC_SURFACE_READY_TIMEOUT_MS) {
+            pendingOpenRequest = null
+            LogHub.e(TAG, "surface not ready after ${waited}ms; deferred open cancelled")
+            PlaybackDiagnostics.fail(
+                code = "PLAYER_SURFACE_UNAVAILABLE",
+                message = "视频渲染 Surface 未就绪",
+                detail = "waited=${waited}ms view=${reporter.viewSize()} attached=${videoLayout.isAttachedToWindow}",
+            )
+            return
+        }
+        handler.removeCallbacks(surfaceOpenRunnable)
+        handler.postDelayed(surfaceOpenRunnable, SURFACE_RETRY_INTERVAL_MS)
+    }
+
+    /**
+     * 在已开始播放、但没有有效视频输出时销毁并重建 MediaPlayer，再恢复媒体和位置。
+     *
+     * 回调从监控器到达时不直接触碰播放器线程；统一切回主线程，防止旧实例的终止事件
+     * 与新实例媒体设置交错。
+     */
+    private fun requestVoutRecovery(reason: String) {
+        if (released || recoveryQueued) return
+        recoveryQueued = true
+        handler.post {
+            recoveryQueued = false
+            val request = lastOpenRequest
+            if (released || request == null || !state.active) {
+                LogHub.w(TAG, "vout recovery skipped reason=$reason active=${state.active}")
+                return@post
+            }
+            if (voutRecoveryAttempts >= VLC_MAX_VOUT_RECOVERY_ATTEMPTS) {
+                LogHub.e(
+                    TAG,
+                    "vout recovery exhausted attempts=$voutRecoveryAttempts reason=$reason " +
+                        reporter.failureSnapshot(),
+                )
+                PlaybackDiagnostics.fail(
+                    code = "VLC_VOUT_RECOVERY_EXHAUSTED",
+                    message = "视频输出重建后仍未恢复",
+                    detail = "attempts=$voutRecoveryAttempts reason=$reason ${reporter.failureSnapshot()}",
+                )
+                return@post
+            }
+            val position = runCatching { internalPlayer.time }.getOrDefault(-1L)
+                .takeIf { it >= 0L } ?: request.seekToMs
+            voutRecoveryAttempts += 1
+            LogHub.w(
+                TAG,
+                "vout recovery begin attempt=$voutRecoveryAttempts reason=$reason " +
+                    "resume=${position}ms view=${reporter.viewSize()}",
+            )
+            PlaybackDiagnostics.event(
+                "VoutRecovery",
+                "begin attempt=$voutRecoveryAttempts reason=$reason resume=${position}ms",
+            )
+            releasePlayerInstance("vout-recovery")
+            createPlayer("vout-recovery-$voutRecoveryAttempts")
+            val recoveryRequest = request.copy(seekToMs = position)
+            lastOpenRequest = recoveryRequest
+            openOrWaitForSurface(recoveryRequest, "vout-recovery")
+        }
+    }
+
+    /** 释放当前 MediaPlayer 与媒体对象；LibVLC 保留给下一实例复用。 */
+    private fun releasePlayerInstance(reason: String) {
+        monitor.stop()
+        val oldPlayer = internalPlayer
+        val oldMedia = state.currentMedia
+        state.currentMedia = null
+        state.viewsAttached = false
+        runCatching { oldPlayer.stop() }.onFailure {
+            LogHub.e(TAG, "player stop failed reason=$reason", it, stack = true)
+        }
+        runCatching { oldPlayer.detachViews() }.onFailure {
+            LogHub.e(TAG, "detachViews failed reason=$reason", it, stack = true)
+        }
+        runCatching { oldPlayer.release() }.onFailure {
+            LogHub.e(TAG, "player release failed reason=$reason", it, stack = true)
+        }
+        oldMedia?.let { media ->
+            runCatching { media.release() }.onFailure {
+                LogHub.e(TAG, "media release failed reason=$reason", it, stack = true)
+            }
+        }
+        LogHub.i(TAG, "player instance released reason=$reason")
+        PlaybackDiagnostics.event("PlayerInstance", "released reason=$reason")
     }
 
     /**
@@ -222,6 +459,9 @@ class VlcPlayerEngine(
      * @param reason 调用来源。
      */
     fun stopPlayback(reason: String) {
+        pendingOpenRequest = null
+        surfaceWaitStartedAt = 0L
+        handler.removeCallbacks(surfaceOpenRunnable)
         LogHub.i(
             TAG,
             "stop reason=$reason state=${reporter.playerStateName()} " +
@@ -259,25 +499,14 @@ class VlcPlayerEngine(
 
     /** 停止播放并释放播放器及原生运行时资源。 */
     fun release() {
-        monitor.stop()
+        if (released) return
+        released = true
+        pendingOpenRequest = null
+        handler.removeCallbacks(surfaceOpenRunnable)
         LogHub.i(TAG, "release ${reporter.failureSnapshot()}")
         PlaybackDiagnostics.event("Engine", "release")
         PlaybackDiagnostics.closeSession("engine-release")
-        runCatching { player.stop() }.onFailure {
-            LogHub.e(TAG, "release stop failed", it)
-        }
-        runCatching { player.detachViews() }.onFailure {
-            LogHub.e(TAG, "release detachViews failed", it)
-        }
-        runCatching { player.release() }.onFailure {
-            LogHub.e(TAG, "release player failed", it)
-        }
-        state.currentMedia?.let { media ->
-            runCatching { media.release() }.onFailure {
-                LogHub.e(TAG, "release media failed", it)
-            }
-        }
-        state.currentMedia = null
+        releasePlayerInstance("engine-release")
         runCatching { libVlc.release() }.onFailure {
             LogHub.e(TAG, "release libvlc failed", it)
         }
@@ -303,5 +532,12 @@ class VlcPlayerEngine(
     /** 日志标签。 */
     private companion object {
         const val TAG = VLC_PLAYER_TAG
+        const val SURFACE_RETRY_INTERVAL_MS = 100L
     }
+
+    /** 一次可恢复的打开请求。 */
+    private data class OpenRequest(
+        val info: BiliApi.PlayInfo,
+        val seekToMs: Long,
+    )
 }
