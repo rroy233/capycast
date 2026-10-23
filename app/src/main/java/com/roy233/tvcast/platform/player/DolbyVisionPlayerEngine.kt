@@ -367,12 +367,17 @@ class DolbyVisionPlayerEngine(
             if (hardware.isEmpty()) {
                 val message = "no hardware video decoder mime=$mimeType secure=$requiresSecureDecoder " +
                     "tunneling=$requiresTunnelingDecoder candidates=[$candidateSummary]"
-                LogHub.e(TAG, message)
-                PlaybackDiagnostics.fail(
-                    code = "DOLBY_VISION_HARDWARE_DECODER_UNAVAILABLE",
-                    message = "设备没有可用的杜比视界硬件视频解码器",
-                    detail = message,
-                )
+                if (requiresTunnelingDecoder) {
+                    // Media3 会将隧道播放能力作为可选路径探测；普通 Surface 播放不依赖它。
+                    LogHub.d(TAG, "tunneled playback unavailable; regular Surface playback remains eligible: $message")
+                } else {
+                    LogHub.e(TAG, message)
+                    PlaybackDiagnostics.fail(
+                        code = "DOLBY_VISION_HARDWARE_DECODER_UNAVAILABLE",
+                        message = "设备没有可用的杜比视界硬件视频解码器",
+                        detail = message,
+                    )
+                }
             } else {
                 selectedHardwareDecoderNames += hardware.map { it.name }
             }
