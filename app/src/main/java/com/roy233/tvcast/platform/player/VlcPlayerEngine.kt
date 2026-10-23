@@ -243,19 +243,25 @@ class VlcPlayerEngine(
     private fun configureDolbyAudioPassthrough(info: BiliApi.PlayInfo) {
         val dolbyAudio = info.audio?.isDolbyAudio == true
         val available = dolbyAudio && runCatching { player.canDoPassthrough() }.getOrDefault(false)
-        val enabled = runCatching { player.setAudioDigitalOutputEnabled(available) }.getOrDefault(false)
-        if (enabled && available) {
+        val configurationApplied = runCatching { player.setAudioDigitalOutputEnabled(available) }.getOrElse { error ->
+            LogHub.e(TAG, "could not configure digital audio output: ${LogRedaction.reason(error)}", error, stack = true)
+            false
+        }
+        val passthroughEnabled = available && configurationApplied
+        if (passthroughEnabled) {
             runCatching { player.forceAudioDigitalEncodings(intArrayOf(AudioFormat.ENCODING_E_AC3)) }
                 .onFailure { error ->
-                    LogHub.w(TAG, "could not force E-AC-3 passthrough: ${LogRedaction.reason(error)}")
+                    LogHub.e(TAG, "could not force E-AC-3 passthrough: ${LogRedaction.reason(error)}", error, stack = true)
                 }
         }
         PlaybackDiagnostics.attribute("audio.dolbyTrack", dolbyAudio.toString())
         PlaybackDiagnostics.attribute("audio.passthroughRequested", available.toString())
-        PlaybackDiagnostics.attribute("audio.passthroughEnabled", enabled.toString())
+        PlaybackDiagnostics.attribute("audio.passthroughConfigurationApplied", configurationApplied.toString())
+        PlaybackDiagnostics.attribute("audio.passthroughEnabled", passthroughEnabled.toString())
         LogHub.i(
             TAG,
-            "audio passthrough dolbyTrack=$dolbyAudio available=$available enabled=$enabled " +
+            "audio passthrough dolbyTrack=$dolbyAudio available=$available " +
+                "configurationApplied=$configurationApplied enabled=$passthroughEnabled " +
                 "codec=${info.audio?.codecs.orEmpty()}",
         )
     }

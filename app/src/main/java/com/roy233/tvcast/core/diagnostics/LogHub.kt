@@ -31,8 +31,10 @@ object LogHub {
     private const val PORT = 8098
     /** 内存中保留的最大日志条数。 */
     private const val MAX_LINES = 2400
-    /** 错误日志在内存中保留的最大堆栈帧数。 */
-    private const val STACK_FRAMES = 5
+    /** 错误日志在内存中保留的最大堆栈帧数，便于不接 adb 时定位播放器故障。 */
+    private const val STACK_FRAMES = 20
+    /** 内存日志记录异常因果链的最大深度，避免循环引用或过长错误撑满诊断端点。 */
+    private const val MAX_CAUSE_DEPTH = 4
 
     /** 按时间顺序保存的日志行。 */
     private val lines = ArrayDeque<String>()
@@ -99,15 +101,30 @@ object LogHub {
         val detail = buildString {
             append(msg)
             if (t != null) {
-                append(" | ").append(t.javaClass.simpleName).append(": ").append(t.message)
-                if (stack) {
-                    t.stackTrace.take(STACK_FRAMES).forEach { frame ->
-                        append("\n    at ").append(frame)
-                    }
-                }
+                appendThrowableDetail(t, stack)
             }
         }
         add("E/$tag", detail)
+    }
+
+    /** 将异常与其根因写入局域网诊断日志；完整堆栈仍由 Android Logcat 保留。 */
+    private fun StringBuilder.appendThrowableDetail(error: Throwable, includeStack: Boolean) {
+        var current: Throwable? = error
+        var depth = 0
+        while (current != null && depth < MAX_CAUSE_DEPTH) {
+            if (depth == 0) append(" | ") else append("\nCaused by: ")
+            append(current.javaClass.name)
+            current.message?.takeIf { it.isNotBlank() }?.let { append(": ").append(it) }
+            if (includeStack) {
+                current.stackTrace.take(STACK_FRAMES).forEach { frame ->
+                    append("\n    at ").append(frame)
+                }
+            }
+            val cause = current.cause
+            if (cause === current) break
+            current = cause
+            depth++
+        }
     }
 
     /** 更新当前登录账号标识。 */
