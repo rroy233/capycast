@@ -204,6 +204,7 @@ internal fun PlayingScreen(
                 .focusable(enabled && !state.hudVisible)
                 .playbackTouchControls(
                     enabled = enabled && !state.hudVisible,
+                    seekEnabled = !state.isLive,
                     isSeeking = { seekingState.value },
                     seekAccelerator = seekAccelerator,
                     onPreviewSeekBy = { actionsState.value.onPreviewSeekBy(it) },
@@ -254,7 +255,7 @@ internal fun PlayingScreen(
                             emphasized = true,
                         )
                     }
-                    if (state.playbackSpeed != 1f) {
+                    if (!state.isLive && state.playbackSpeed != 1f) {
                         Spacer(Modifier.width(10.dp))
                         GlassPill(
                             text = PlaybackSpeed.label(state.playbackSpeed),
@@ -285,16 +286,20 @@ internal fun PlayingScreen(
                                 .fillMaxSize()
                                 .padding(horizontal = 20.dp, vertical = 12.dp),
                         ) {
-                            SeekableProgressBar(
-                                positionMs = displayedPositionMs,
-                                durationMs = state.durationMs,
-                                isSeeking = state.seekPreviewPositionMs != null,
-                                focusRequester = progressFocus,
-                                playFocusRequester = playFocus,
-                                seekAccelerator = seekAccelerator,
-                                onPreviewSeekBy = actions.onPreviewSeekBy,
-                                onConfirmSeek = actions.onConfirmSeek,
-                            )
+                            if (state.isLive) {
+                                Spacer(Modifier.height(18.dp))
+                            } else {
+                                SeekableProgressBar(
+                                    positionMs = displayedPositionMs,
+                                    durationMs = state.durationMs,
+                                    isSeeking = state.seekPreviewPositionMs != null,
+                                    focusRequester = progressFocus,
+                                    playFocusRequester = playFocus,
+                                    seekAccelerator = seekAccelerator,
+                                    onPreviewSeekBy = actions.onPreviewSeekBy,
+                                    onConfirmSeek = actions.onConfirmSeek,
+                                )
+                            }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -302,7 +307,14 @@ internal fun PlayingScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 BasicText(
-                                    text = "${formatTime(displayedPositionMs)}  /  ${formatTime(state.durationMs)}",
+                                    text = if (state.isLive) {
+                                        buildString {
+                                            append("直播")
+                                            if (state.qualityLabel.isNotBlank()) append(" · ${state.qualityLabel}")
+                                        }
+                                    } else {
+                                        "${formatTime(displayedPositionMs)}  /  ${formatTime(state.durationMs)}"
+                                    },
                                     style = TvType.caption.copy(
                                         color = TvColors.textSecondary,
                                         fontSize = 14.sp,
@@ -317,7 +329,9 @@ internal fun PlayingScreen(
                                 PrimaryPlayButton(
                                     isPlaying = state.isPlaying,
                                     onClick = actions.onPlayPause,
-                                    modifier = Modifier.focusProperties { up = progressFocus },
+                                    modifier = Modifier.focusProperties {
+                                        if (!state.isLive) up = progressFocus
+                                    },
                                     size = 64.dp,
                                     focusRequester = playFocus,
                                 )
@@ -328,19 +342,25 @@ internal fun PlayingScreen(
                                 ) {
                                     GlassIconButton(
                                         icon = Icons.Rounded.HighQuality,
-                                        contentDescription = "清晰度 ${state.qualityLabel}",
-                                        onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
+                                        contentDescription = if (state.isLive) "直播画质 ${state.qualityLabel}" else "清晰度 ${state.qualityLabel}",
+                                        onClick = {
+                                            actions.onOpenPanel(
+                                                if (state.isLive) PanelKind.LIVE_QUALITY else PanelKind.QUALITY,
+                                            )
+                                        },
                                         enabled = enabled,
                                         size = 56.dp,
                                     )
-                                    GlassIconButton(
-                                        icon = ImageVector.vectorResource(R.drawable.ic_speed),
-                                        contentDescription = "播放速度 ${PlaybackSpeed.label(state.playbackSpeed)}",
-                                        onClick = { actions.onOpenPanel(PanelKind.SPEED) },
-                                        enabled = enabled,
-                                        selected = state.playbackSpeed != 1f,
-                                        size = 56.dp,
-                                    )
+                                    if (!state.isLive) {
+                                        GlassIconButton(
+                                            icon = ImageVector.vectorResource(R.drawable.ic_speed),
+                                            contentDescription = "播放速度 ${PlaybackSpeed.label(state.playbackSpeed)}",
+                                            onClick = { actions.onOpenPanel(PanelKind.SPEED) },
+                                            enabled = enabled,
+                                            selected = state.playbackSpeed != 1f,
+                                            size = 56.dp,
+                                        )
+                                    }
                                     GlassIconButton(
                                         icon = ImageVector.vectorResource(R.drawable.ic_danmu),
                                         contentDescription = if (state.danmakuEnabled) "关闭弹幕" else "开启弹幕",
@@ -365,7 +385,7 @@ internal fun PlayingScreen(
         }
 
         AnimatedVisibility(
-            visible = state.seekPreviewPositionMs != null && !state.hudVisible,
+            visible = !state.isLive && state.seekPreviewPositionMs != null && !state.hudVisible,
             enter = fadeIn(tween(160)) + slideInVertically(tween(180)) { it / 2 },
             exit = fadeOut(tween(140)) + slideOutVertically(tween(160)) { it / 3 },
             modifier = Modifier
@@ -496,13 +516,16 @@ private const val TOUCH_SWIPE_THRESHOLD_PX = 36f
 private const val TOUCH_SEEK_REPEAT_DELAY_MS = 250L
 
 /**
- * 为触摸设备提供与遥控器一致的播放控制：轻触等效于确认，横滑等效于左右键。
+ * 为触摸设备提供与遥控器一致的播放控制：轻触唤出/确认 Hub，横滑等效于左右键。
  *
  * 识别到横滑后会持续重复同一方向的进度调整，直到手指抬起；步长交给
  * [PlaybackSeekAccelerator] 统一计算，因此触摸长按和遥控器长按遵循同一加速曲线。
+ * 直播等不支持定位的内容传入 [seekEnabled] = false，此时横滑不触发进度调整，
+ * 但轻触仍会唤出 Hub。
  */
 private fun Modifier.playbackTouchControls(
     enabled: Boolean,
+    seekEnabled: Boolean,
     isSeeking: () -> Boolean,
     seekAccelerator: PlaybackSeekAccelerator,
     onPreviewSeekBy: (Long) -> Unit,
@@ -511,7 +534,7 @@ private fun Modifier.playbackTouchControls(
 ): Modifier = if (!enabled) {
     this
 } else {
-    pointerInput(seekAccelerator) {
+    pointerInput(seekAccelerator, seekEnabled) {
         coroutineScope {
             awaitEachGesture {
                 val down = awaitFirstDown()
@@ -540,7 +563,8 @@ private fun Modifier.playbackTouchControls(
                         ) {
                             movedBeyondTapThreshold = true
                         }
-                        if (direction == null &&
+                        if (seekEnabled &&
+                            direction == null &&
                             kotlin.math.abs(horizontalDistance) >= TOUCH_SWIPE_THRESHOLD_PX &&
                             kotlin.math.abs(horizontalDistance) > kotlin.math.abs(verticalDistance)
                         ) {

@@ -15,7 +15,7 @@ enum class TvDestination { HOME, SETTINGS }
 enum class SettingsPage { ROOT, UPDATE, UPDATE_NOTES }
 
 /** 表示播放控制面板的层级。 */
-enum class PanelKind { ROOT, QUALITY, AUDIO, SPEED, DANMAKU }
+enum class PanelKind { ROOT, QUALITY, AUDIO, SPEED, DANMAKU, LIVE_QUALITY }
 
 /** 播放器支持的标准倍速档位与显示格式。 */
 object PlaybackSpeed {
@@ -83,6 +83,17 @@ data class TrackOption(
     val label: String,
     val detail: String,
     val codecid: Int,
+)
+
+/**
+ * 描述一个可选的直播画质档位。
+ *
+ * @property qn 直播画质数值标识。
+ * @property label 面向用户展示的名称，例如“原画”。
+ */
+data class LiveQualityOption(
+    val qn: Int,
+    val label: String,
 )
 
 /**
@@ -169,6 +180,16 @@ data class TvUiState(
     val cid: Long = 0L,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
+    /** 当前内容是否为直播。 */
+    val isLive: Boolean = false,
+    /** 当前直播线路容器，如 fmp4 或 flv。 */
+    val liveFormat: String = "",
+    /** 当前直播线路 CDN 主机标签。 */
+    val liveCdn: String = "",
+    /** 当前线路之外的备用直播源数量。 */
+    val liveBackupCount: Int = 0,
+    /** 直播可手动切换的画质档位列表。 */
+    val liveQualities: List<LiveQualityOption> = emptyList(),
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val seekPreviewPositionMs: Long? = null,

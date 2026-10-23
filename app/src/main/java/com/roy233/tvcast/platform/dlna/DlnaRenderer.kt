@@ -64,6 +64,8 @@ class DlnaRenderer(
         fun onStop()
         /** 收到跳转命令。 */
         fun onSeek(positionMs: Long)
+        /** 当前媒体是否支持定位。直播等不可定位媒体返回 false。 */
+        fun isSeekable(): Boolean
         /** 收到音量设置命令。 */
         fun onSetVolume(volume: Int)
         /** 返回当前播放位置，单位为毫秒。 */
@@ -494,6 +496,10 @@ class DlnaRenderer(
                 soapOk(req.service, req.action)
             }
             "Seek" -> {
+                if (!runCatching { listener.isSeekable() }.getOrDefault(false)) {
+                    LogHub.w(TAG, "Seek rejected: current media is not seekable")
+                    return soapFault(req.service, 710, "Seek mode is not supported")
+                }
                 val target = req.args["Target"].orEmpty()
                 val ms = DlnaTime.parse(target)
                 LogHub.i(TAG, "Seek $target -> ${ms}ms")
@@ -553,7 +559,15 @@ class DlnaRenderer(
                 )
             )
             "GetCurrentTransportActions" -> soapOk(
-                req.service, req.action, listOf("Actions" to "Play,Pause,Stop,Seek")
+                req.service,
+                req.action,
+                listOf(
+                    "Actions" to if (runCatching { listener.isSeekable() }.getOrDefault(false)) {
+                        "Play,Pause,Stop,Seek"
+                    } else {
+                        "Play,Pause,Stop"
+                    },
+                ),
             )
             "SetPlayMode", "Next", "Previous" -> soapOk(req.service, req.action)
             "GetVolume" -> soapOk(

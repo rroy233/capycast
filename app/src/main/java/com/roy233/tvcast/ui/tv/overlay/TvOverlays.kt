@@ -264,6 +264,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                 PanelKind.AUDIO -> "音轨"
                                 PanelKind.SPEED -> "播放速度"
                                 PanelKind.DANMAKU -> "弹幕设置"
+                                PanelKind.LIVE_QUALITY -> "直播画质"
                             },
                             style = TvType.section,
                             modifier = Modifier.weight(1f),
@@ -286,39 +287,68 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                     ) {
                         when (panel) {
                             PanelKind.ROOT -> {
-                                FocusableRow(
-                                    title = "清晰度",
-                                    value = state.qualityLabel.ifBlank { "自动" },
-                                    onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
-                                    focusRequester = firstFocus,
-                                )
-                                FocusableRow(
-                                    title = "音轨",
-                                    value = state.audioLabel.ifBlank { "自动" },
-                                    onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
-                                )
-                                FocusableRow(
-                                    title = "播放速度",
-                                    value = PlaybackSpeed.label(state.playbackSpeed),
-                                    onClick = { actions.onOpenPanel(PanelKind.SPEED) },
-                                )
-                                FocusableRow(
-                                    title = "弹幕设置",
-                                    value = if (!state.danmakuEnabled) {
-                                        "已关闭"
-                                    } else {
-                                        aiShieldLabel(state.danmakuAiShield)
-                                    },
-                                    onClick = { actions.onOpenPanel(PanelKind.DANMAKU) },
-                                )
-                                BasicText(
-                                    text = "aid ${state.aid} · cid ${state.cid}",
-                                    style = TvType.caption.copy(
-                                        color = TvColors.textTertiary,
-                                        fontSize = 15.sp,
-                                    ),
-                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                                )
+                                if (state.isLive) {
+                                    FocusableRow(
+                                        title = "直播画质",
+                                        value = state.qualityLabel.ifBlank { "自动" },
+                                        onClick = { actions.onOpenPanel(PanelKind.LIVE_QUALITY) },
+                                        focusRequester = firstFocus,
+                                    )
+                                    FocusableRow(
+                                        title = "弹幕",
+                                        value = if (state.danmakuEnabled) "开" else "关",
+                                        selected = state.danmakuEnabled,
+                                        onClick = actions.onToggleDanmaku,
+                                    )
+                                } else {
+                                    FocusableRow(
+                                        title = "清晰度",
+                                        value = state.qualityLabel.ifBlank { "自动" },
+                                        onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
+                                        focusRequester = firstFocus,
+                                    )
+                                    FocusableRow(
+                                        title = "音轨",
+                                        value = state.audioLabel.ifBlank { "自动" },
+                                        onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
+                                    )
+                                    FocusableRow(
+                                        title = "播放速度",
+                                        value = PlaybackSpeed.label(state.playbackSpeed),
+                                        onClick = { actions.onOpenPanel(PanelKind.SPEED) },
+                                    )
+                                    FocusableRow(
+                                        title = "弹幕设置",
+                                        value = if (!state.danmakuEnabled) {
+                                            "已关闭"
+                                        } else {
+                                            aiShieldLabel(state.danmakuAiShield)
+                                        },
+                                        onClick = { actions.onOpenPanel(PanelKind.DANMAKU) },
+                                    )
+                                }
+                                if (!state.isLive) {
+                                    BasicText(
+                                        text = "aid ${state.aid} · cid ${state.cid}",
+                                        style = TvType.caption.copy(
+                                            color = TvColors.textTertiary,
+                                            fontSize = 15.sp,
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                                    )
+                                }
+                            }
+
+                            PanelKind.LIVE_QUALITY -> {
+                                state.liveQualities.forEachIndexed { index, option ->
+                                    FocusableRow(
+                                        title = option.label,
+                                        value = if (option.qn == state.selectedQn) "当前" else null,
+                                        selected = option.qn == state.selectedQn,
+                                        onClick = { actions.onSelectQuality(option.qn) },
+                                        focusRequester = if (index == 0) firstFocus else null,
+                                    )
+                                }
                             }
 
                             PanelKind.QUALITY -> {

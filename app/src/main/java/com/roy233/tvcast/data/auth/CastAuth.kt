@@ -142,15 +142,24 @@ object CastAuth {
 
     /** 按排序后的查询参数和应用密钥构造签名请求体。 */
     private fun signedBody(extra: Map<String, String>, ctx: Context): FormBody {
+        val params = signedParams(extra, ctx)
+        val b = FormBody.Builder()
+        params.forEach { (k, v) -> b.add(k, v) }
+        return b.build()
+    }
+
+    /**
+     * 构造官方 TV API 使用的公共参数和签名，供需要 GET 查询串的电视接口复用。
+     * 返回值包含签名，但调用方必须确保日志只记录脱敏后的 URL。
+     */
+    fun signedParams(extra: Map<String, String>, ctx: Context): Map<String, String> {
         val params = commonParams(ctx).apply { putAll(extra) }
         params["ts"] = (System.currentTimeMillis() / 1000L).toString()
         val query = params.toSortedMap().entries.joinToString("&") {
             "${encode(it.key)}=${encode(it.value)}"
         }
         params["sign"] = md5(query + APPSEC)
-        val b = FormBody.Builder()
-        params.forEach { (k, v) -> b.add(k, v) }
-        return b.build()
+        return params
     }
 
     /** 向 Passport 接口发送表单请求并解析 JSON 响应。 */

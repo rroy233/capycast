@@ -36,6 +36,15 @@ class VlcPlayerEngine(
     private val onEvent: (MediaPlayer.Event) -> Unit,
 ) {
 
+    /** 直播卡顿检测使用的播放时钟与解码/读取计数。 */
+    data class LiveProgressSnapshot(
+        val positionMs: Long,
+        val readBytes: Long,
+        val demuxReadBytes: Long,
+        val decodedVideoFrames: Long,
+        val displayedPictures: Long,
+    )
+
     /** 应用上下文。 */
     private val appContext = context.applicationContext
     /** 用于执行播放监控任务的主线程处理器。 */
@@ -133,6 +142,19 @@ class VlcPlayerEngine(
         return openOrWaitForSurface(request, "open")
     }
 
+    /** 读取直播播放时钟和 libVLC 统计计数；媒体时钟为零时由计数判断是否仍在前进。 */
+    fun liveProgressSnapshot(): LiveProgressSnapshot {
+        monitor.sampleStats(force = false)
+        val stats = state.lastStats
+        return LiveProgressSnapshot(
+            positionMs = runCatching { player.time }.getOrDefault(-1L),
+            readBytes = stats?.optLong("readBytes", -1L) ?: -1L,
+            demuxReadBytes = stats?.optLong("demuxReadBytes", -1L) ?: -1L,
+            decodedVideoFrames = stats?.optLong("decodedVideo", -1L) ?: -1L,
+            displayedPictures = stats?.optLong("displayedPictures", -1L) ?: -1L,
+        )
+    }
+
     /**
      * 在视频布局拥有有效尺寸后打开媒体。Surface 尚未就绪时保留请求并在布局回调中重试。
      */
@@ -166,6 +188,7 @@ class VlcPlayerEngine(
         val startedAt = SystemClock.elapsedRealtime()
         monitor.stop()
         state.reset(startedAt)
+        state.currentIsLive = request.info.isLive
         var createdMedia: Media? = null
         return try {
             PlaybackDiagnostics.ensureSession("player-open")
@@ -191,7 +214,17 @@ class VlcPlayerEngine(
             monitor.start()
             true
         } catch (t: Throwable) {
-            LogHub.e(TAG, "open failed: ${LogRedaction.reason(t)}", t, stack = true)
+            val reason = if (request.info.isLive) {
+                t.javaClass.simpleName
+            } else {
+                LogRedaction.reason(t)
+            }
+            LogHub.e(
+                TAG,
+                "open failed: $reason",
+                t.takeUnless { request.info.isLive },
+                stack = !request.info.isLive,
+            )
             runCatching { player.stop() }
             val assigned = createdMedia != null && state.currentMedia === createdMedia
             state.currentMedia = null
@@ -202,7 +235,7 @@ class VlcPlayerEngine(
             PlaybackDiagnostics.fail(
                 code = "PLAYER_OPEN_FAILED",
                 message = "打开播放器失败",
-                detail = "reason=${LogRedaction.reason(t)} ${reporter.failureSnapshot()}",
+                detail = "reason=$reason ${reporter.failureSnapshot()}",
             )
             reporter.logNativeLogTail("open-failed", 40)
             monitor.stop()
