@@ -14,7 +14,23 @@
   </p>
 </div>
 
+<p align="center">
+  <img src="docs/images/capyCast_hero.webp" alt="B 站手机 App 控制电视播放示意图" width="760">
+</p>
+
 支持从 B 站手机 App 发起投屏；应用内不提供内容浏览、推荐或订阅信息流，适合家庭、宿舍、教室等场景。
+
+## 界面展示
+
+| 主页 | 继续投屏 |
+| --- | --- |
+| ![CapyCast 主页](docs/images/screenshot-home.webp) | ![CapyCast 继续投屏页](docs/images/screenshot-resume.webp) |
+| 极简纯净、无广告，打开即用。 | 继续投屏可随时关闭，播放记录由你掌控。 |
+
+| 视频播放 | 清晰度选择 |
+| --- | --- |
+| ![CapyCast 视频播放页](docs/images/screenshot-playing.webp) | ![CapyCast 清晰度选择](docs/images/screenshot-resolution.webp) |
+| 流畅播放，弹幕陪伴。 | 支持账号权益范围内的最高画质。 |
 
 
 
