@@ -15,6 +15,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.media3.common.PlaybackException
+import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.PlaybackSpeed
 import com.roy233.tvcast.ui.model.RecentCast
@@ -61,6 +63,7 @@ import kotlinx.coroutines.withContext
 import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
 import com.roy233.tvcast.platform.player.VlcPlayerEngine
+import com.roy233.tvcast.platform.player.DolbyVisionPlayerEngine
 import master.flame.danmaku.ui.widget.DanmakuView
 
 /**
@@ -74,8 +77,14 @@ class MainActivity : ComponentActivity() {
     private lateinit var playerEngine: VlcPlayerEngine
     /** VLC 播放器实例。 */
     private val player: MediaPlayer get() = playerEngine.player
+    /** 当前活跃的播放后端；HDR/SDR 使用 VLC，杜比视界使用 Media3。 */
+    private var playbackBackend = PlaybackBackend.VLC
+    /** 杜比视界播放器按需创建，避免普通播放增加额外资源占用。 */
+    private var dolbyVisionPlayer: DolbyVisionPlayerEngine? = null
     /** 视频渲染布局。 */
     private lateinit var videoLayout: VLCVideoLayout
+    /** Media3 使用的 SurfaceView 容器，仅杜比视界会显示。 */
+    private lateinit var dolbyVisionPlayerView: PlayerView
     /** 弹幕渲染视图。 */
     private lateinit var danmakuView: DanmakuView
     /** 弹幕会话控制器。 */
@@ -292,7 +301,7 @@ class MainActivity : ComponentActivity() {
         override fun onPlay() {
             pendingPause = false
             if (::playerEngine.isInitialized) {
-                playerEngine.setPaused(false, "dlna-play")
+                setPlayerPaused(false, "dlna-play")
             } else {
                 LogHub.w(TAG, "dlna play ignored: player engine unavailable")
             }
@@ -303,7 +312,7 @@ class MainActivity : ComponentActivity() {
         override fun onPause() {
             pendingPause = true
             if (::playerEngine.isInitialized) {
-                playerEngine.setPaused(true, "dlna-pause")
+                setPlayerPaused(true, "dlna-pause")
             } else {
                 LogHub.w(TAG, "dlna pause ignored: player engine unavailable")
             }
@@ -314,7 +323,7 @@ class MainActivity : ComponentActivity() {
         override fun onStop() {
             pendingPause = false
             if (::playerEngine.isInitialized) {
-                playerEngine.stopPlayback("dlna-stop")
+                stopActivePlayback("dlna-stop")
             } else {
                 LogHub.w(TAG, "dlna stop ignored: player engine unavailable")
             }
@@ -346,7 +355,7 @@ class MainActivity : ComponentActivity() {
         /** 处理远端跳转命令。 */
         override fun onSeek(positionMs: Long) {
             if (::playerEngine.isInitialized) {
-                playerEngine.seekTo(positionMs, "dlna-seek")
+                seekPlayer(positionMs, "dlna-seek")
             } else {
                 LogHub.w(TAG, "dlna seek ignored: player engine unavailable")
             }
@@ -365,7 +374,7 @@ class MainActivity : ComponentActivity() {
         override fun onSetVolume(volume: Int) {
             val v = volume.coerceIn(0, 100)
             if (::playerEngine.isInitialized) {
-                playerEngine.setPlayerVolume(v, "dlna-volume")
+                setPlayerVolume(v, "dlna-volume")
             } else {
                 LogHub.w(TAG, "dlna volume ignored: player engine unavailable")
             }
@@ -374,19 +383,19 @@ class MainActivity : ComponentActivity() {
 
         /** 返回播放器当前播放位置。 */
         override fun positionMs(): Long =
-            runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(0L)
+            playerPositionMs()
 
         /** 返回播放器当前媒体时长。 */
         override fun durationMs(): Long =
-            runCatching { player.length.coerceAtLeast(0L) }.getOrDefault(0L)
+            playerDurationMs()
 
         /** 返回播放器当前是否正在播放。 */
         override fun isPlaying(): Boolean =
-            runCatching { player.isPlaying }.getOrDefault(false)
+            playerIsPlaying()
 
         /** 返回播放器当前音量。 */
         override fun volume(): Int =
-            runCatching { player.volume }.getOrDefault(50)
+            playerVolume()
     }
 
     /** 初始化播放器、投屏服务、界面和账号状态。 */
@@ -412,6 +421,7 @@ class MainActivity : ComponentActivity() {
         })
 
         videoLayout = findViewById(R.id.videoLayout)
+        dolbyVisionPlayerView = findViewById(R.id.dolbyVisionPlayerView)
         danmakuView = findViewById(R.id.danmakuView)
         danmakuSettings = danmakuPreferences.load()
         composeUi = findViewById(R.id.composeUi)
@@ -488,8 +498,110 @@ class MainActivity : ComponentActivity() {
         updateCoordinator.checkAutomaticallyOnLaunch()
     }
 
+    /** 按需创建杜比视界播放后端。 */
+    private fun dolbyVisionEngine(): DolbyVisionPlayerEngine =
+        dolbyVisionPlayer ?: DolbyVisionPlayerEngine(
+            context = this,
+            playerView = dolbyVisionPlayerView,
+            events = object : DolbyVisionPlayerEngine.Events {
+                override fun onPlaying() = handleDolbyVisionPlaying()
+                override fun onPaused() = handleDolbyVisionPaused()
+                override fun onBuffering(buffering: Boolean) = handleDolbyVisionBuffering(buffering)
+                override fun onEnded() = handleDolbyVisionEnded()
+                override fun onError(error: PlaybackException) = handleDolbyVisionError(error)
+                override fun onVideoSizeChanged(width: Int, height: Int) {
+                    if (playbackBackend == PlaybackBackend.MEDIA3) {
+                        videoWidth = width
+                        videoHeight = height
+                        ui = ui.copy(videoWidth = width, videoHeight = height)
+                        layoutDanmaku()
+                    }
+                }
+            },
+        ).also { dolbyVisionPlayer = it }
+
+    /** Media3 的状态回调映射为现有 UI 与弹幕状态机。 */
+    private fun handleDolbyVisionPlaying() {
+        if (playbackBackend != PlaybackBackend.MEDIA3) return
+        val seek = pendingSeekMs
+        pendingSeekMs = 0L
+        ui = ui.copy(
+            mode = TvMode.PLAYING,
+            isPlaying = true,
+            isBuffering = false,
+            positionMs = if (seek > 0L) seek else playerPositionMs(),
+            durationMs = playerDurationMs().takeIf { it > 0L } ?: ui.durationMs,
+        )
+        if (::danmakuController.isInitialized) {
+            val position = if (seek > 0L) seek else playerPositionMs()
+            danmakuController.onPlaying(position)
+            if (seek > 0L) danmakuController.onSeek(seek)
+        }
+    }
+
+    private fun handleDolbyVisionPaused() {
+        if (playbackBackend != PlaybackBackend.MEDIA3) return
+        ui = ui.copy(isPlaying = false)
+        if (::danmakuController.isInitialized) danmakuController.onPaused(playerPositionMs())
+    }
+
+    private fun handleDolbyVisionBuffering(buffering: Boolean) {
+        if (playbackBackend != PlaybackBackend.MEDIA3) return
+        ui = ui.copy(isBuffering = buffering)
+        if (::danmakuController.isInitialized) {
+            danmakuController.onBuffering(buffering, playerPositionMs())
+        }
+    }
+
+    private fun handleDolbyVisionEnded() {
+        if (playbackBackend != PlaybackBackend.MEDIA3) return
+        castActive = false
+        current = null
+        if (::danmakuController.isInitialized) danmakuController.close()
+        ui = ui.copy(
+            mode = TvMode.IDLE,
+            destination = TvDestination.HOME,
+            sidebarVisible = true,
+            castTitle = "",
+            qualityLabel = "",
+            qualityDetail = "",
+            qualitySource = "",
+            audioLabel = "",
+            isPlaying = false,
+            isBuffering = false,
+            positionMs = 0,
+            durationMs = 0,
+            hudVisible = false,
+            tracks = emptyList(),
+            audios = emptyList(),
+            toast = "播放结束",
+            showContinue = ui.rememberPlaybackContent,
+        )
+    }
+
+    private fun handleDolbyVisionError(error: PlaybackException) {
+        if (playbackBackend != PlaybackBackend.MEDIA3) return
+        val info = current
+        lastErrorRetry = info?.let { currentInfo -> { play(currentInfo, playerPositionMs()) } }
+        LogHub.e(TAG, "Media3 Dolby Vision failed: ${LogRedaction.reason(error)}", error)
+        PlaybackDiagnostics.fail(
+            code = "DOLBY_VISION_PLAYBACK_FAILED",
+            message = "杜比视界播放失败",
+            detail = "reason=${LogRedaction.reason(error)}",
+        )
+        showError(
+            title = "杜比视界播放失败",
+            message = "当前设备、系统或 HDMI 链路无法播放此杜比视界码流。",
+            code = "DOLBY_VISION_PLAYBACK_FAILED",
+            canRetry = info != null,
+            keepVideo = true,
+        )
+        if (::danmakuController.isInitialized) danmakuController.close()
+    }
+
     /** 将 VLC 播放器事件转换为界面状态，并记录关键转换。 */
     private fun handlePlayerEvent(event: MediaPlayer.Event) {
+        if (playbackBackend != PlaybackBackend.VLC) return
         when (event.type) {
             MediaPlayer.Event.Playing -> {
                 val seek = pendingSeekMs
@@ -505,7 +617,7 @@ class MainActivity : ComponentActivity() {
                     if (seek > 0) {
                         playerEngine.seekTo(seek, "playing-apply-seek")
                     }
-                    val duration = runCatching { player.length }.getOrDefault(0L)
+                    val duration = playerDurationMs()
                     if (duration > 0) {
                         ui = ui.copy(durationMs = duration)
                     }
@@ -514,7 +626,7 @@ class MainActivity : ComponentActivity() {
                         val position = if (seek > 0) {
                             seek
                         } else {
-                            runCatching { player.time }.getOrDefault(ui.positionMs)
+                            playerPositionMs()
                         }
                         danmakuController.onPlaying(position)
                         if (seek > 0) danmakuController.onSeek(seek)
@@ -528,7 +640,7 @@ class MainActivity : ComponentActivity() {
                     ui = ui.copy(isPlaying = false)
                     if (::danmakuController.isInitialized) {
                         danmakuController.onPaused(
-                            runCatching { player.time }.getOrDefault(ui.positionMs),
+                            playerPositionMs(),
                         )
                     }
                 }
@@ -577,7 +689,7 @@ class MainActivity : ComponentActivity() {
                 val info = current
                 if (info != null) {
                     lastErrorRetry = {
-                        play(info, runCatching { player.time }.getOrDefault(0L))
+                        play(info, playerPositionMs())
                     }
                 }
                 showError(
@@ -597,7 +709,7 @@ class MainActivity : ComponentActivity() {
                     if (::danmakuController.isInitialized) {
                         danmakuController.onBuffering(
                             buffering,
-                            runCatching { player.time }.getOrDefault(ui.positionMs),
+                            playerPositionMs(),
                         )
                     }
                 }
@@ -974,7 +1086,26 @@ class MainActivity : ComponentActivity() {
         )
         addRecent(info)
 
-        val started = playerEngine.open(info, seekToMs)
+        val started = if (info.video.isDolbyVision) {
+            // 先切换状态再停止 VLC，忽略旧播放器随后送达的 Stopped 事件。
+            playbackBackend = PlaybackBackend.MEDIA3
+            playerEngine.stopPlayback("switch-to-media3-dolby-vision")
+            videoLayout.visibility = View.GONE
+            dolbyVisionPlayerView.visibility = View.VISIBLE
+            runCatching {
+                dolbyVisionEngine().open(info, seekToMs)
+                true
+            }.onFailure { error ->
+                LogHub.e(TAG, "open Dolby Vision Media3 failed", error)
+            }.getOrDefault(false)
+        } else {
+            // Media3 的 Surface 必须先隐藏，避免两个视频输出竞争同一窗口合成层。
+            dolbyVisionPlayer?.stop()
+            playbackBackend = PlaybackBackend.VLC
+            dolbyVisionPlayerView.visibility = View.GONE
+            videoLayout.visibility = View.VISIBLE
+            playerEngine.open(info, seekToMs)
+        }
         if (!started) {
             lastErrorRetry = { play(info, seekToMs) }
             showError(
@@ -993,11 +1124,11 @@ class MainActivity : ComponentActivity() {
             danmakuController.applySettings(danmakuSettings)
             layoutDanmaku()
         }
-        playerEngine.setPlaybackRate(ui.playbackSpeed, "play-restore-rate")
+        setPlayerPlaybackRate(ui.playbackSpeed, "play-restore-rate")
 
         if (pendingPause) {
             pendingPause = false
-            playerEngine.setPaused(true, "pending-pause")
+            setPlayerPaused(true, "pending-pause")
             ui = ui.copy(isPlaying = false)
         }
         LogHub.setPlay(describe(info))
@@ -1019,7 +1150,7 @@ class MainActivity : ComponentActivity() {
             )
             return
         }
-        val position = runCatching { player.time }.getOrDefault(ui.positionMs)
+        val position = playerPositionMs()
         LogHub.i(
             TAG,
             "switchQuality qn=$qn codec=${track.codecid} ${track.width}x${track.height} " +
@@ -1053,7 +1184,7 @@ class MainActivity : ComponentActivity() {
             )
             return
         }
-        val position = runCatching { player.time }.getOrDefault(ui.positionMs)
+        val position = playerPositionMs()
         LogHub.i(
             TAG,
             "switchAudio id=$id host=${LogRedaction.host(track.url)} at=${position}ms",
@@ -1079,10 +1210,10 @@ class MainActivity : ComponentActivity() {
             LogHub.d(TAG, "togglePlayPause ignored: mode=${ui.mode}")
             return
         }
-        val playing = runCatching { player.isPlaying }.getOrDefault(false)
-        playerEngine.setPaused(playing, "remote-toggle")
+        val playing = playerIsPlaying()
+        setPlayerPaused(playing, "remote-toggle")
         ui = ui.copy(
-            isPlaying = runCatching { player.isPlaying }.getOrDefault(ui.isPlaying),
+            isPlaying = playerIsPlaying(),
             hudVisible = true,
         )
     }
@@ -1093,14 +1224,14 @@ class MainActivity : ComponentActivity() {
             LogHub.w(TAG, "seekBy ignored: player engine unavailable")
             return
         }
-        val length = runCatching { player.length }.getOrDefault(0L)
+        val length = playerDurationMs()
         val max = if (length > 0) length else Long.MAX_VALUE
-        val currentPosition = runCatching { player.time }.getOrDefault(ui.positionMs)
+        val currentPosition = playerPositionMs()
         val target = (currentPosition + ms).coerceIn(0L, max)
         if (length <= 0) {
             LogHub.w(TAG, "seekBy with unknown length; target=$target ms")
         }
-        playerEngine.seekTo(target, "remote-seek")
+        seekPlayer(target, "remote-seek")
         if (::danmakuController.isInitialized) {
             danmakuController.onSeek(target)
         }
@@ -1116,8 +1247,7 @@ class MainActivity : ComponentActivity() {
     private fun previewSeekBy(ms: Long) {
         if (!::playerEngine.isInitialized || ui.mode != TvMode.PLAYING) return
 
-        val duration = runCatching { player.length }
-            .getOrDefault(ui.durationMs)
+        val duration = playerDurationMs()
             .takeIf { it > 0L }
             ?: ui.durationMs
         if (duration <= 0L) {
@@ -1125,9 +1255,9 @@ class MainActivity : ComponentActivity() {
             return
         }
         val basePosition = ui.seekPreviewPositionMs
-            ?: runCatching { player.time }.getOrDefault(ui.positionMs)
+            ?: playerPositionMs()
         val target = (basePosition + ms).coerceIn(0L, duration)
-        playerEngine.seekTo(target, "remote-seek-preview")
+        seekPlayer(target, "remote-seek-preview")
         if (::danmakuController.isInitialized) {
             danmakuController.onSeek(target)
         }
@@ -1154,7 +1284,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         val target = PlaybackSpeed.normalize(rate)
-        val applied = playerEngine.setPlaybackRate(target, "remote-speed")
+        val applied = setPlayerPlaybackRate(target, "remote-speed")
         if (::danmakuController.isInitialized) {
             danmakuController.onPlaybackRateChanged(applied)
         }
@@ -1223,6 +1353,7 @@ class MainActivity : ComponentActivity() {
 
     /** 从播放器读取视频尺寸，变化时重新摆放弹幕视图。 */
     private fun refreshVideoSize() {
+        if (playbackBackend == PlaybackBackend.MEDIA3) return
         if (!::playerEngine.isInitialized) return
         val size = playerEngine.videoSize() ?: return
         if (size.first == videoWidth && size.second == videoHeight) return
@@ -1239,7 +1370,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         val v = volume.coerceIn(0, 100)
-        playerEngine.setPlayerVolume(v, "remote-volume")
+        setPlayerVolume(v, "remote-volume")
         ui = ui.copy(volume = v, hudVisible = true)
     }
 
@@ -1273,7 +1404,7 @@ class MainActivity : ComponentActivity() {
     private fun dismissError() {
         LogHub.i(TAG, "dismiss error; current=${current != null} castActive=$castActive")
         if (::playerEngine.isInitialized) {
-            playerEngine.stopPlayback("dismiss-error")
+            stopActivePlayback("dismiss-error")
         } else {
             LogHub.w(TAG, "dismiss error without player engine")
         }
@@ -1312,7 +1443,7 @@ class MainActivity : ComponentActivity() {
         pendingPause = false
         pendingSeekMs = 0L
         if (::playerEngine.isInitialized) {
-            playerEngine.stopPlayback("user-stop")
+            stopActivePlayback("user-stop")
         } else {
             LogHub.w(TAG, "stopCasting without player engine")
         }
@@ -1376,7 +1507,7 @@ class MainActivity : ComponentActivity() {
         )
         if (!keepVideo) {
             if (::playerEngine.isInitialized) {
-                playerEngine.stopPlayback("show-error:$code")
+                stopActivePlayback("show-error:$code")
             } else {
                 LogHub.w(TAG, "showError cannot stop playback: player engine unavailable")
             }
@@ -1409,6 +1540,58 @@ class MainActivity : ComponentActivity() {
     // ------------------------------------------------------------------ //
     // helpers
     // ------------------------------------------------------------------ //
+    /** 读取当前后端的统一播放状态，供 DLNA、弹幕和界面轮询使用。 */
+    private fun playerPositionMs(): Long = when (playbackBackend) {
+        PlaybackBackend.MEDIA3 -> dolbyVisionPlayer?.positionMs() ?: 0L
+        PlaybackBackend.VLC -> runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(0L)
+    }
+
+    private fun playerDurationMs(): Long = when (playbackBackend) {
+        PlaybackBackend.MEDIA3 -> dolbyVisionPlayer?.durationMs() ?: 0L
+        PlaybackBackend.VLC -> runCatching { player.length.coerceAtLeast(0L) }.getOrDefault(0L)
+    }
+
+    private fun playerIsPlaying(): Boolean = when (playbackBackend) {
+        PlaybackBackend.MEDIA3 -> dolbyVisionPlayer?.isPlaying() ?: false
+        PlaybackBackend.VLC -> runCatching { player.isPlaying }.getOrDefault(false)
+    }
+
+    private fun playerVolume(): Int = when (playbackBackend) {
+        PlaybackBackend.MEDIA3 -> dolbyVisionPlayer?.volume() ?: ui.volume
+        PlaybackBackend.VLC -> runCatching { player.volume }.getOrDefault(ui.volume)
+    }
+
+    private fun seekPlayer(positionMs: Long, reason: String): Long = when (playbackBackend) {
+        PlaybackBackend.MEDIA3 -> dolbyVisionPlayer?.seekTo(positionMs) ?: positionMs
+        PlaybackBackend.VLC -> playerEngine.seekTo(positionMs, reason)
+    }
+
+    private fun setPlayerPaused(paused: Boolean, reason: String) {
+        when (playbackBackend) {
+            PlaybackBackend.MEDIA3 -> dolbyVisionPlayer?.setPaused(paused)
+            PlaybackBackend.VLC -> playerEngine.setPaused(paused, reason)
+        }
+    }
+
+    private fun setPlayerPlaybackRate(rate: Float, reason: String): Float = when (playbackBackend) {
+        PlaybackBackend.MEDIA3 -> dolbyVisionPlayer?.setPlaybackRate(rate) ?: rate
+        PlaybackBackend.VLC -> playerEngine.setPlaybackRate(rate, reason)
+    }
+
+    private fun setPlayerVolume(volume: Int, reason: String) {
+        when (playbackBackend) {
+            PlaybackBackend.MEDIA3 -> dolbyVisionPlayer?.setVolume(volume)
+            PlaybackBackend.VLC -> playerEngine.setPlayerVolume(volume, reason)
+        }
+    }
+
+    private fun stopActivePlayback(reason: String) {
+        when (playbackBackend) {
+            PlaybackBackend.MEDIA3 -> dolbyVisionPlayer?.stop()
+            PlaybackBackend.VLC -> playerEngine.stopPlayback(reason)
+        }
+    }
+
     /** 启动定时任务以同步播放进度和设备网络信息。 */
     private fun startTicker() {
         tickerJob?.cancel()
@@ -1420,18 +1603,10 @@ class MainActivity : ComponentActivity() {
                 if (::playerEngine.isInitialized &&
                     (ui.mode == TvMode.PLAYING || ui.mode == TvMode.LOADING)
                 ) {
-                    val positionRead = runCatching { player.time }
-                    val lengthRead = runCatching { player.length }
-                    val playingRead = runCatching { player.isPlaying }
-                    val volumeRead = runCatching { player.volume }
-                    positionRead.exceptionOrNull()?.let { logPlayerReadFailure("position", it) }
-                    lengthRead.exceptionOrNull()?.let { logPlayerReadFailure("length", it) }
-                    playingRead.exceptionOrNull()?.let { logPlayerReadFailure("isPlaying", it) }
-                    volumeRead.exceptionOrNull()?.let { logPlayerReadFailure("volume", it) }
-                    val pos = positionRead.getOrDefault(ui.positionMs)
-                    val len = lengthRead.getOrDefault(0L)
-                    val playing = playingRead.getOrDefault(ui.isPlaying)
-                    val volume = volumeRead.getOrDefault(ui.volume)
+                    val pos = playerPositionMs()
+                    val len = playerDurationMs()
+                    val playing = playerIsPlaying()
+                    val volume = playerVolume()
                     ui = ui.copy(
                         positionMs = pos.coerceAtLeast(0L),
                         durationMs = if (len > 0) len else ui.durationMs,
@@ -1489,12 +1664,8 @@ class MainActivity : ComponentActivity() {
         super.onPause()
         LogHub.i(TAG, "activity pause castActive=$castActive mode=${ui.mode}")
         if (!castActive && ::playerEngine.isInitialized) {
-            val playing = runCatching { player.isPlaying }
-            playing.exceptionOrNull()?.let {
-                LogHub.w(TAG, "onPause read failed: ${LogRedaction.reason(it)}")
-            }
-            if (playing.getOrDefault(false)) {
-                playerEngine.setPaused(true, "activity-pause")
+            if (playerIsPlaying()) {
+                setPlayerPaused(true, "activity-pause")
                 ui = ui.copy(isPlaying = false)
             }
         }
@@ -1512,6 +1683,7 @@ class MainActivity : ComponentActivity() {
         tickerJob?.cancel()
         runCatching { if (::danmakuController.isInitialized) danmakuController.release() }
         scope.cancel()
+        runCatching { dolbyVisionPlayer?.release() }
         runCatching { if (::playerEngine.isInitialized) playerEngine.release() }
         LogHub.stop()
     }
@@ -1524,5 +1696,11 @@ class MainActivity : ComponentActivity() {
         /** 是否已经安装全局崩溃记录器。 */
         @Volatile
         private var crashHandlerInstalled = false
+    }
+
+    /** 当前用于输出视频和音频的实际播放后端。 */
+    private enum class PlaybackBackend {
+        VLC,
+        MEDIA3,
     }
 }

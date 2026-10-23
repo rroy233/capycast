@@ -57,6 +57,16 @@ object BiliApi {
         val backup: List<String>,
         /** 主地址是否为 PCDN 地址。 */
         val pcdn: Boolean = false,
+        /** DASH 表示层声明的 MIME 类型，例如 video/mp4 或 audio/mp4。 */
+        val mimeType: String = "",
+        /** RFC 6381 编码字符串；它比 codecid 更适合判断 Main10、DV 等能力。 */
+        val codecs: String = "",
+        /** 服务端或清晰度编号标记该轨道为 HDR。 */
+        val isHdr: Boolean = false,
+        /** 服务端或清晰度编号标记该轨道为杜比视界。 */
+        val isDolbyVision: Boolean = false,
+        /** 音频轨道是否来自 dash.dolby.audio。 */
+        val isDolbyAudio: Boolean = false,
     )
 
     /** 保存一次媒体解析得到的完整播放信息。 */
@@ -103,7 +113,12 @@ object BiliApi {
                     7 -> "H.264"
                     else -> "codec ${v.codecid}"
                 }
-                return "${v.width}x${v.height} · $codec"
+                val dynamicRange = when {
+                    v.isDolbyVision -> " · Dolby Vision"
+                    v.isHdr -> " · HDR"
+                    else -> ""
+                }
+                return "${v.width}x${v.height} · $codec$dynamicRange"
             }
     }
 
@@ -153,7 +168,12 @@ object BiliApi {
             7 -> "H.264"
             else -> "codec ${track.codecid}"
         }
-        return "${track.width}x${track.height} · $codec"
+        val dynamicRange = when {
+            track.isDolbyVision -> " · Dolby Vision"
+            track.isHdr -> " · HDR"
+            else -> ""
+        }
+        return "${track.width}x${track.height} · $codec$dynamicRange"
     }
 
     /**
@@ -422,8 +442,14 @@ object BiliApi {
         if (dash != null) {
             val videos = dash.getAsJsonArray("video")?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
                 ?: emptyList()
-            val audios = dash.getAsJsonArray("audio")?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
+            val baseAudios = dash.getAsJsonArray("audio")
+                ?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
                 ?: emptyList()
+            val dolbyAudios = dash.getAsJsonObject("dolby")
+                ?.getAsJsonArray("audio")
+                ?.map { CdnCandidateSelector.parseTrack(it.asJsonObject, isDolbyAudio = true) }
+                ?: emptyList()
+            val audios = (baseAudios + dolbyAudios).distinctBy { it.url }
             logPlayResponse(play, dash, videos, audios)
             if (videos.isNotEmpty()) {
                 val dashDuration = play.get("duration")?.asLong ?: duration

@@ -1,6 +1,7 @@
 package com.roy233.tvcast.platform.player
 
 import android.content.Context
+import android.media.AudioFormat
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -174,6 +175,7 @@ class VlcPlayerEngine(
             )
             val media = mediaFactory.create(request.info, request.seekToMs)
             createdMedia = media
+            configureDolbyAudioPassthrough(request.info)
             val previous = state.currentMedia
             state.currentMedia = media
             player.media = media
@@ -232,6 +234,30 @@ class VlcPlayerEngine(
         LogHub.i(TAG, "player instance created reason=$reason view=${reporter.viewSize()}")
         PlaybackDiagnostics.event("PlayerInstance", "created reason=$reason view=${reporter.viewSize()}")
         ensureViewsAttached("player-created:$reason")
+    }
+
+    /**
+     * 仅在用户选中 dash.dolby.audio 且 libVLC 确认当前输出可直通时启用数字音频。
+     * 失败时保留普通解码路径，避免电视内置扬声器无声。
+     */
+    private fun configureDolbyAudioPassthrough(info: BiliApi.PlayInfo) {
+        val dolbyAudio = info.audio?.isDolbyAudio == true
+        val available = dolbyAudio && runCatching { player.canDoPassthrough() }.getOrDefault(false)
+        val enabled = runCatching { player.setAudioDigitalOutputEnabled(available) }.getOrDefault(false)
+        if (enabled && available) {
+            runCatching { player.forceAudioDigitalEncodings(intArrayOf(AudioFormat.ENCODING_E_AC3)) }
+                .onFailure { error ->
+                    LogHub.w(TAG, "could not force E-AC-3 passthrough: ${LogRedaction.reason(error)}")
+                }
+        }
+        PlaybackDiagnostics.attribute("audio.dolbyTrack", dolbyAudio.toString())
+        PlaybackDiagnostics.attribute("audio.passthroughRequested", available.toString())
+        PlaybackDiagnostics.attribute("audio.passthroughEnabled", enabled.toString())
+        LogHub.i(
+            TAG,
+            "audio passthrough dolbyTrack=$dolbyAudio available=$available enabled=$enabled " +
+                "codec=${info.audio?.codecs.orEmpty()}",
+        )
     }
 
     /**
