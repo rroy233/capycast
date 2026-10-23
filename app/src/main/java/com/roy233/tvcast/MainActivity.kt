@@ -42,6 +42,7 @@ import com.roy233.tvcast.data.bili.LivePlaybackStallWatchdog
 import com.roy233.tvcast.data.bili.LivePlayUrlResolver
 import com.roy233.tvcast.data.bili.LiveStreamCandidate
 import com.roy233.tvcast.data.bili.RankedLiveSource
+import com.roy233.tvcast.ui.model.LiveQualityOption
 import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
 import com.roy233.tvcast.core.diagnostics.LogHub
@@ -301,7 +302,7 @@ class MainActivity : ComponentActivity() {
             }
         },
         onOpenPanel = { kind ->
-            if (ui.isLive && kind != PanelKind.ROOT) {
+            if (ui.isLive && kind != PanelKind.ROOT && kind != PanelKind.LIVE_QUALITY) {
                 LogHub.i(TAG, "live playback ignored unsupported panel=$kind")
             } else {
                 ui = ui.copy(
@@ -1636,7 +1637,13 @@ class MainActivity : ComponentActivity() {
                 "${switched.target.codecName} firstByte=${switched.firstByteMs ?: -1}ms " +
                 "throughput=${switched.throughputBytesPerSecond ?: 0}Bps",
         )
-        ui = ui.copy(toast = "直播线路已切换：${switched.target.cdnLabel}")
+        ui = ui.copy(
+            toast = if (switched.reason.startsWith("user-quality")) {
+                "已切换至 ${liveQualityLabel(session.stream.quality)}"
+            } else {
+                "已自动切换至更流畅线路"
+            },
+        )
     }
 
     /** 清理直播专属任务和阈值，防止用户停止后触发后台自动重连。 */
@@ -1660,6 +1667,17 @@ class MainActivity : ComponentActivity() {
         150 -> "高清"
         80 -> "流畅"
         else -> "直播 qn=$qn"
+    }
+
+    /** 直播可选画质档位，取服务端公布的可用档位并映射为友好名称。 */
+    private fun liveQualityOptions(session: LiveSession): List<LiveQualityOption> {
+        val available = (session.stream.acceptedQualities + session.stream.quality)
+            .distinct()
+            .sortedDescending()
+        return available.mapNotNull { qn ->
+            val label = liveQualityLabel(qn)
+            if (label.startsWith("直播 qn=")) null else LiveQualityOption(qn = qn, label = label)
+        }
     }
 
     private fun liveProbeOrder(): Comparator<RankedLiveSource> =
@@ -1720,6 +1738,11 @@ class MainActivity : ComponentActivity() {
             liveFormat = info.liveFormat,
             liveCdn = info.liveCdn,
             liveBackupCount = info.liveBackupCount,
+            liveQualities = if (info.isLive) {
+                liveSession?.let { liveQualityOptions(it) } ?: emptyList()
+            } else {
+                emptyList()
+            },
             positionMs = if (info.isLive) 0L else seekToMs.coerceAtLeast(0L),
             durationMs = if (info.isLive) 0L else info.durationSec * 1000,
             selectedQn = info.video.id,
@@ -1811,7 +1834,7 @@ class MainActivity : ComponentActivity() {
     /** 切换当前视频清晰度并从当前位置继续播放。 */
     private fun switchQuality(qn: Int) {
         if (current?.isLive == true) {
-            LogHub.w(TAG, "manual quality switch ignored for live qn=$qn")
+            switchLiveQuality(qn)
             return
         }
         val info = current
@@ -1844,6 +1867,75 @@ class MainActivity : ComponentActivity() {
             qualitySource = "手动",
             toast = "已切换 ${BiliApi.qnLabel(qn)}",
         )
+    }
+
+    /** 按用户选择重新解析并播放指定直播画质。 */
+    private fun switchLiveQuality(qn: Int) {
+        val session = liveSession ?: return
+        if (!castActive) return
+        if (qn == session.stream.quality) {
+            ui = ui.copy(toast = "已是当前画质")
+            return
+        }
+        if (liveSwitchInProgress) return
+        liveSwitchInProgress = true
+        scope.launch {
+            try {
+                val token = authTokenStore.load()
+                    ?: error("TV login expired during live quality switch")
+                val forceAvc = session.active.codecid == 7
+                val resolved = withContext(Dispatchers.IO) {
+                    val live = LivePlayUrlResolver.resolve(
+                        context = applicationContext,
+                        accessKey = token.accessKey,
+                        roomId = session.stream.roomId,
+                        quality = qn,
+                        forceAvc = forceAvc,
+                    )
+                    live to liveCdnCoordinator.rankInitial(live.qualityCandidates)
+                }
+                if (liveSession !== session || !castActive) return@launch
+                if (resolved.second.isEmpty()) error("live quality switch returned no routes")
+                val actual = resolved.first
+                val old = session.active
+                session.stream = actual
+                session.routes = resolved.second.toMutableList()
+                session.attemptedUrls.clear()
+                session.avcFallbackAttempted = forceAvc
+                session.downshiftedQualities.clear()
+                val next = session.routes.firstOrNull { it.candidate.quality == actual.quality }
+                    ?: session.routes.first()
+                PlaybackDiagnostics.event(
+                    "LiveQualitySwitch",
+                    "requested=$qn actual=${actual.quality} " +
+                        "from=${old.cdnLabel}/${old.format}/${old.codecName} " +
+                        "to=${next.candidate.cdnLabel}/${next.candidate.format}/" +
+                        "${next.candidate.codecName}",
+                )
+                LogHub.i(
+                    TAG,
+                    "live quality switch requested=$qn actual=${actual.quality} " +
+                        "selected=${next.candidate.cdnLabel}/${next.candidate.format}/" +
+                        "${next.candidate.codecName}",
+                )
+                if (!switchLiveRoute(next, "user-quality", old)) {
+                    handleLiveRouteOpenFailure("quality-switch-open-failed")
+                }
+            } catch (failure: Throwable) {
+                LogHub.e(
+                    TAG,
+                    "live quality switch failed qn=$qn " +
+                        "error=${failure.javaClass.simpleName}",
+                )
+                PlaybackDiagnostics.event(
+                    "LiveQualitySwitchFailed",
+                    "requested=$qn error=${failure.javaClass.simpleName}",
+                )
+                ui = ui.copy(toast = "画质切换失败")
+            } finally {
+                liveSwitchInProgress = false
+            }
+        }
     }
 
     /** 切换当前音轨并从当前位置继续播放。 */

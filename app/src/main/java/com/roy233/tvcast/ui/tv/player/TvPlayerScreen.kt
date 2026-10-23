@@ -310,10 +310,7 @@ internal fun PlayingScreen(
                                     text = if (state.isLive) {
                                         buildString {
                                             append("直播")
-                                            if (state.qualityDetail.isNotBlank()) append(" · ${state.qualityDetail}")
-                                            if (state.liveFormat.isNotBlank()) append(" · ${state.liveFormat.uppercase()}")
-                                            if (state.liveCdn.isNotBlank()) append(" · ${state.liveCdn}")
-                                            append(" · 备用 ${state.liveBackupCount}")
+                                            if (state.qualityLabel.isNotBlank()) append(" · ${state.qualityLabel}")
                                         }
                                     } else {
                                         "${formatTime(displayedPositionMs)}  /  ${formatTime(state.durationMs)}"
@@ -343,15 +340,17 @@ internal fun PlayingScreen(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    if (!state.isLive) {
-                                        GlassIconButton(
-                                            icon = Icons.Rounded.HighQuality,
-                                            contentDescription = "清晰度 ${state.qualityLabel}",
-                                            onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
-                                            enabled = enabled,
-                                            size = 56.dp,
-                                        )
-                                    }
+                                    GlassIconButton(
+                                        icon = Icons.Rounded.HighQuality,
+                                        contentDescription = if (state.isLive) "直播画质 ${state.qualityLabel}" else "清晰度 ${state.qualityLabel}",
+                                        onClick = {
+                                            actions.onOpenPanel(
+                                                if (state.isLive) PanelKind.LIVE_QUALITY else PanelKind.QUALITY,
+                                            )
+                                        },
+                                        enabled = enabled,
+                                        size = 56.dp,
+                                    )
                                     if (!state.isLive) {
                                         GlassIconButton(
                                             icon = ImageVector.vectorResource(R.drawable.ic_speed),

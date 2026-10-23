@@ -264,6 +264,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                 PanelKind.AUDIO -> "音轨"
                                 PanelKind.SPEED -> "播放速度"
                                 PanelKind.DANMAKU -> "弹幕设置"
+                                PanelKind.LIVE_QUALITY -> "直播画质"
                             },
                             style = TvType.section,
                             modifier = Modifier.weight(1f),
@@ -290,18 +291,8 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                     FocusableRow(
                                         title = "直播画质",
                                         value = state.qualityLabel.ifBlank { "自动" },
-                                        onClick = {},
+                                        onClick = { actions.onOpenPanel(PanelKind.LIVE_QUALITY) },
                                         focusRequester = firstFocus,
-                                    )
-                                    FocusableRow(
-                                        title = "当前线路",
-                                        value = state.liveCdn.ifBlank { "解析中" },
-                                        onClick = {},
-                                    )
-                                    FocusableRow(
-                                        title = "编码 / 格式 / 备用",
-                                        value = "${state.qualityDetail} / ${state.liveFormat.uppercase()} / ${state.liveBackupCount}",
-                                        onClick = {},
                                     )
                                 } else {
                                     FocusableRow(
@@ -330,14 +321,28 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         onClick = { actions.onOpenPanel(PanelKind.DANMAKU) },
                                     )
                                 }
-                                BasicText(
-                                    text = if (state.isLive) "room ${state.cid}" else "aid ${state.aid} · cid ${state.cid}",
-                                    style = TvType.caption.copy(
-                                        color = TvColors.textTertiary,
-                                        fontSize = 15.sp,
-                                    ),
-                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                                )
+                                if (!state.isLive) {
+                                    BasicText(
+                                        text = "aid ${state.aid} · cid ${state.cid}",
+                                        style = TvType.caption.copy(
+                                            color = TvColors.textTertiary,
+                                            fontSize = 15.sp,
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                                    )
+                                }
+                            }
+
+                            PanelKind.LIVE_QUALITY -> {
+                                state.liveQualities.forEachIndexed { index, option ->
+                                    FocusableRow(
+                                        title = option.label,
+                                        value = if (option.qn == state.selectedQn) "当前" else null,
+                                        selected = option.qn == state.selectedQn,
+                                        onClick = { actions.onSelectQuality(option.qn) },
+                                        focusRequester = if (index == 0) firstFocus else null,
+                                    )
+                                }
                             }
 
                             PanelKind.QUALITY -> {
