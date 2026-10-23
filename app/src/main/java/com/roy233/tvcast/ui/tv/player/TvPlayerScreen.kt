@@ -203,7 +203,8 @@ internal fun PlayingScreen(
                 .focusRequester(videoFocus)
                 .focusable(enabled && !state.hudVisible)
                 .playbackTouchControls(
-                    enabled = enabled && !state.hudVisible && !state.isLive,
+                    enabled = enabled && !state.hudVisible,
+                    seekEnabled = !state.isLive,
                     isSeeking = { seekingState.value },
                     seekAccelerator = seekAccelerator,
                     onPreviewSeekBy = { actionsState.value.onPreviewSeekBy(it) },
@@ -518,13 +519,16 @@ private const val TOUCH_SWIPE_THRESHOLD_PX = 36f
 private const val TOUCH_SEEK_REPEAT_DELAY_MS = 250L
 
 /**
- * 为触摸设备提供与遥控器一致的播放控制：轻触等效于确认，横滑等效于左右键。
+ * 为触摸设备提供与遥控器一致的播放控制：轻触唤出/确认 Hub，横滑等效于左右键。
  *
  * 识别到横滑后会持续重复同一方向的进度调整，直到手指抬起；步长交给
  * [PlaybackSeekAccelerator] 统一计算，因此触摸长按和遥控器长按遵循同一加速曲线。
+ * 直播等不支持定位的内容传入 [seekEnabled] = false，此时横滑不触发进度调整，
+ * 但轻触仍会唤出 Hub。
  */
 private fun Modifier.playbackTouchControls(
     enabled: Boolean,
+    seekEnabled: Boolean,
     isSeeking: () -> Boolean,
     seekAccelerator: PlaybackSeekAccelerator,
     onPreviewSeekBy: (Long) -> Unit,
@@ -533,7 +537,7 @@ private fun Modifier.playbackTouchControls(
 ): Modifier = if (!enabled) {
     this
 } else {
-    pointerInput(seekAccelerator) {
+    pointerInput(seekAccelerator, seekEnabled) {
         coroutineScope {
             awaitEachGesture {
                 val down = awaitFirstDown()
@@ -562,7 +566,8 @@ private fun Modifier.playbackTouchControls(
                         ) {
                             movedBeyondTapThreshold = true
                         }
-                        if (direction == null &&
+                        if (seekEnabled &&
+                            direction == null &&
                             kotlin.math.abs(horizontalDistance) >= TOUCH_SWIPE_THRESHOLD_PX &&
                             kotlin.math.abs(horizontalDistance) > kotlin.math.abs(verticalDistance)
                         ) {
