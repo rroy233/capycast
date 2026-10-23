@@ -361,16 +361,14 @@ internal fun PlayingScreen(
                                             size = 56.dp,
                                         )
                                     }
-                                    if (!state.isLive) {
-                                        GlassIconButton(
-                                            icon = ImageVector.vectorResource(R.drawable.ic_danmu),
-                                            contentDescription = if (state.danmakuEnabled) "关闭弹幕" else "开启弹幕",
-                                            onClick = actions.onToggleDanmaku,
-                                            enabled = enabled,
-                                            selected = state.danmakuEnabled,
-                                            size = 56.dp,
-                                        )
-                                    }
+                                    GlassIconButton(
+                                        icon = ImageVector.vectorResource(R.drawable.ic_danmu),
+                                        contentDescription = if (state.danmakuEnabled) "关闭弹幕" else "开启弹幕",
+                                        onClick = actions.onToggleDanmaku,
+                                        enabled = enabled,
+                                        selected = state.danmakuEnabled,
+                                        size = 56.dp,
+                                    )
                                     GlassIconButton(
                                         icon = Icons.Rounded.Settings,
                                         contentDescription = "播放设置",

@@ -52,6 +52,7 @@ import com.roy233.tvcast.core.danmaku.AiShieldLevel
 import com.roy233.tvcast.core.danmaku.DanmakuController
 import com.roy233.tvcast.core.danmaku.DanmakuSettings
 import com.roy233.tvcast.core.danmaku.DfmDanmakuEngine
+import com.roy233.tvcast.core.danmaku.LiveDanmakuController
 import com.roy233.tvcast.core.danmaku.MediaClock
 import com.roy233.tvcast.data.local.DanmakuPreferences
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
@@ -98,8 +99,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var dolbyVisionPlayerView: PlayerView
     /** 弹幕渲染视图。 */
     private lateinit var danmakuView: DanmakuView
+    /** 弹幕渲染引擎，点播与直播共用。 */
+    private lateinit var danmakuEngine: DfmDanmakuEngine
     /** 弹幕会话控制器。 */
     private lateinit var danmakuController: DanmakuController
+    /** 直播弹幕会话控制器。 */
+    private lateinit var liveDanmakuController: LiveDanmakuController
     /** 弹幕媒体时钟。 */
     private val danmakuClock = MediaClock()
     /** 当前弹幕设置。 */
@@ -264,13 +269,9 @@ class MainActivity : ComponentActivity() {
         onConfirmSeek = { confirmPreviewSeek() },
         onSetPlaybackSpeed = { setPlaybackSpeed(it) },
         onToggleDanmaku = {
-            if (ui.isLive) {
-                ui = ui.copy(toast = "直播暂不支持弹幕")
-            } else {
-                val enabled = !danmakuSettings.enabled
-                updateDanmakuSettings(danmakuSettings.copy(enabled = enabled))
-                ui = ui.copy(toast = if (enabled) "弹幕已开启" else "弹幕已关闭")
-            }
+            val enabled = !danmakuSettings.enabled
+            updateDanmakuSettings(danmakuSettings.copy(enabled = enabled))
+            ui = ui.copy(toast = if (enabled) "弹幕已开启" else "弹幕已关闭")
         },
         onSetDanmakuAiShield = {
             updateDanmakuSettings(danmakuSettings.copy(aiShield = it))
@@ -532,9 +533,11 @@ class MainActivity : ComponentActivity() {
             VlcPlayerEngine(this, videoLayout) { event -> handlePlayerEvent(event) }
         }.onSuccess { engine ->
             playerEngine = engine
-            val danmakuEngine = DfmDanmakuEngine(danmakuView, danmakuClock)
+            danmakuEngine = DfmDanmakuEngine(danmakuView, danmakuClock)
             danmakuController = DanmakuController(scope, danmakuEngine, danmakuClock)
+            liveDanmakuController = LiveDanmakuController(this, scope, danmakuEngine, danmakuClock)
             danmakuController.applySettings(danmakuSettings)
+            liveDanmakuController.applySettings(danmakuSettings)
             danmakuView.visibility = if (danmakuSettings.enabled) View.VISIBLE else View.GONE
             videoLayout.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 layoutDanmaku()
@@ -701,7 +704,12 @@ class MainActivity : ComponentActivity() {
                         ui = ui.copy(durationMs = duration)
                     }
                     refreshVideoSize()
-                    if (::danmakuController.isInitialized) {
+                    if (current?.isLive == true) {
+                        if (::liveDanmakuController.isInitialized) liveDanmakuController.onPlaying()
+                        livePlaybackHealth.onPlaying()
+                        liveStallWatchdog.reset()
+                        completeLiveRouteSwitch()
+                    } else if (::danmakuController.isInitialized) {
                         val position = if (seek > 0) {
                             seek
                         } else {
@@ -710,11 +718,6 @@ class MainActivity : ComponentActivity() {
                         danmakuController.onPlaying(position)
                         if (seek > 0) danmakuController.onSeek(seek)
                     }
-                    if (current?.isLive == true) {
-                        livePlaybackHealth.onPlaying()
-                        liveStallWatchdog.reset()
-                        completeLiveRouteSwitch()
-                    }
                 }
             }
 
@@ -722,7 +725,9 @@ class MainActivity : ComponentActivity() {
                 LogHub.d(TAG, "ui paused")
                 runOnUiThread {
                     ui = ui.copy(isPlaying = false)
-                    if (::danmakuController.isInitialized) {
+                    if (current?.isLive == true) {
+                        if (::liveDanmakuController.isInitialized) liveDanmakuController.onPaused()
+                    } else if (::danmakuController.isInitialized) {
                         danmakuController.onPaused(
                             playerPositionMs(),
                         )
@@ -735,6 +740,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     ui = ui.copy(isPlaying = false, isBuffering = false)
                     if (::danmakuController.isInitialized) danmakuController.close()
+                    if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
                 }
             }
 
@@ -745,6 +751,7 @@ class MainActivity : ComponentActivity() {
                 current = null
                 runOnUiThread {
                     if (::danmakuController.isInitialized) danmakuController.close()
+                    if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
                     ui = ui.copy(
                         mode = TvMode.IDLE,
                         destination = TvDestination.HOME,
@@ -793,6 +800,7 @@ class MainActivity : ComponentActivity() {
                     keepVideo = true,
                 )
                 if (::danmakuController.isInitialized) danmakuController.close()
+                if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
             }
 
             MediaPlayer.Event.Buffering -> {
@@ -804,7 +812,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         handleLivePlaybackFailure("two-consecutive-rebuffers")
                     }
-                    if (::danmakuController.isInitialized) {
+                    if (current?.isLive != true && ::danmakuController.isInitialized) {
                         danmakuController.onBuffering(
                             buffering,
                             playerPositionMs(),
@@ -1656,6 +1664,7 @@ class MainActivity : ComponentActivity() {
         pendingLiveRouteSwitch = null
         livePlaybackHealth.reset()
         liveStallWatchdog.reset()
+        if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
         if (session != null) LogHub.i(TAG, "live session cleared room=${session.stream.roomId} reason=$reason")
     }
 
@@ -1678,6 +1687,19 @@ class MainActivity : ComponentActivity() {
             val label = liveQualityLabel(qn)
             if (label.startsWith("直播 qn=")) null else LiveQualityOption(qn = qn, label = label)
         }
+    }
+
+    /** 打开直播弹幕会话；复用登录 Cookie 换取进房 token。 */
+    private fun openLiveDanmaku(roomId: Long) {
+        if (!::liveDanmakuController.isInitialized) return
+        val token = authTokenStore.load()
+        liveDanmakuController.open(
+            roomId = roomId,
+            cookie = token?.cookie.orEmpty(),
+            uid = token?.mid ?: 0L,
+        )
+        liveDanmakuController.applySettings(danmakuSettings)
+        layoutDanmaku()
     }
 
     private fun liveProbeOrder(): Comparator<RankedLiveSource> =
@@ -1807,7 +1829,9 @@ class MainActivity : ComponentActivity() {
         if (::danmakuController.isInitialized) {
             if (info.isLive) {
                 danmakuController.close()
+                openLiveDanmaku(info.cid)
             } else {
+                if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
                 danmakuController.open(info.aid, info.cid, info.durationSec * 1000, seekToMs)
                 danmakuController.onPlaybackRateChanged(ui.playbackSpeed)
                 danmakuController.applySettings(danmakuSettings)
@@ -2085,6 +2109,9 @@ class MainActivity : ComponentActivity() {
         if (::danmakuController.isInitialized) {
             danmakuController.applySettings(newSettings)
         }
+        if (::liveDanmakuController.isInitialized) {
+            liveDanmakuController.applySettings(newSettings)
+        }
         if (::danmakuView.isInitialized) {
             danmakuView.visibility = if (newSettings.enabled) View.VISIBLE else View.GONE
         }
@@ -2122,6 +2149,7 @@ class MainActivity : ComponentActivity() {
         danmakuView.layoutParams = params
         if (::danmakuController.isInitialized) {
             danmakuController.setContentHeight(screenH)
+            if (::liveDanmakuController.isInitialized) liveDanmakuController.setContentHeight(screenH)
             val expectedWidth = screenW
             val expectedHeight = areaH
             danmakuView.post {
@@ -2130,6 +2158,7 @@ class MainActivity : ComponentActivity() {
                 }
                 LogHub.d(TAG, "prepare danmaku viewport=${expectedWidth}x$expectedHeight")
                 danmakuController.prepare()
+                if (::liveDanmakuController.isInitialized) liveDanmakuController.prepare()
             }
         }
     }
@@ -2536,6 +2565,7 @@ class MainActivity : ComponentActivity() {
         resolveJob?.cancel()
         tickerJob?.cancel()
         runCatching { if (::danmakuController.isInitialized) danmakuController.release() }
+        runCatching { if (::liveDanmakuController.isInitialized) liveDanmakuController.release() }
         scope.cancel()
         runCatching { dolbyVisionPlayer?.release() }
         runCatching { if (::playerEngine.isInitialized) playerEngine.release() }

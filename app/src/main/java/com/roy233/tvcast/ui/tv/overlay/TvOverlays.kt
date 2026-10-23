@@ -294,6 +294,12 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         onClick = { actions.onOpenPanel(PanelKind.LIVE_QUALITY) },
                                         focusRequester = firstFocus,
                                     )
+                                    FocusableRow(
+                                        title = "弹幕",
+                                        value = if (state.danmakuEnabled) "开" else "关",
+                                        selected = state.danmakuEnabled,
+                                        onClick = actions.onToggleDanmaku,
+                                    )
                                 } else {
                                     FocusableRow(
                                         title = "清晰度",
