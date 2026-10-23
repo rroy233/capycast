@@ -79,6 +79,9 @@ class VlcPlayerEngine(
     /** 已释放后忽略所有异步恢复任务。 */
     private var released: Boolean = false
 
+    /** 当前会话期望的播放速度；播放器重建后会重新应用。 */
+    private var playbackRate: Float = DEFAULT_PLAYBACK_RATE
+
     /** 防止同一故障由多个监控周期重复排队重建。 */
     private var recoveryQueued: Boolean = false
 
@@ -176,6 +179,7 @@ class VlcPlayerEngine(
             player.media = media
             previous?.let { runCatching { it.release() } }
             player.play()
+            applyPlaybackRate(playbackRate, "media-open")
             val elapsed = SystemClock.elapsedRealtime() - startedAt
             LogHub.i(
                 TAG,
@@ -429,6 +433,39 @@ class VlcPlayerEngine(
     }
 
     /**
+     * 设置播放速度并在播放器重建后保持该设置。
+     *
+     * @return 实际生效的速度；设置失败时返回当前播放器速度。
+     */
+    fun setPlaybackRate(rate: Float, reason: String): Float {
+        val target = rate.coerceIn(MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE)
+        val before = runCatching { player.rate }.getOrDefault(playbackRate)
+        val result = runCatching { player.setRate(target) }
+        val after = runCatching { player.rate }.getOrDefault(before)
+        if (result.isSuccess) playbackRate = target
+        LogHub.i(
+            TAG,
+            "control rate reason=$reason from=$before to=$target after=$after call=${result.isSuccess}",
+        )
+        result.onFailure { LogHub.e(TAG, "set rate failed reason=$reason target=$target", it, stack = true) }
+        PlaybackDiagnostics.event(
+            "Control",
+            "rate reason=$reason target=$target after=$after call=${result.isSuccess}",
+        )
+        return if (result.isSuccess) {
+            after.takeIf { it in MIN_PLAYBACK_RATE..MAX_PLAYBACK_RATE } ?: target
+        } else {
+            before
+        }
+    }
+
+    /** 为新建的播放器实例恢复已选择的播放速度。 */
+    private fun applyPlaybackRate(rate: Float, reason: String) {
+        val result = runCatching { internalPlayer.setRate(rate) }
+        result.onFailure { LogHub.e(TAG, "restore rate failed reason=$reason rate=$rate", it) }
+    }
+
+    /**
      * 设置播放器音量并记录请求值和实际值。
      *
      * @param volume 目标音量，范围 0 到 100。
@@ -543,6 +580,9 @@ class VlcPlayerEngine(
     /** 日志标签。 */
     private companion object {
         const val TAG = VLC_PLAYER_TAG
+        const val DEFAULT_PLAYBACK_RATE = 1f
+        const val MIN_PLAYBACK_RATE = 0.25f
+        const val MAX_PLAYBACK_RATE = 4f
         const val SURFACE_RETRY_INTERVAL_MS = 100L
     }
 

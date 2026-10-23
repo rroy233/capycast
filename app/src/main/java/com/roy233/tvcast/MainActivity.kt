@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import com.roy233.tvcast.ui.model.PanelKind
+import com.roy233.tvcast.ui.model.PlaybackSpeed
 import com.roy233.tvcast.ui.model.RecentCast
 import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.TvActions
@@ -201,6 +202,7 @@ class MainActivity : ComponentActivity() {
         onSeekBy = { seekBy(it) },
         onPreviewSeekBy = { previewSeekBy(it) },
         onConfirmSeek = { confirmPreviewSeek() },
+        onSetPlaybackSpeed = { setPlaybackSpeed(it) },
         onToggleDanmaku = {
             val enabled = !danmakuSettings.enabled
             updateDanmakuSettings(danmakuSettings.copy(enabled = enabled))
@@ -786,11 +788,16 @@ class MainActivity : ComponentActivity() {
             return
         }
         lastNva = nva
+        val desiredSpeed = nva.userDesireSpeed
+            ?.toFloatOrNull()
+            ?.let(PlaybackSpeed::normalize)
+            ?: 1f
         LogHub.i(
             TAG,
             "cast nva aid=${nva.aid} cid=${nva.cid} bvid=${nva.bvid} " +
                 "eid=${nva.eid} sid=${nva.sid} room=${nva.roomId} " +
-                "qn=${nva.qn} desireQn=${nva.userDesireQn} ct=${nva.ct} tp=${nva.tp}",
+                "qn=${nva.qn} desireQn=${nva.userDesireQn} speed=$desiredSpeed " +
+                "ct=${nva.ct} tp=${nva.tp}",
         )
         PlaybackDiagnostics.attribute("cast.aid", nva.aid.toString())
         PlaybackDiagnostics.attribute("cast.cid", nva.cid.toString())
@@ -800,6 +807,8 @@ class MainActivity : ComponentActivity() {
         PlaybackDiagnostics.attribute("cast.roomId", nva.roomId.toString())
         PlaybackDiagnostics.attribute("cast.requestQn", nva.qn.toString())
         PlaybackDiagnostics.attribute("cast.desireQn", nva.userDesireQn.toString())
+        PlaybackDiagnostics.attribute("cast.desireSpeed", desiredSpeed.toString())
+        ui = ui.copy(playbackSpeed = desiredSpeed)
         resolveNvaAndPlay(nva, title)
     }
 
@@ -980,9 +989,11 @@ class MainActivity : ComponentActivity() {
 
         if (::danmakuController.isInitialized) {
             danmakuController.open(info.aid, info.cid, info.durationSec * 1000, seekToMs)
+            danmakuController.onPlaybackRateChanged(ui.playbackSpeed)
             danmakuController.applySettings(danmakuSettings)
             layoutDanmaku()
         }
+        playerEngine.setPlaybackRate(ui.playbackSpeed, "play-restore-rate")
 
         if (pendingPause) {
             pendingPause = false
@@ -1132,6 +1143,26 @@ class MainActivity : ComponentActivity() {
         if (ui.seekPreviewPositionMs != null) {
             ui = ui.copy(seekPreviewPositionMs = null)
         }
+    }
+
+    /** 将 VLC 与弹幕时钟切换到相同的标准播放速度。 */
+    private fun setPlaybackSpeed(rate: Float) {
+        if (!::playerEngine.isInitialized ||
+            (ui.mode != TvMode.PLAYING && ui.mode != TvMode.LOADING)
+        ) {
+            LogHub.w(TAG, "setPlaybackSpeed ignored: player unavailable or mode=${ui.mode}")
+            return
+        }
+        val target = PlaybackSpeed.normalize(rate)
+        val applied = playerEngine.setPlaybackRate(target, "remote-speed")
+        if (::danmakuController.isInitialized) {
+            danmakuController.onPlaybackRateChanged(applied)
+        }
+        ui = ui.copy(
+            playbackSpeed = applied,
+            hudVisible = true,
+            toast = "播放速度 ${PlaybackSpeed.label(applied)}",
+        )
     }
 
     /** 更新弹幕设置并持久化。 */
