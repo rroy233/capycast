@@ -88,7 +88,9 @@ internal class VlcMediaFactory(private val libVlc: LibVLC) {
                 "audio=${info.audio?.id}(${info.audioLabel}) seek=${seekToMs}ms " +
                 "videos=${info.videos.size} audios=${info.audios.size} backups=${video.backup.size}",
         )
-        LogHub.i(TAG, "open videoUrl=${LogRedaction.url(info.progressiveUrl ?: video.url)}")
+        val videoUrl = info.progressiveUrl ?: video.url
+        val safeVideoUrl = if (info.isLive) LogRedaction.host(videoUrl) else LogRedaction.url(videoUrl)
+        LogHub.i(TAG, "open videoUrl=$safeVideoUrl")
         info.audio?.let { audio ->
             LogHub.i(TAG, "open audioUrl=${LogRedaction.url(audio.url)}")
         }
@@ -111,7 +113,10 @@ internal class VlcMediaFactory(private val libVlc: LibVLC) {
         PlaybackDiagnostics.attribute("stream.size", "${video.width}x${video.height}")
         PlaybackDiagnostics.attribute("stream.bandwidth", video.bandwidth.toString())
         PlaybackDiagnostics.attribute("stream.pcdn", video.pcdn.toString())
-        PlaybackDiagnostics.attribute("stream.videoUrl", LogRedaction.url(video.url))
+        PlaybackDiagnostics.attribute(
+            "stream.videoUrl",
+            if (info.isLive) LogRedaction.host(video.url) else LogRedaction.url(video.url),
+        )
         PlaybackDiagnostics.attribute("stream.audioId", info.audio?.id?.toString().orEmpty())
         PlaybackDiagnostics.attribute(
             "stream.audioUrl",

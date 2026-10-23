@@ -169,6 +169,14 @@ data class TvUiState(
     val cid: Long = 0L,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
+    /** 当前内容是否为直播。 */
+    val isLive: Boolean = false,
+    /** 当前直播线路容器，如 fmp4 或 flv。 */
+    val liveFormat: String = "",
+    /** 当前直播线路 CDN 主机标签。 */
+    val liveCdn: String = "",
+    /** 当前线路之外的备用直播源数量。 */
+    val liveBackupCount: Int = 0,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val seekPreviewPositionMs: Long? = null,

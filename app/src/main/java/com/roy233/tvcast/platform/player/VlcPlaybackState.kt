@@ -21,6 +21,10 @@ internal class VlcPlaybackState {
     @Volatile
     var active: Boolean = false
 
+    /** 当前媒体是否为直播；诊断日志仅对直播地址保留主机名。 */
+    @Volatile
+    var currentIsLive: Boolean = false
+
     /** 最近一次打开媒体的单调时刻。 */
     var mediaOpenedAt: Long = 0L
 
@@ -100,6 +104,7 @@ internal class VlcPlaybackState {
      */
     fun reset(openAt: Long) {
         active = false
+        currentIsLive = false
         mediaOpenedAt = openAt
         openingSeen = false
         playingSeen = false

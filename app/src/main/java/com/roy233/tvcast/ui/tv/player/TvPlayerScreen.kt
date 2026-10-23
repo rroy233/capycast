@@ -203,7 +203,7 @@ internal fun PlayingScreen(
                 .focusRequester(videoFocus)
                 .focusable(enabled && !state.hudVisible)
                 .playbackTouchControls(
-                    enabled = enabled && !state.hudVisible,
+                    enabled = enabled && !state.hudVisible && !state.isLive,
                     isSeeking = { seekingState.value },
                     seekAccelerator = seekAccelerator,
                     onPreviewSeekBy = { actionsState.value.onPreviewSeekBy(it) },
@@ -254,7 +254,7 @@ internal fun PlayingScreen(
                             emphasized = true,
                         )
                     }
-                    if (state.playbackSpeed != 1f) {
+                    if (!state.isLive && state.playbackSpeed != 1f) {
                         Spacer(Modifier.width(10.dp))
                         GlassPill(
                             text = PlaybackSpeed.label(state.playbackSpeed),
@@ -285,16 +285,20 @@ internal fun PlayingScreen(
                                 .fillMaxSize()
                                 .padding(horizontal = 20.dp, vertical = 12.dp),
                         ) {
-                            SeekableProgressBar(
-                                positionMs = displayedPositionMs,
-                                durationMs = state.durationMs,
-                                isSeeking = state.seekPreviewPositionMs != null,
-                                focusRequester = progressFocus,
-                                playFocusRequester = playFocus,
-                                seekAccelerator = seekAccelerator,
-                                onPreviewSeekBy = actions.onPreviewSeekBy,
-                                onConfirmSeek = actions.onConfirmSeek,
-                            )
+                            if (state.isLive) {
+                                Spacer(Modifier.height(18.dp))
+                            } else {
+                                SeekableProgressBar(
+                                    positionMs = displayedPositionMs,
+                                    durationMs = state.durationMs,
+                                    isSeeking = state.seekPreviewPositionMs != null,
+                                    focusRequester = progressFocus,
+                                    playFocusRequester = playFocus,
+                                    seekAccelerator = seekAccelerator,
+                                    onPreviewSeekBy = actions.onPreviewSeekBy,
+                                    onConfirmSeek = actions.onConfirmSeek,
+                                )
+                            }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -302,7 +306,17 @@ internal fun PlayingScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 BasicText(
-                                    text = "${formatTime(displayedPositionMs)}  /  ${formatTime(state.durationMs)}",
+                                    text = if (state.isLive) {
+                                        buildString {
+                                            append("直播")
+                                            if (state.qualityDetail.isNotBlank()) append(" · ${state.qualityDetail}")
+                                            if (state.liveFormat.isNotBlank()) append(" · ${state.liveFormat.uppercase()}")
+                                            if (state.liveCdn.isNotBlank()) append(" · ${state.liveCdn}")
+                                            append(" · 备用 ${state.liveBackupCount}")
+                                        }
+                                    } else {
+                                        "${formatTime(displayedPositionMs)}  /  ${formatTime(state.durationMs)}"
+                                    },
                                     style = TvType.caption.copy(
                                         color = TvColors.textSecondary,
                                         fontSize = 14.sp,
@@ -317,7 +331,9 @@ internal fun PlayingScreen(
                                 PrimaryPlayButton(
                                     isPlaying = state.isPlaying,
                                     onClick = actions.onPlayPause,
-                                    modifier = Modifier.focusProperties { up = progressFocus },
+                                    modifier = Modifier.focusProperties {
+                                        if (!state.isLive) up = progressFocus
+                                    },
                                     size = 64.dp,
                                     focusRequester = playFocus,
                                 )
@@ -326,29 +342,35 @@ internal fun PlayingScreen(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    GlassIconButton(
-                                        icon = Icons.Rounded.HighQuality,
-                                        contentDescription = "清晰度 ${state.qualityLabel}",
-                                        onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
-                                        enabled = enabled,
-                                        size = 56.dp,
-                                    )
-                                    GlassIconButton(
-                                        icon = ImageVector.vectorResource(R.drawable.ic_speed),
-                                        contentDescription = "播放速度 ${PlaybackSpeed.label(state.playbackSpeed)}",
-                                        onClick = { actions.onOpenPanel(PanelKind.SPEED) },
-                                        enabled = enabled,
-                                        selected = state.playbackSpeed != 1f,
-                                        size = 56.dp,
-                                    )
-                                    GlassIconButton(
-                                        icon = ImageVector.vectorResource(R.drawable.ic_danmu),
-                                        contentDescription = if (state.danmakuEnabled) "关闭弹幕" else "开启弹幕",
-                                        onClick = actions.onToggleDanmaku,
-                                        enabled = enabled,
-                                        selected = state.danmakuEnabled,
-                                        size = 56.dp,
-                                    )
+                                    if (!state.isLive) {
+                                        GlassIconButton(
+                                            icon = Icons.Rounded.HighQuality,
+                                            contentDescription = "清晰度 ${state.qualityLabel}",
+                                            onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
+                                            enabled = enabled,
+                                            size = 56.dp,
+                                        )
+                                    }
+                                    if (!state.isLive) {
+                                        GlassIconButton(
+                                            icon = ImageVector.vectorResource(R.drawable.ic_speed),
+                                            contentDescription = "播放速度 ${PlaybackSpeed.label(state.playbackSpeed)}",
+                                            onClick = { actions.onOpenPanel(PanelKind.SPEED) },
+                                            enabled = enabled,
+                                            selected = state.playbackSpeed != 1f,
+                                            size = 56.dp,
+                                        )
+                                    }
+                                    if (!state.isLive) {
+                                        GlassIconButton(
+                                            icon = ImageVector.vectorResource(R.drawable.ic_danmu),
+                                            contentDescription = if (state.danmakuEnabled) "关闭弹幕" else "开启弹幕",
+                                            onClick = actions.onToggleDanmaku,
+                                            enabled = enabled,
+                                            selected = state.danmakuEnabled,
+                                            size = 56.dp,
+                                        )
+                                    }
                                     GlassIconButton(
                                         icon = Icons.Rounded.Settings,
                                         contentDescription = "播放设置",
@@ -365,7 +387,7 @@ internal fun PlayingScreen(
         }
 
         AnimatedVisibility(
-            visible = state.seekPreviewPositionMs != null && !state.hudVisible,
+            visible = !state.isLive && state.seekPreviewPositionMs != null && !state.hudVisible,
             enter = fadeIn(tween(160)) + slideInVertically(tween(180)) { it / 2 },
             exit = fadeOut(tween(140)) + slideOutVertically(tween(160)) { it / 3 },
             modifier = Modifier

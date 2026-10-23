@@ -134,7 +134,7 @@ object TvKeyHandler {
             return false
         }
 
-        if (state.mode == TvMode.PLAYING && !state.hudVisible && !modal) {
+        if (state.mode == TvMode.PLAYING && !state.isLive && !state.hudVisible && !modal) {
             if (handlePlaybackSeekKey(
                     event = event,
                     isSeeking = state.seekPreviewPositionMs != null,

@@ -286,33 +286,52 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                     ) {
                         when (panel) {
                             PanelKind.ROOT -> {
-                                FocusableRow(
-                                    title = "清晰度",
-                                    value = state.qualityLabel.ifBlank { "自动" },
-                                    onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
-                                    focusRequester = firstFocus,
-                                )
-                                FocusableRow(
-                                    title = "音轨",
-                                    value = state.audioLabel.ifBlank { "自动" },
-                                    onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
-                                )
-                                FocusableRow(
-                                    title = "播放速度",
-                                    value = PlaybackSpeed.label(state.playbackSpeed),
-                                    onClick = { actions.onOpenPanel(PanelKind.SPEED) },
-                                )
-                                FocusableRow(
-                                    title = "弹幕设置",
-                                    value = if (!state.danmakuEnabled) {
-                                        "已关闭"
-                                    } else {
-                                        aiShieldLabel(state.danmakuAiShield)
-                                    },
-                                    onClick = { actions.onOpenPanel(PanelKind.DANMAKU) },
-                                )
+                                if (state.isLive) {
+                                    FocusableRow(
+                                        title = "直播画质",
+                                        value = state.qualityLabel.ifBlank { "自动" },
+                                        onClick = {},
+                                        focusRequester = firstFocus,
+                                    )
+                                    FocusableRow(
+                                        title = "当前线路",
+                                        value = state.liveCdn.ifBlank { "解析中" },
+                                        onClick = {},
+                                    )
+                                    FocusableRow(
+                                        title = "编码 / 格式 / 备用",
+                                        value = "${state.qualityDetail} / ${state.liveFormat.uppercase()} / ${state.liveBackupCount}",
+                                        onClick = {},
+                                    )
+                                } else {
+                                    FocusableRow(
+                                        title = "清晰度",
+                                        value = state.qualityLabel.ifBlank { "自动" },
+                                        onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
+                                        focusRequester = firstFocus,
+                                    )
+                                    FocusableRow(
+                                        title = "音轨",
+                                        value = state.audioLabel.ifBlank { "自动" },
+                                        onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
+                                    )
+                                    FocusableRow(
+                                        title = "播放速度",
+                                        value = PlaybackSpeed.label(state.playbackSpeed),
+                                        onClick = { actions.onOpenPanel(PanelKind.SPEED) },
+                                    )
+                                    FocusableRow(
+                                        title = "弹幕设置",
+                                        value = if (!state.danmakuEnabled) {
+                                            "已关闭"
+                                        } else {
+                                            aiShieldLabel(state.danmakuAiShield)
+                                        },
+                                        onClick = { actions.onOpenPanel(PanelKind.DANMAKU) },
+                                    )
+                                }
                                 BasicText(
-                                    text = "aid ${state.aid} · cid ${state.cid}",
+                                    text = if (state.isLive) "room ${state.cid}" else "aid ${state.aid} · cid ${state.cid}",
                                     style = TvType.caption.copy(
                                         color = TvColors.textTertiary,
                                         fontSize = 15.sp,

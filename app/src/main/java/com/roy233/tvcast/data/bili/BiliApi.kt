@@ -93,6 +93,14 @@ object BiliApi {
         val audios: List<Track> = listOfNotNull(audio),
         /** 视频封面地址。 */
         val cover: String = "",
+        /** 当前媒体是否为直播；直播不参与续播、定位和时长逻辑。 */
+        val isLive: Boolean = false,
+        /** 直播当前线路的容器格式。 */
+        val liveFormat: String = "",
+        /** 直播当前线路的 CDN 主机标签。 */
+        val liveCdn: String = "",
+        /** 当前直播线路之外的同画质备用线路数。 */
+        val liveBackupCount: Int = 0,
     ) {
         /** 当前视频轨道的展示名称。 */
         val qualityLabel: String
@@ -147,6 +155,10 @@ object BiliApi {
         64 -> "720P"
         32 -> "480P"
         16 -> "360P"
+        10000 -> "原画"
+        400 -> "蓝光"
+        250 -> "超清"
+        150 -> "高清"
         else -> "qn=$qn"
     }
 

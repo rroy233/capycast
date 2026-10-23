@@ -141,7 +141,8 @@ internal class VlcPlaybackReporter(
     fun mediaSummary(): String {
         val media = state.currentMedia ?: return "media=(none)"
         val uri = runCatching { media.uri?.toString() }.getOrNull()
-        return "media=(uri=${LogRedaction.url(uri)} " +
+        val safeUri = if (state.currentIsLive) LogRedaction.host(uri) else LogRedaction.url(uri)
+        return "media=(uri=$safeUri " +
             "parsed=${runCatching { media.isParsed }.getOrElse { "?" }} " +
             "state=${runCatching { media.state }.getOrElse { -1 }} " +
             "tracks=${runCatching { media.trackCount }.getOrElse { -1 }} " +
