@@ -40,6 +40,7 @@ object DeviceDiagnostics {
     private val videoMimes = listOf(
         "video/avc",
         "video/hevc",
+        "video/dolby-vision",
         "video/av01",
         "video/x-vnd.on2.vp9",
         "video/mp4v-es",
@@ -49,6 +50,7 @@ object DeviceDiagnostics {
         "audio/mp4a-latm",
         "audio/ac3",
         "audio/eac3",
+        "audio/eac3-joc",
         "audio/opus",
         "audio/flac",
     )
@@ -230,7 +232,11 @@ object DeviceDiagnostics {
                 "outputDevices",
                 jsonArray(
                     devices.take(8).map { device ->
-                        "${audioDeviceTypeName(device.type)}:${device.productName}"
+                        val encodings = device.encodings.joinToString(",") { encoding ->
+                            audioEncodingName(encoding)
+                        }
+                        "${audioDeviceTypeName(device.type)}:${device.productName}" +
+                            " encodings=$encodings"
                     },
                 ),
             )
@@ -389,6 +395,14 @@ object DeviceDiagnostics {
         AudioDeviceInfo.TYPE_LINE_ANALOG -> "lineAnalog"
         AudioDeviceInfo.TYPE_LINE_DIGITAL -> "lineDigital"
         else -> "type$type"
+    }
+
+    /** 将可直通的 Android 音频编码转换为可读文本。 */
+    private fun audioEncodingName(encoding: Int): String = when (encoding) {
+        android.media.AudioFormat.ENCODING_AC3 -> "ac3"
+        android.media.AudioFormat.ENCODING_E_AC3 -> "eac3"
+        android.media.AudioFormat.ENCODING_E_AC3_JOC -> "eac3-joc"
+        else -> encoding.toString()
     }
 
     /** 构造 JSON 数组。 */

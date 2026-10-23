@@ -83,6 +83,13 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            // 解析层会记录 Android 日志；本地 JVM 测试无需真实 Logcat。
+            isReturnDefaultValues = true
+        }
+    }
+
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -101,6 +108,8 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
+    implementation("androidx.media3:media3-ui:1.8.0")
 
     val composeBom = platform("androidx.compose:compose-bom:2025.10.01")
     implementation(composeBom)

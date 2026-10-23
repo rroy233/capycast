@@ -32,7 +32,6 @@ internal object VlcRuntimeLogger {
         "--no-skip-frames",
         "--network-caching=2000",
         "--audio-time-stretch",
-        "--android-display-chroma=RV32",
         "--verbose=1",
         "--file-logging",
         "--logfile=${nativeLogFile.absolutePath}",

@@ -42,7 +42,7 @@ object CdnCandidateSelector {
             ?: emptyList()
 
     /** 将 JSON 轨道对象转换为播放轨道模型。 */
-    fun parseTrack(o: JsonObject): BiliApi.Track {
+    fun parseTrack(o: JsonObject, isDolbyAudio: Boolean = false): BiliApi.Track {
         val primary = o.get("baseUrl")?.asString ?: o.get("base_url")?.asString ?: ""
         val ordered = order(listOf(primary) + backupUrls(o))
         val selected = ordered.firstOrNull() ?: primary
@@ -50,6 +50,19 @@ object CdnCandidateSelector {
         val codecid = o.get("codecid")?.asInt ?: 0
         val width = o.get("width")?.asInt ?: 0
         val height = o.get("height")?.asInt ?: 0
+        val mimeType = (o.get("mimeType") ?: o.get("mime_type"))?.asString.orEmpty()
+        val codecs = o.get("codecs")?.asString.orEmpty()
+        val colorSpace = (o.get("colorSpace") ?: o.get("color_space"))?.asString.orEmpty()
+        val transfer = (o.get("transferCharacteristics") ?: o.get("transfer_characteristics"))
+            ?.asString.orEmpty()
+        val metadata = listOf(mimeType, codecs, colorSpace, transfer, o.toString()).joinToString(" ")
+            .lowercase()
+        val isDolbyVision = id == 126 || metadata.contains("dolby-vision") ||
+            metadata.contains("dolby_vision") || codecs.startsWith("dv", ignoreCase = true)
+        val isHdr = isDolbyVision || id == 125 || id == 129 ||
+            metadata.contains("bt2020") || metadata.contains("hdr") ||
+            metadata.contains("hlg") || metadata.contains("arib-std-b67") ||
+            metadata.contains("st2084") || metadata.contains("pq")
         LogHub.i(
             TAG,
             "cdn track id=$id codec=${codecName(codecid)} ${width}x${height} " +
@@ -67,13 +80,18 @@ object CdnCandidateSelector {
             url = selected,
             backup = ordered.drop(1),
             pcdn = isPcdn(selected),
+            mimeType = mimeType,
+            codecs = codecs,
+            isHdr = isHdr,
+            isDolbyVision = isDolbyVision,
+            isDolbyAudio = isDolbyAudio,
         )
     }
 
     /** 从视频轨道中选择优先级最高的轨道。 */
     fun pickVideo(list: List<BiliApi.Track>): BiliApi.Track {
-        val supported = list.filter { it.codecid == 7 || it.codecid == 12 }
-        val skipped = list.filterNot { it.codecid == 7 || it.codecid == 12 }
+        val supported = list.filter { it.codecid == 7 || it.codecid == 12 || it.codecid == 13 }
+        val skipped = list.filterNot { it.codecid == 7 || it.codecid == 12 || it.codecid == 13 }
         if (skipped.isNotEmpty()) {
             LogHub.i(
                 TAG,
@@ -105,6 +123,7 @@ object CdnCandidateSelector {
         }
         val selected = list.sortedWith(
             compareBy<BiliApi.Track> { it.pcdn }
+                .thenByDescending { if (it.isDolbyAudio) 1 else 0 }
                 .thenByDescending { if (it.id == 30280) 1 else 0 }
                 .thenByDescending { it.id }
         ).firstOrNull()
