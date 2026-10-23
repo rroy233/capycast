@@ -11,6 +11,8 @@ import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
+import com.roy233.tvcast.ui.tv.player.handlePlaybackSeekKey
 
 /** 当前页面按一次返回键应执行的层级动作。 */
 internal enum class TvBackAction {
@@ -93,11 +95,12 @@ object TvKeyHandler {
      * @param modal 当前是否存在模态内容。
      * @return 事件是否已被处理。
      */
-    fun handle(
+    internal fun handle(
         event: KeyEvent,
         state: TvUiState,
         actions: TvActions,
         modal: Boolean,
+        seekAccelerator: PlaybackSeekAccelerator,
     ): Boolean {
         if (event.type != KeyEventType.KeyDown) return false
 
@@ -129,6 +132,17 @@ object TvKeyHandler {
                 return true
             }
             return false
+        }
+
+        if (state.mode == TvMode.PLAYING && !state.hudVisible && !modal) {
+            if (handlePlaybackSeekKey(
+                    event = event,
+                    isSeeking = state.seekPreviewPositionMs != null,
+                    seekAccelerator = seekAccelerator,
+                    onPreviewSeekBy = actions.onPreviewSeekBy,
+                    onConfirmSeek = actions.onConfirmSeek,
+                )
+            ) return true
         }
 
         if (state.mode == TvMode.PLAYING &&

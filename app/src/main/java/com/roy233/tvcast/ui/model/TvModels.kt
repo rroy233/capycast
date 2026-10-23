@@ -103,6 +103,7 @@ data class AudioOption(
  * @property isBuffering 当前是否处于缓冲状态。
  * @property positionMs 当前播放位置，单位为毫秒。
  * @property durationMs 当前媒体时长，单位为毫秒。
+ * @property seekPreviewPositionMs 遥控器进度调整期间预览的目标位置；为空表示没有待确认的跳转。
  * @property volume 当前音量值。
  * @property hudVisible 播放控制栏是否可见。
  * @property panel 当前打开的控制面板。
@@ -150,6 +151,7 @@ data class TvUiState(
     val isBuffering: Boolean = false,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
+    val seekPreviewPositionMs: Long? = null,
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
     val volume: Int = 50,
@@ -207,6 +209,8 @@ data class TvUiState(
  * @property onLogout 请求退出登录。
  * @property onPlayPause 切换播放与暂停。
  * @property onSeekBy 按给定毫秒数调整播放位置。
+ * @property onPreviewSeekBy 预览性地按给定毫秒数调整播放位置。
+ * @property onConfirmSeek 确认当前预览位置并结束进度调整。
  * @property onSetVolume 设置音量。
  * @property onShowHud 显示播放控制栏。
  * @property onHideHud 隐藏播放控制栏。
@@ -247,6 +251,8 @@ class TvActions(
     val onLogout: () -> Unit = {},
     val onPlayPause: () -> Unit = {},
     val onSeekBy: (Long) -> Unit = {},
+    val onPreviewSeekBy: (Long) -> Unit = {},
+    val onConfirmSeek: () -> Unit = {},
     val onToggleDanmaku: () -> Unit = {},
     val onSetDanmakuAiShield: (AiShieldLevel) -> Unit = {},
     val onSetDanmakuArea: (Float) -> Unit = {},

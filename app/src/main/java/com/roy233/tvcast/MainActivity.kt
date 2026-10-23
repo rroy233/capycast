@@ -199,6 +199,8 @@ class MainActivity : ComponentActivity() {
         onLogout = { logout() },
         onPlayPause = { togglePlayPause() },
         onSeekBy = { seekBy(it) },
+        onPreviewSeekBy = { previewSeekBy(it) },
+        onConfirmSeek = { confirmPreviewSeek() },
         onToggleDanmaku = {
             val enabled = !danmakuSettings.enabled
             updateDanmakuSettings(danmakuSettings.copy(enabled = enabled))
@@ -1092,6 +1094,44 @@ class MainActivity : ComponentActivity() {
             danmakuController.onSeek(target)
         }
         ui = ui.copy(positionMs = target, hudVisible = true)
+    }
+
+    /**
+     * 预览性地跳转到新位置。
+     *
+     * 每次方向键输入都会立即驱动 VLC 跳转，以便画面加载目标位置；待确认状态只用于
+     * 控制进度条显示与自动提交，不会延后播放器的实际定位。
+     */
+    private fun previewSeekBy(ms: Long) {
+        if (!::playerEngine.isInitialized || ui.mode != TvMode.PLAYING) return
+
+        val duration = runCatching { player.length }
+            .getOrDefault(ui.durationMs)
+            .takeIf { it > 0L }
+            ?: ui.durationMs
+        if (duration <= 0L) {
+            LogHub.w(TAG, "previewSeekBy ignored: unknown duration")
+            return
+        }
+        val basePosition = ui.seekPreviewPositionMs
+            ?: runCatching { player.time }.getOrDefault(ui.positionMs)
+        val target = (basePosition + ms).coerceIn(0L, duration)
+        playerEngine.seekTo(target, "remote-seek-preview")
+        if (::danmakuController.isInitialized) {
+            danmakuController.onSeek(target)
+        }
+        ui = ui.copy(
+            positionMs = target,
+            durationMs = duration,
+            seekPreviewPositionMs = target,
+        )
+    }
+
+    /** 结束当前预览会话；播放器已在预览期间定位到目标位置。 */
+    private fun confirmPreviewSeek() {
+        if (ui.seekPreviewPositionMs != null) {
+            ui = ui.copy(seekPreviewPositionMs = null)
+        }
     }
 
     /** 更新弹幕设置并持久化。 */

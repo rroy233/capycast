@@ -5,6 +5,7 @@ import com.roy233.tvcast.ui.tv.navigation.Sidebar
 import com.roy233.tvcast.ui.tv.overlay.HelpSheet
 import com.roy233.tvcast.ui.tv.overlay.QuickPanel
 import com.roy233.tvcast.ui.tv.player.LoadingScreen
+import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
 import com.roy233.tvcast.ui.tv.player.PlayingScreen
 import com.roy233.tvcast.ui.tv.settings.SettingsScreen
 
@@ -135,6 +136,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
     val modal = state.panel != null || state.error != null ||
         state.stopCastConfirm || state.helpVisible
     val focusManager = LocalFocusManager.current
+    val seekAccelerator = remember { PlaybackSeekAccelerator() }
     val density = LocalDensity.current
     val swipeThreshold = with(density) { 72.dp.toPx() }
     // tvOS-style quiet auto-collapse after switching to Bilibili.
@@ -190,7 +192,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                             true
                         }
                     } else {
-                        TvKeyHandler.handle(event, state, actions, modal)
+                        TvKeyHandler.handle(event, state, actions, modal, seekAccelerator)
                     }
                 }
         ) {
@@ -233,13 +235,19 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
 
                 TvMode.LOADING -> LoadingScreen()
 
-                TvMode.PLAYING -> PlayingScreen(state, actions, enabled = !modal)
+                TvMode.PLAYING -> PlayingScreen(
+                    state = state,
+                    actions = actions,
+                    enabled = !modal,
+                    seekAccelerator = seekAccelerator,
+                )
 
                 TvMode.ERROR -> if (state.castActive) {
                     PlayingScreen(
                         state = state.copy(hudVisible = false),
                         actions = actions,
                         enabled = false,
+                        seekAccelerator = seekAccelerator,
                     )
                 }
             }
@@ -300,13 +308,15 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
         state.error,
         state.stopCastConfirm,
         state.mode,
+        state.seekPreviewPositionMs,
     ) {
         if (state.mode == TvMode.PLAYING &&
             state.hudVisible &&
             state.isPlaying &&
             state.panel == null &&
             state.error == null &&
-            !state.stopCastConfirm
+            !state.stopCastConfirm &&
+            state.seekPreviewPositionMs == null
         ) {
             delay(4000)
             actions.onHideHud()
