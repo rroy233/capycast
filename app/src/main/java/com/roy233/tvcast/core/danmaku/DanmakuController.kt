@@ -199,6 +199,12 @@ class DanmakuController(
         }
     }
 
+    /** 将弹幕媒体时钟切换到与播放器一致的速度，保持当前时间连续。 */
+    fun onPlaybackRateChanged(rate: Float) {
+        if (closed) return
+        clock.setRate(rate)
+    }
+
     /** 用户 seek 到指定位置。 */
     fun onSeek(positionMs: Long) {
         if (closed) return

@@ -6,6 +6,7 @@ import com.roy233.tvcast.R
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.model.PanelKind
+import com.roy233.tvcast.ui.model.PlaybackSpeed
 import com.roy233.tvcast.ui.model.RecentCast
 import com.roy233.tvcast.ui.model.TrackOption
 import com.roy233.tvcast.ui.model.TvActions
@@ -253,6 +254,13 @@ internal fun PlayingScreen(
                             emphasized = true,
                         )
                     }
+                    if (state.playbackSpeed != 1f) {
+                        Spacer(Modifier.width(10.dp))
+                        GlassPill(
+                            text = PlaybackSpeed.label(state.playbackSpeed),
+                            emphasized = true,
+                        )
+                    }
                 }
 
                 Box(
@@ -323,6 +331,14 @@ internal fun PlayingScreen(
                                         contentDescription = "清晰度 ${state.qualityLabel}",
                                         onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
                                         enabled = enabled,
+                                        size = 56.dp,
+                                    )
+                                    GlassIconButton(
+                                        icon = ImageVector.vectorResource(R.drawable.ic_speed),
+                                        contentDescription = "播放速度 ${PlaybackSpeed.label(state.playbackSpeed)}",
+                                        onClick = { actions.onOpenPanel(PanelKind.SPEED) },
+                                        enabled = enabled,
+                                        selected = state.playbackSpeed != 1f,
                                         size = 56.dp,
                                     )
                                     GlassIconButton(

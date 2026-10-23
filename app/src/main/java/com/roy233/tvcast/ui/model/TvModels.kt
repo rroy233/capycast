@@ -15,7 +15,26 @@ enum class TvDestination { HOME, SETTINGS }
 enum class SettingsPage { ROOT, UPDATE, UPDATE_NOTES }
 
 /** 表示播放控制面板的层级。 */
-enum class PanelKind { ROOT, QUALITY, AUDIO, DANMAKU }
+enum class PanelKind { ROOT, QUALITY, AUDIO, SPEED, DANMAKU }
+
+/** 播放器支持的标准倍速档位与显示格式。 */
+object PlaybackSpeed {
+    val options: List<Float> = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+    /** 将输入约束到受支持的标准档位；未知值回退到正常速度。 */
+    fun normalize(value: Float): Float = options.firstOrNull { option ->
+        kotlin.math.abs(option - value) < MATCH_EPSILON
+    } ?: NORMAL
+
+    /** 返回 Hub 使用的倍速标签。 */
+    fun label(value: Float): String = "${normalize(value).stripTrailingZero()}×"
+
+    private fun Float.stripTrailingZero(): String =
+        if (this % 1f == 0f) toInt().toString() else toString()
+
+    private const val NORMAL = 1f
+    private const val MATCH_EPSILON = 0.001f
+}
 
 /**
  * 保存最近一次投屏内容的摘要信息。
@@ -104,6 +123,7 @@ data class AudioOption(
  * @property positionMs 当前播放位置，单位为毫秒。
  * @property durationMs 当前媒体时长，单位为毫秒。
  * @property seekPreviewPositionMs 遥控器进度调整期间预览的目标位置；为空表示没有待确认的跳转。
+ * @property playbackSpeed 当前视频播放速度。
  * @property volume 当前音量值。
  * @property hudVisible 播放控制栏是否可见。
  * @property panel 当前打开的控制面板。
@@ -152,6 +172,7 @@ data class TvUiState(
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val seekPreviewPositionMs: Long? = null,
+    val playbackSpeed: Float = 1f,
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
     val volume: Int = 50,
@@ -211,6 +232,7 @@ data class TvUiState(
  * @property onSeekBy 按给定毫秒数调整播放位置。
  * @property onPreviewSeekBy 预览性地按给定毫秒数调整播放位置。
  * @property onConfirmSeek 确认当前预览位置并结束进度调整。
+ * @property onSetPlaybackSpeed 设置视频播放速度。
  * @property onSetVolume 设置音量。
  * @property onShowHud 显示播放控制栏。
  * @property onHideHud 隐藏播放控制栏。
@@ -253,6 +275,7 @@ class TvActions(
     val onSeekBy: (Long) -> Unit = {},
     val onPreviewSeekBy: (Long) -> Unit = {},
     val onConfirmSeek: () -> Unit = {},
+    val onSetPlaybackSpeed: (Float) -> Unit = {},
     val onToggleDanmaku: () -> Unit = {},
     val onSetDanmakuAiShield: (AiShieldLevel) -> Unit = {},
     val onSetDanmakuArea: (Float) -> Unit = {},

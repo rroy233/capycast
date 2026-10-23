@@ -8,6 +8,7 @@ import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.model.AudioOption
 import com.roy233.tvcast.ui.model.PanelKind
+import com.roy233.tvcast.ui.model.PlaybackSpeed
 import com.roy233.tvcast.core.danmaku.AiShieldLevel
 import kotlin.math.roundToInt
 import com.roy233.tvcast.ui.model.RecentCast
@@ -204,11 +205,27 @@ private fun HelpStep(number: String, text: String) {
 @Composable
 internal fun QuickPanel(state: TvUiState, actions: TvActions) {
     val firstFocus = remember { FocusRequester() }
+    val selectedSpeedFocus = remember { FocusRequester() }
+    val scrollState = rememberScrollState()
+    val density = LocalDensity.current
     val panel = state.panel ?: return
 
-    LaunchedEffect(panel) {
+    LaunchedEffect(panel, state.playbackSpeed) {
         delay(80)
-        runCatching { firstFocus.requestFocus() }
+        runCatching {
+            if (panel == PanelKind.SPEED) {
+                val selectedIndex = PlaybackSpeed.options.indexOf(
+                    PlaybackSpeed.normalize(state.playbackSpeed),
+                ).coerceAtLeast(0)
+                scrollState.scrollTo(
+                    with(density) { (QUICK_PANEL_ROW_PITCH * selectedIndex).roundToPx() },
+                )
+                selectedSpeedFocus.requestFocus()
+            } else {
+                scrollState.scrollTo(0)
+                firstFocus.requestFocus()
+            }
+        }
     }
 
     Box(
@@ -245,6 +262,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                 PanelKind.ROOT -> "播放设置"
                                 PanelKind.QUALITY -> "清晰度"
                                 PanelKind.AUDIO -> "音轨"
+                                PanelKind.SPEED -> "播放速度"
                                 PanelKind.DANMAKU -> "弹幕设置"
                             },
                             style = TvType.section,
@@ -263,7 +281,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .verticalScroll(rememberScrollState()),
+                            .verticalScroll(scrollState),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         when (panel) {
@@ -278,6 +296,11 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                     title = "音轨",
                                     value = state.audioLabel.ifBlank { "自动" },
                                     onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
+                                )
+                                FocusableRow(
+                                    title = "播放速度",
+                                    value = PlaybackSpeed.label(state.playbackSpeed),
+                                    onClick = { actions.onOpenPanel(PanelKind.SPEED) },
                                 )
                                 FocusableRow(
                                     title = "弹幕设置",
@@ -318,6 +341,19 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         selected = audio.id == state.selectedAudioId,
                                         onClick = { actions.onSelectAudio(audio.id) },
                                         focusRequester = if (index == 0) firstFocus else null,
+                                    )
+                                }
+                            }
+
+                            PanelKind.SPEED -> {
+                                val selectedSpeed = PlaybackSpeed.normalize(state.playbackSpeed)
+                                PlaybackSpeed.options.forEachIndexed { index, speed ->
+                                    FocusableRow(
+                                        title = PlaybackSpeed.label(speed),
+                                        value = if (speed == 1f) "正常速度" else null,
+                                        selected = speed == selectedSpeed,
+                                        onClick = { actions.onSetPlaybackSpeed(speed) },
+                                        focusRequester = if (speed == selectedSpeed) selectedSpeedFocus else null,
                                     )
                                 }
                             }
@@ -399,6 +435,8 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
         }
     }
 }
+
+private val QUICK_PANEL_ROW_PITCH = 62.dp
 
 private fun aiShieldLabel(level: AiShieldLevel): String = when (level) {
     AiShieldLevel.OFF -> "关"
