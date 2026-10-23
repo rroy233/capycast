@@ -8,6 +8,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -33,6 +34,7 @@ import java.util.Collections
  * Media3 将 fMP4 中的 Dolby Vision 配置、色彩信息和 profile 交给 Android MediaCodec，
  * 并通过 SurfaceView 直出，避免 libVLC 的 RGB 视频输出路径丢失 10-bit HDR 信息。
  */
+@UnstableApi
 class DolbyVisionPlayerEngine(
     context: Context,
     playerView: PlayerView,

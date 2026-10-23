@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.PlaybackSpeed
@@ -71,6 +72,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  *
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
+@UnstableApi
 class MainActivity : ComponentActivity() {
 
     /** VLC 播放引擎。 */
