@@ -1,6 +1,7 @@
 package com.roy233.tvcast.data.bili
 
 import android.os.SystemClock
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
@@ -452,13 +453,13 @@ object BiliApi {
     ): PlayInfo {
         val dash = play.getAsJsonObject("dash")
         if (dash != null) {
-            val videos = dash.getAsJsonArray("video")?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
+            val videos = dash.arrayOrNull("video")?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
                 ?: emptyList()
-            val baseAudios = dash.getAsJsonArray("audio")
+            val baseAudios = dash.arrayOrNull("audio")
                 ?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
                 ?: emptyList()
-            val dolbyAudios = dash.getAsJsonObject("dolby")
-                ?.getAsJsonArray("audio")
+            val dolbyAudios = dash.objectOrNull("dolby")
+                ?.arrayOrNull("audio")
                 ?.map { CdnCandidateSelector.parseTrack(it.asJsonObject, isDolbyAudio = true) }
                 ?: emptyList()
             val audios = (baseAudios + dolbyAudios).distinctBy { it.url }
@@ -492,7 +493,7 @@ object BiliApi {
         }
 
         // Very old / non-DASH content: progressive mp4/flv.
-        val durl = play.getAsJsonArray("durl")
+        val durl = play.arrayOrNull("durl")
         if (durl != null && durl.size() > 0) {
             val first = durl[0].asJsonObject
             val url = first.get("url").asString
@@ -540,28 +541,24 @@ object BiliApi {
         videos: List<Track>,
         audios: List<Track>,
     ) {
-        val dolby = runCatching {
-            dash.getAsJsonObject("dolby")?.getAsJsonArray("audio")?.size()
-        }.getOrNull()
-        val flac = runCatching {
-            dash.getAsJsonObject("flac")?.getAsJsonArray("audio")?.size()
-        }.getOrNull()
+        val dolby = dash.objectOrNull("dolby")?.arrayOrNull("audio")?.size()
+        val flac = dash.objectOrNull("flac")?.arrayOrNull("audio")?.size()
         LogHub.i(
             TAG,
             "playurl dash video=${videos.size} audio=${audios.size} " +
                 "duration=${play.get("duration")?.asLong ?: -1} " +
                 "quality=${play.get("quality")?.asInt ?: -1} " +
-                "acceptQuality=${jsonArrayText(play.getAsJsonArray("accept_quality"))} " +
+                "acceptQuality=${jsonArrayText(play.arrayOrNull("accept_quality"))} " +
                 "dolbyAudio=${dolby ?: 0} flacAudio=${flac ?: 0} " +
                 "isDrm=${play.get("is_drm")?.asBoolean ?: false} " +
                 "isPreview=${play.get("is_preview")?.asBoolean ?: false}",
         )
-        val formats = play.getAsJsonArray("support_formats") ?: return
+        val formats = play.arrayOrNull("support_formats") ?: return
         val summary = formats.take(12).joinToString(" ") { element ->
             val format = runCatching { element.asJsonObject }.getOrNull()
                 ?: return@joinToString "?"
             val codecs = runCatching {
-                format.getAsJsonArray("codecs")?.joinToString(",") { codec -> codec.asString }
+                format.arrayOrNull("codecs")?.joinToString(",") { codec -> codec.asString }
             }.getOrNull()
             "qn=${format.get("quality")?.asInt ?: -1}" +
                 if (codecs.isNullOrBlank()) "" else "($codecs)"
@@ -597,3 +594,14 @@ object BiliApi {
         )
     }
 }
+
+/**
+ * Returns an array-valued response member, treating missing, null, and non-array values as absent.
+ * Bilibili uses JSON null for optional members such as dash.dolby.audio.
+ */
+internal fun JsonObject.arrayOrNull(name: String): JsonArray? =
+    get(name)?.takeIf { it.isJsonArray }?.asJsonArray
+
+/** Returns an object-valued response member, treating missing and null values as absent. */
+internal fun JsonObject.objectOrNull(name: String): JsonObject? =
+    get(name)?.takeIf { it.isJsonObject }?.asJsonObject
