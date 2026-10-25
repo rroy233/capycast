@@ -1,5 +1,7 @@
 package com.roy233.tvcast.data.bili
 
+import com.roy233.tvcast.data.auth.BiliSessionProvider
+
 import android.os.SystemClock
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -37,8 +39,12 @@ object BiliApi {
         .build()
 
     /** 登录后使用的 Cookie 请求头；为空时按匿名用户请求。 */
-    @Volatile
-    var cookie: String = ""
+    /** 当前 B 站请求使用的 Cookie；由 [BiliSessionProvider] 统一持有。 */
+    var cookie: String
+        get() = BiliSessionProvider.cookie
+        set(value) {
+            BiliSessionProvider.cookie = value
+        }
 
     /** 描述一个可播放媒体轨道。 */
     data class Track(
