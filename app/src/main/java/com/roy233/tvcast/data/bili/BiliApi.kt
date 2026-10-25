@@ -68,6 +68,12 @@ object BiliApi {
         val isDolbyVision: Boolean = false,
         /** 音频轨道是否来自 dash.dolby.audio。 */
         val isDolbyAudio: Boolean = false,
+        /** DASH 初始化数据的字节范围，例如 `0-1023`。 */
+        val initializationRange: String = "",
+        /** DASH 索引数据的字节范围，例如 `1024-2047`。 */
+        val indexRange: String = "",
+        /** 从初始化区间提取的 ISO-BMFF PSSH atom，Base64 编码。 */
+        val psshBase64: String = "",
     )
 
     /** 保存一次媒体解析得到的完整播放信息。 */
@@ -102,6 +108,22 @@ object BiliApi {
         val liveCdn: String = "",
         /** 当前直播线路之外的同画质备用线路数。 */
         val liveBackupCount: Int = 0,
+        /** 是否为番剧、电影、电视剧等 PGC 内容。 */
+        val isPgc: Boolean = false,
+        /** PGC 分集标识。 */
+        val epId: Long = 0L,
+        /** PGC 季标识。 */
+        val seasonId: Long = 0L,
+        /** 当前账号是否已购买该内容；由服务端播放响应提供。 */
+        val hasPaid: Boolean = false,
+        /** 服务端是否将内容标记为 DRM。 */
+        val isDrm: Boolean = false,
+        /** 服务端是否将当前播放标记为预览。 */
+        val isPreview: Boolean = false,
+        /** 服务端返回的质量档位。 */
+        val actualQuality: Int = video.id,
+        /** 服务端返回的可选质量列表。 */
+        val acceptQualities: List<Int> = emptyList(),
     ) {
         /** 当前视频轨道的展示名称。 */
         val qualityLabel: String

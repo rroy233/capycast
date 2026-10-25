@@ -18,6 +18,8 @@ object CdnCandidateSelector {
     )
     /** IPv4 主机名匹配规则。 */
     private val ipv4Host = Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$")
+    /** 已有播放器支持的主流视频编码。 */
+    private val supportedVideoCodecs = setOf(7, 12, 13)
 
     /** 按 PCDN、官方 CDN 和原始顺序对地址进行排序。 */
     fun order(urls: List<String>): List<String> = urls
@@ -35,26 +37,26 @@ object CdnCandidateSelector {
 
     /** 从 JSON 轨道对象读取备用播放地址。 */
     fun backupUrls(o: JsonObject): List<String> =
-        (o.get("backupUrl") ?: o.get("backup_url"))
-            ?.takeIf { it.isJsonArray }
+        listOfNotNull(o.get("backupUrl"), o.get("backup_url"))
+            .firstOrNull { it.isJsonArray }
             ?.asJsonArray
             ?.mapNotNull { runCatching { it.asString }.getOrNull() }
             ?: emptyList()
 
     /** 将 JSON 轨道对象转换为播放轨道模型。 */
     fun parseTrack(o: JsonObject, isDolbyAudio: Boolean = false): BiliApi.Track {
-        val primary = o.get("baseUrl")?.asString ?: o.get("base_url")?.asString ?: ""
+        val primary = o.string("baseUrl").ifBlank { o.string("base_url") }
         val ordered = order(listOf(primary) + backupUrls(o))
         val selected = ordered.firstOrNull() ?: primary
-        val id = o.get("id")?.asInt ?: 0
-        val codecid = o.get("codecid")?.asInt ?: 0
-        val width = o.get("width")?.asInt ?: 0
-        val height = o.get("height")?.asInt ?: 0
-        val mimeType = (o.get("mimeType") ?: o.get("mime_type"))?.asString.orEmpty()
-        val codecs = o.get("codecs")?.asString.orEmpty()
-        val colorSpace = (o.get("colorSpace") ?: o.get("color_space"))?.asString.orEmpty()
-        val transfer = (o.get("transferCharacteristics") ?: o.get("transfer_characteristics"))
-            ?.asString.orEmpty()
+        val id = o.int("id")
+        val codecid = o.int("codecid")
+        val width = o.int("width")
+        val height = o.int("height")
+        val mimeType = o.string("mimeType").ifBlank { o.string("mime_type") }
+        val codecs = o.string("codecs")
+        val colorSpace = o.string("colorSpace").ifBlank { o.string("color_space") }
+        val transfer = o.string("transferCharacteristics")
+            .ifBlank { o.string("transfer_characteristics") }
         val metadata = listOf(mimeType, codecs, colorSpace, transfer, o.toString()).joinToString(" ")
             .lowercase()
         val isDolbyVision = id == 126 || metadata.contains("dolby-vision") ||
@@ -63,10 +65,17 @@ object CdnCandidateSelector {
             metadata.contains("bt2020") || metadata.contains("hdr") ||
             metadata.contains("hlg") || metadata.contains("arib-std-b67") ||
             metadata.contains("st2084") || metadata.contains("pq")
+        val segmentBase = listOfNotNull(o.get("segmentBase"), o.get("segment_base"))
+            .firstOrNull { it.isJsonObject }
+            ?.asJsonObject
+        val initializationRange = segmentBase?.string("initialization")
+            ?.ifBlank { segmentBase.string("initialization_range") }.orEmpty()
+        val indexRange = segmentBase?.string("indexRange")
+            ?.ifBlank { segmentBase.string("index_range") }.orEmpty()
         LogHub.i(
             TAG,
             "cdn track id=$id codec=${codecName(codecid)} ${width}x${height} " +
-                "bw=${o.get("bandwidth")?.asLong ?: 0L} " +
+                "bw=${o.long("bandwidth")} " +
                 "selected=${cdnHostOf(selected)} pcdn=${isPcdn(selected)} " +
                 "basePcdn=${isPcdn(primary)} candidates=${ordered.size} " +
                 "hosts=${ordered.take(4).joinToString(",") { cdnHostOf(it) }}",
@@ -76,7 +85,7 @@ object CdnCandidateSelector {
             codecid = codecid,
             width = width,
             height = height,
-            bandwidth = o.get("bandwidth")?.asLong ?: 0L,
+            bandwidth = o.long("bandwidth"),
             url = selected,
             backup = ordered.drop(1),
             pcdn = isPcdn(selected),
@@ -85,13 +94,15 @@ object CdnCandidateSelector {
             isHdr = isHdr,
             isDolbyVision = isDolbyVision,
             isDolbyAudio = isDolbyAudio,
+            initializationRange = initializationRange,
+            indexRange = indexRange,
         )
     }
 
     /** 从视频轨道中选择优先级最高的轨道。 */
     fun pickVideo(list: List<BiliApi.Track>): BiliApi.Track {
-        val supported = list.filter { it.codecid == 7 || it.codecid == 12 || it.codecid == 13 }
-        val skipped = list.filterNot { it.codecid == 7 || it.codecid == 12 || it.codecid == 13 }
+        val supported = list.filter { isSupportedVideoCodec(it.codecid) }
+        val skipped = list.filterNot { isSupportedVideoCodec(it.codecid) }
         if (skipped.isNotEmpty()) {
             LogHub.i(
                 TAG,
@@ -114,6 +125,9 @@ object CdnCandidateSelector {
         )
         return selected
     }
+
+    /** 判断编码是否属于现有播放后端支持的主流视频编码。 */
+    fun isSupportedVideoCodec(codecid: Int): Boolean = codecid in supportedVideoCodecs
 
     /** 从音频轨道中选择优先级最高的轨道。 */
     fun pickAudio(list: List<BiliApi.Track>): BiliApi.Track? {
@@ -170,8 +184,17 @@ object CdnCandidateSelector {
     private fun cdnHostOf(raw: String): String =
         httpUrlOf(raw)?.host?.lowercase().orEmpty()
 
+    private fun JsonObject.string(name: String): String =
+        runCatching { get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty() }.getOrDefault("")
+
+    private fun JsonObject.int(name: String): Int =
+        runCatching { get(name)?.takeUnless { it.isJsonNull }?.asInt ?: 0 }.getOrDefault(0)
+
+    private fun JsonObject.long(name: String): Long =
+        runCatching { get(name)?.takeUnless { it.isJsonNull }?.asLong ?: 0L }.getOrDefault(0L)
+
     /** 判断地址是否属于官方 CDN 域名。 */
-    private fun isOfficialCdn(raw: String): Boolean {
+    fun isOfficialCdn(raw: String): Boolean {
         val host = cdnHostOf(raw)
         return host.endsWith(".bilivideo.com") || host.endsWith(".akamaized.net")
     }
