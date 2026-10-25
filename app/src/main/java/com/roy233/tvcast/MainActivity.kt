@@ -2601,6 +2601,7 @@ class MainActivity : ComponentActivity() {
             val roomId = nva?.roomId?.takeIf { it > 0L } ?: info.cid
             return PlaybackHistoryContent(
                 stableKey = "live:$roomId",
+                bvid = "",
                 aid = 0L,
                 cid = roomId,
                 sid = 0L,
@@ -2622,6 +2623,7 @@ class MainActivity : ComponentActivity() {
         val type = if (isPgc) HISTORY_TYPE_PGC else HISTORY_TYPE_UGC
         return PlaybackHistoryContent(
             stableKey = if (isPgc) "pgc:$sid:$epid:$cid" else "ugc:$aid:$cid",
+            bvid = info.bvid,
             aid = aid,
             cid = cid,
             sid = sid,

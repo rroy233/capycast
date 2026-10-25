@@ -14,8 +14,8 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
- * Bilibili TV QR login, reimplemented from the reference client's Passport
- * service (`/x/passport-tv-login/qrcode/auth_code` + `/poll`).
+ * Bilibili TV QR login through the Passport service
+ * (`/x/passport-tv-login/qrcode/auth_code` + `/poll`).
  *
  * Why TV login instead of web cookie login: it returns an `access_token`
  * (access_key) which the Moss broadcast channel requires, plus the cookie set

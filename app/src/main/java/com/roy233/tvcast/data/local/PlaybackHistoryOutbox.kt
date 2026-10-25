@@ -46,7 +46,10 @@ class PlaybackHistoryOutbox(context: Context) {
     private fun loadLocked(): List<PlaybackHistoryReport> = runCatching {
         val raw = prefs.getString(KEY_ITEMS, null) ?: return emptyList()
         val type = object : TypeToken<List<PlaybackHistoryReport>>() {}.type
-        gson.fromJson<List<PlaybackHistoryReport>>(raw, type).orEmpty().take(MAX_ITEMS)
+        gson.fromJson<List<PlaybackHistoryReport>>(raw, type)
+            .orEmpty()
+            .map(::normalizeLegacy)
+            .take(MAX_ITEMS)
     }.onFailure { error ->
         LogHub.e(TAG, "history outbox read failed: ${error.javaClass.simpleName}", error)
         prefs.edit().remove(KEY_ITEMS).apply()
@@ -63,6 +66,37 @@ class PlaybackHistoryOutbox(context: Context) {
             LogHub.e(TAG, "history outbox write failed: ${error.javaClass.simpleName}", error)
         }
     }
+
+    /**
+     * Gson 绕过 Kotlin 默认参数。升级后读取旧队列时，新增的非空字符串字段会变为
+     * null；这里重建快照，使旧记录继续可发送，并避免重试线程被空指针阻塞。
+     */
+    private fun normalizeLegacy(report: PlaybackHistoryReport): PlaybackHistoryReport =
+        PlaybackHistoryReport(
+            sessionId = report.sessionId,
+            accountMid = report.accountMid,
+            aid = report.aid,
+            cid = report.cid,
+            sid = report.sid,
+            epid = report.epid,
+            serialId = report.serialId,
+            type = report.type,
+            business = report.business.orEmptyCompat(),
+            progressSeconds = report.progressSeconds,
+            playDurationSeconds = report.playDurationSeconds,
+            isInteracted = report.isInteracted,
+            bvid = report.bvid.orEmptyCompat(),
+            durationSeconds = report.durationSeconds,
+            startTsSec = report.startTsSec,
+            reportKind = report.reportKind,
+            scene = report.scene.orEmptyCompat(),
+            fromScene = report.fromScene.orEmptyCompat(),
+            fromSpmid = report.fromSpmid.orEmptyCompat(),
+            resourceFrom = report.resourceFrom.orEmptyCompat(),
+            updatedAtMs = report.updatedAtMs,
+        )
+
+    private fun String?.orEmptyCompat(): String = this ?: ""
 
     private companion object {
         const val TAG = "PlaybackHistoryOutbox"

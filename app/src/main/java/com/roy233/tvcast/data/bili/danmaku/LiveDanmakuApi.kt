@@ -15,8 +15,8 @@ import java.util.concurrent.TimeUnit
 /**
  * B 站直播弹幕长连接准入接口。
  *
- * 参考 blivedm 的 web 客户端实现：`getDanmuInfo` 需要设备 buvid3 与 wbi 签名，
- * 否则返回 -352 风控。buvid3 由主站下发，wbi key 从 `nav` 的 `wbi_img` 提取，
+ * `getDanmuInfo` 需要设备 buvid3 与 wbi 签名，否则返回 -352 风控。
+ * buvid3 由主站下发，wbi key 从 `nav` 的 `wbi_img` 提取，
  * 均按设备持久化并复用。
  */
 object LiveDanmakuApi {
@@ -43,7 +43,7 @@ object LiveDanmakuApi {
     /** wbi 鉴权口令有效期，接近官方 12 小时上限。 */
     private const val WBI_KEY_TTL_MS = 11L * 60 * 60 * 1000
 
-    /** wbi 密码重排表，对齐 blivedm。 */
+    /** wbi 密钥重排表。 */
     private val WBI_KEY_INDEX_TABLE = intArrayOf(
         46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
         27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,

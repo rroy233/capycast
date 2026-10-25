@@ -8,6 +8,7 @@ import com.roy233.tvcast.data.bili.LiveHeartbeatRequest
 import com.roy233.tvcast.data.bili.LiveHeartbeatResponse
 import com.roy233.tvcast.data.bili.PlaybackHistoryApi
 import com.roy233.tvcast.data.bili.PlaybackHistoryReport
+import com.roy233.tvcast.data.bili.WebHistoryAuth
 import com.roy233.tvcast.data.local.PlaybackHistoryOutbox
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +38,7 @@ class PlaybackHistoryCoordinator(
     private var lastDurationMs = 0L
     private var flushJob: Job? = null
     private var heartbeatJob: Job? = null
+    private var authBlockedMid: Long? = null
     private var retryJob: Job? = scope.launch {
         while (isActive) {
             delay(RETRY_INTERVAL_MS)
@@ -143,6 +145,7 @@ class PlaybackHistoryCoordinator(
 
     /** 令牌就绪后重试该账号的队列，并接管当前仍在播放的媒体。 */
     fun onAccountAvailable(mid: Long) {
+        if (authBlockedMid == mid) authBlockedMid = null
         retryPendingForAccount(mid)
         if (isPlaying) currentContent?.let(::ensureSession)
     }
@@ -157,7 +160,7 @@ class PlaybackHistoryCoordinator(
 
     /** 登录或启动时只重试与当前账号匹配的快照。 */
     fun retryPendingForAccount(mid: Long) {
-        if (!isEnabled() || mid <= 0L || flushJob?.isActive == true) return
+        if (!isEnabled() || mid <= 0L || authBlockedMid == mid || flushJob?.isActive == true) return
         val token = authTokenStore.load() ?: return
         if (token.mid != mid) {
             LogHub.w(TAG, "history retry skipped: token account changed requested=$mid current=${token.mid}")
@@ -171,23 +174,63 @@ class PlaybackHistoryCoordinator(
                     LogHub.w(TAG, "history retry stopped: no matching account for snapshot=${report.sessionId}")
                     break
                 }
+                val auth = currentToken.toWebHistoryAuth()
+                if (auth == null) {
+                    authBlockedMid = mid
+                    LogHub.e(TAG, "history sync blocked: Web session cookie or CSRF missing account=$mid")
+                    break
+                }
                 try {
+                    var skippedLegacyCompletion = false
                     withContext(Dispatchers.IO) {
-                        api.reportProgress(currentToken.accessKey, report)
+                        when {
+                            report.reportKind == REPORT_KIND_LIVE_ENTRY ||
+                                report.business == HISTORY_BUSINESS_LIVE || report.type == HISTORY_TYPE_LIVE ->
+                                api.reportLiveEntry(auth, report.cid)
+                            else -> {
+                                if (report.progressSeconds < 0L && report.durationSeconds <= 0L) {
+                                    skippedLegacyCompletion = true
+                                    LogHub.w(
+                                        TAG,
+                                        "legacy completed snapshot skipped: Web protocol requires absolute progress " +
+                                            "session=${report.sessionId} aid=${report.aid} cid=${report.cid}",
+                                    )
+                                } else {
+                                    api.reportProgress(
+                                        auth,
+                                        report.copy(
+                                            progressSeconds = if (report.progressSeconds < 0L) {
+                                                report.durationSeconds
+                                            } else {
+                                                report.progressSeconds
+                                            },
+                                        ),
+                                    )
+                                }
+                            }
+                        }
                     }
                     outbox.acknowledge(report.sessionId, report.updatedAtMs)
-                    LogHub.i(
-                        TAG,
-                        "history report delivered session=${report.sessionId} type=${report.type} " +
-                            "aid=${report.aid} cid=${report.cid} progress=${report.progressSeconds}s " +
-                            "played=${report.playDurationSeconds}s",
-                    )
+                    if (!skippedLegacyCompletion) {
+                        LogHub.i(
+                            TAG,
+                            "history report delivered protocol=${report.reportKind ?: REPORT_KIND_VIDEO} " +
+                                "session=${report.sessionId} type=${report.type} " +
+                                "aid=${report.aid} cid=${report.cid} progress=${report.progressSeconds}s " +
+                                "played=${report.playDurationSeconds}s",
+                        )
+                    }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
+                    val apiError = error as? com.roy233.tvcast.data.bili.PlaybackHistoryApiException
+                    if (apiError != null && apiError.code in AUTH_ERROR_CODES) {
+                        authBlockedMid = mid
+                    }
                     LogHub.e(
                         TAG,
-                        "history report failed session=${report.sessionId} type=${report.type} " +
+                        "history report failed protocol=${report.reportKind ?: REPORT_KIND_VIDEO} " +
+                            "session=${report.sessionId} type=${report.type} " +
                             "aid=${report.aid} cid=${report.cid}: ${LogRedaction.reason(error)}",
                         error,
                     )
@@ -234,8 +277,12 @@ class PlaybackHistoryCoordinator(
                 "aid=${content.aid} cid=${content.cid} sid=${content.sid} epid=${content.epid} " +
                 "account=${token.mid}",
         )
-        reportActive("started")
-        if (content.isLive && isPlaying) startLiveHeartbeatIfNeeded()
+        if (content.isLive) {
+            queueLiveEntry(session)
+            if (isPlaying) startLiveHeartbeatIfNeeded()
+        } else {
+            reportActive("started")
+        }
     }
 
     private fun updatePosition(positionMs: Long, durationMs: Long) {
@@ -246,16 +293,18 @@ class PlaybackHistoryCoordinator(
     private fun reportActive(reason: String, ended: Boolean = false) {
         val session = activeSession ?: return
         if (!isEnabled()) return
+        if (session.content.isLive) return
         val token = authTokenStore.load()
         if (token == null || token.mid != session.accountMid) {
             LogHub.w(TAG, "history snapshot queued without matching token reason=$reason account=${session.accountMid}")
         }
         val content = session.content
         val nearEnd = lastDurationMs > 0L && lastDurationMs - lastPositionMs <= COMPLETION_WINDOW_MS
-        val progress = when {
-            content.isLive -> 0L
-            ended || nearEnd -> -1L
-            else -> lastPositionMs / MILLIS_PER_SECOND
+        val progress = if (ended || nearEnd) {
+            lastDurationMs.takeIf { it > 0L }?.div(MILLIS_PER_SECOND) ?:
+                lastPositionMs / MILLIS_PER_SECOND
+        } else {
+            lastPositionMs / MILLIS_PER_SECOND
         }
         val report = PlaybackHistoryReport(
             sessionId = session.id,
@@ -270,6 +319,10 @@ class PlaybackHistoryCoordinator(
             progressSeconds = progress,
             playDurationSeconds = playedDurationMs(session) / MILLIS_PER_SECOND,
             isInteracted = true,
+            bvid = content.bvid,
+            durationSeconds = lastDurationMs / MILLIS_PER_SECOND,
+            startTsSec = session.startTsSec,
+            reportKind = REPORT_KIND_VIDEO,
             scene = content.scene,
             fromScene = content.fromScene,
             fromSpmid = content.fromSpmid,
@@ -285,6 +338,33 @@ class PlaybackHistoryCoordinator(
                 "type=${content.type} aid=${content.aid} cid=${content.cid} progress=${progress}s " +
                 "played=${report.playDurationSeconds}s",
         )
+        retryPendingForAccount(session.accountMid)
+    }
+
+    private fun queueLiveEntry(session: Session) {
+        if (!isEnabled()) return
+        val content = session.content
+        val report = PlaybackHistoryReport(
+            sessionId = session.id,
+            accountMid = session.accountMid,
+            aid = 0L,
+            cid = content.roomId,
+            sid = 0L,
+            epid = 0L,
+            serialId = 0L,
+            type = content.type,
+            business = content.business,
+            progressSeconds = 0L,
+            playDurationSeconds = 0L,
+            isInteracted = true,
+            startTsSec = session.startTsSec,
+            reportKind = REPORT_KIND_LIVE_ENTRY,
+            updatedAtMs = max(System.currentTimeMillis(), session.lastSnapshotAtMs + 1L),
+        )
+        session.lastSnapshotAtMs = report.updatedAtMs
+        outbox.upsert(report)
+        session.lastReportedAtMs = SystemClock.elapsedRealtime()
+        LogHub.i(TAG, "live history entry queued room=${content.roomId} account=${session.accountMid}")
         retryPendingForAccount(session.accountMid)
     }
 
@@ -376,6 +456,13 @@ class PlaybackHistoryCoordinator(
         ?.substringAfter('=')
         .orEmpty()
 
+    private fun com.roy233.tvcast.data.auth.CastAuth.Token.toWebHistoryAuth(): WebHistoryAuth? {
+        val sessData = cookie.extractCookie("SESSDATA")
+        val csrf = cookie.extractCookie("bili_jct")
+        if (sessData.isBlank() || csrf.isBlank() || mid <= 0L) return null
+        return WebHistoryAuth(mid = mid, cookie = cookie, csrf = csrf)
+    }
+
     private data class Session(
         val id: String,
         val stableKey: String,
@@ -385,6 +472,7 @@ class PlaybackHistoryCoordinator(
         var segmentStartedAtMs: Long?,
         var playedDurationMs: Long = 0L,
         var lastSnapshotAtMs: Long = 0L,
+        val startTsSec: Long = System.currentTimeMillis() / MILLIS_PER_SECOND,
         var heartbeatSequence: Int = 0,
         var heartbeatEdno: String = "",
         var heartbeatReye: String = "",
@@ -399,12 +487,18 @@ class PlaybackHistoryCoordinator(
         const val MILLIS_PER_SECOND = 1_000L
         const val MIN_LIVE_HEARTBEAT_INTERVAL_SECONDS = 15
         const val FIRST_HEARTBEAT_RETRY_SECONDS = 60
+        const val REPORT_KIND_VIDEO = "video-heartbeat"
+        const val REPORT_KIND_LIVE_ENTRY = "live-entry"
+        val AUTH_ERROR_CODES = setOf(-101, -111)
+        const val HISTORY_BUSINESS_LIVE = "live"
+        const val HISTORY_TYPE_LIVE = 6
     }
 }
 
 /** 一次投屏解析出的历史身份与直播心跳信息。 */
 data class PlaybackHistoryContent(
     val stableKey: String,
+    val bvid: String = "",
     val aid: Long,
     val cid: Long,
     val sid: Long,

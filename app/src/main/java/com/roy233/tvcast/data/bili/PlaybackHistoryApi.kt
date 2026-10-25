@@ -10,7 +10,7 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-/** 调用 B 站 TV 播放记录与直播心跳接口。 */
+/** 调用 B 站 Web 播放历史接口及 TV 直播在线心跳接口。 */
 class PlaybackHistoryApi(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -19,29 +19,54 @@ class PlaybackHistoryApi(
         .build(),
 ) {
 
-    /** 上报一次点播或直播播放进度。 */
-    fun reportProgress(accessKey: String, report: PlaybackHistoryReport) {
+    /** 按 Web 播放心跳协议上报点播播放进度。 */
+    fun reportProgress(auth: WebHistoryAuth, report: PlaybackHistoryReport) {
         val fields = linkedMapOf(
-            "access_key" to accessKey,
             "cid" to report.cid.toString(),
-            "aid" to report.aid.toString(),
-            "sid" to report.sid.toString(),
-            "epid" to report.epid.toString(),
-            "pro" to report.progressSeconds.toString(),
-            "tp" to report.type.toString(),
-            "business" to report.business,
-            "rtime" to "1",
-            "live_room" to report.cid.toString(),
-            "serial_id" to report.serialId.toString(),
-            "scene" to report.scene,
-            "from_scene" to report.fromScene,
+            "mid" to auth.mid.toString(),
+            "played_time" to report.progressSeconds.coerceAtLeast(0L).toString(),
+            "real_played_time" to report.playDurationSeconds.coerceAtLeast(0L).toString(),
+            "realtime" to report.playDurationSeconds.coerceAtLeast(0L).toString(),
+            "start_ts" to (report.startTsSec.takeIf { it > 0L }
+                ?: (report.updatedAtMs / 1_000L)).coerceAtLeast(0L).toString(),
+            "type" to report.type.toString(),
+            "dt" to "2",
+            "outer" to "0",
+            "play_type" to if (report.progressSeconds <= 0L && report.playDurationSeconds <= 0L) "1" else "0",
+            "spmid" to "333.788.0.0",
             "from_spmid" to report.fromSpmid,
-            "resource_from" to report.resourceFrom,
-            "play_duration" to report.playDurationSeconds.toString(),
-            "is_interacted" to report.isInteracted.toString(),
-            "history_ab_184" to "0",
+            "refer_url" to report.bvid.takeIf(String::isNotBlank)?.let { "https://www.bilibili.com/video/$it" }.orEmpty(),
+            "csrf" to auth.csrf,
         )
-        post("/x/tv/history/add", fields)
+        report.aid.takeIf { it > 0L }?.let { fields["aid"] = it.toString() }
+        report.bvid.takeIf(String::isNotBlank)?.let { fields["bvid"] = it }
+        report.sid.takeIf { it > 0L }?.let { fields["sid"] = it.toString() }
+        report.epid.takeIf { it > 0L }?.let { fields["epid"] = it.toString() }
+        post(
+            path = "/x/click-interface/web/heartbeat",
+            fields = fields,
+            cookie = auth.cookie,
+            referer = fields.getValue("refer_url").ifBlank { "https://www.bilibili.com/" },
+            origin = "https://www.bilibili.com",
+        )
+    }
+
+    /** 登录后进入直播间时登记观看记录；直播没有可恢复的点播进度。 */
+    fun reportLiveEntry(auth: WebHistoryAuth, roomId: Long) {
+        post(
+            path = "/xlive/web-room/v1/index/roomEntryAction",
+            fields = linkedMapOf(
+                "room_id" to roomId.toString(),
+                "platform" to "pc",
+                "csrf" to auth.csrf,
+                "csrf_token" to auth.csrf,
+                "visit_id" to "",
+            ),
+            cookie = auth.cookie,
+            baseUrl = "https://api.live.bilibili.com",
+            referer = "https://live.bilibili.com/$roomId",
+            origin = "https://live.bilibili.com",
+        )
     }
 
     /** 发送一次官方 TV 直播心跳，并返回服务端更新的签名状态。 */
@@ -76,24 +101,36 @@ class PlaybackHistoryApi(
         )
     }
 
-    private fun post(path: String, fields: Map<String, String>): JsonObject {
+    private fun post(
+        path: String,
+        fields: Map<String, String>,
+        cookie: String? = null,
+        baseUrl: String = "https://api.bilibili.com",
+        referer: String = "https://www.bilibili.com/",
+        origin: String? = null,
+    ): JsonObject {
         val form = FormBody.Builder().apply {
             fields.forEach { (name, value) -> add(name, value) }
         }.build()
         val request = Request.Builder()
-            .url("https://api.bilibili.com$path")
+            .url("$baseUrl$path")
             .header("User-Agent", BiliApi.UA)
-            .header("Referer", "https://www.bilibili.com/")
+            .header("Referer", referer)
+            .apply {
+                origin?.let { header("Origin", it) }
+                cookie?.takeIf(String::isNotBlank)?.let { header("Cookie", it) }
+            }
             .post(form)
             .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IOException("TV API HTTP ${response.code} path=$path")
+                throw IOException("History API HTTP ${response.code} path=$path")
             }
             val body = response.body?.string().orEmpty()
             val root = runCatching { JsonParser.parseString(body).asJsonObject }
-                .getOrElse { throw IOException("TV API returned invalid JSON path=$path", it) }
-            val code = root.intOrZero("code")
+                .getOrElse { throw IOException("History API returned invalid JSON path=$path", it) }
+            val code = runCatching { root.get("code")?.asInt }.getOrNull()
+                ?: throw IOException("History API response omitted code path=$path")
             if (code != 0) {
                 val message = sanitizeServerMessage(root.stringOrEmpty("message")).take(160)
                 throw PlaybackHistoryApiException(path = path, code = code, message = message)
@@ -155,12 +192,12 @@ class PlaybackHistoryApi(
 
     private companion object {
         val SENSITIVE_VALUE_PATTERN = Regex(
-            "(?i)\\b(access_key|access_token|refresh_token|buvid3?|play_url)\\s*[:=]\\s*[^,\\s&]+",
+            "(?i)\\b(access_key|access_token|refresh_token|buvid3?|play_url|sessdata|bili_jct|csrf)\\s*[:=]\\s*[^,\\s&]+",
         )
     }
 }
 
-/** 一条待同步的历史记录快照；不包含 access_key 或 Cookie。 */
+/** 一条待同步的历史记录快照；不包含 access_key、Cookie 或 CSRF。 */
 data class PlaybackHistoryReport(
     val sessionId: String,
     val accountMid: Long,
@@ -174,11 +211,23 @@ data class PlaybackHistoryReport(
     val progressSeconds: Long,
     val playDurationSeconds: Long,
     val isInteracted: Boolean,
+    val bvid: String = "",
+    val durationSeconds: Long = 0L,
+    val startTsSec: Long = 0L,
+    /** null 表示旧版本队列中的点播心跳记录。 */
+    val reportKind: String? = null,
     val scene: String = "",
     val fromScene: String = "",
     val fromSpmid: String = "",
     val resourceFrom: String = "",
     val updatedAtMs: Long,
+)
+
+/** 仅保留在内存中的 Web 登录态，不写入历史队列或日志。 */
+data class WebHistoryAuth(
+    val mid: Long,
+    val cookie: String,
+    val csrf: String,
 )
 
 /** 当前直播心跳所需的请求数据。 */
@@ -207,4 +256,4 @@ class PlaybackHistoryApiException(
     val path: String,
     val code: Int,
     message: String,
-) : IOException("TV API rejected request path=$path code=$code message=$message")
+) : IOException("History API rejected request path=$path code=$code message=$message")
