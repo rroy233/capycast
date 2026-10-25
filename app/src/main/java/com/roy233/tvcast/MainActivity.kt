@@ -49,6 +49,9 @@ import com.roy233.tvcast.data.bili.VodCdnCoordinator
 import com.roy233.tvcast.data.bili.VodRecoveryController
 import com.roy233.tvcast.ui.model.LiveQualityOption
 import com.roy233.tvcast.data.bili.NvaExtDecoder
+import com.roy233.tvcast.core.playback.PlaybackBackend
+import com.roy233.tvcast.core.playback.PlaybackEngine
+import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
 import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
@@ -74,6 +77,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
+import com.roy233.tvcast.platform.player.Media3PlaybackEngineAdapter
+import com.roy233.tvcast.platform.player.VlcPlaybackEngineAdapter
 import com.roy233.tvcast.platform.player.VlcPlayerEngine
 import com.roy233.tvcast.platform.player.Media3PlayerEngine
 import com.roy233.tvcast.platform.player.VlcTrackFormat
@@ -95,6 +100,17 @@ class MainActivity : ComponentActivity(), TvActionHost {
     private var playbackBackend = PlaybackBackend.VLC
     /** Media3 播放器按需创建，供杜比视界与 Widevine 内容使用。 */
     private var media3Player: Media3PlayerEngine? = null
+
+    /** VLC 后端统一播放契约适配器。 */
+    private val vlcPlaybackEngine by lazy { VlcPlaybackEngineAdapter(playerEngine) }
+    /** Media3 后端统一播放契约适配器。 */
+    private val media3PlaybackEngine = Media3PlaybackEngineAdapter { media3Player }
+    /** 当前活跃的播放后端适配器；后端差异收敛于此。 */
+    private val activePlaybackEngine: PlaybackEngine
+        get() = when (playbackBackend) {
+            PlaybackBackend.VLC -> vlcPlaybackEngine
+            PlaybackBackend.MEDIA3 -> media3PlaybackEngine
+        }
     /** 视频渲染布局。 */
     private lateinit var videoLayout: VLCVideoLayout
     /** Media3 使用的 SurfaceView 容器，仅杜比视界会显示。 */
@@ -255,6 +271,29 @@ class MainActivity : ComponentActivity(), TvActionHost {
     private val loginCoordinator get() = container.loginCoordinator
     /** 应用更新流程协调器。 */
     private val updateCoordinator get() = container.updateCoordinator
+
+    /** 通用播放控制协调器。 */
+    private val playbackCoordinator by lazy {
+        PlaybackCoordinator(
+            readState = { ui },
+            writeState = { ui = it },
+            isEngineInitialized = { ::playerEngine.isInitialized },
+            isLive = { current?.isLive == true },
+            positionMs = { playerPositionMs() },
+            durationMs = { playerDurationMs() },
+            isPlaying = { playerIsPlaying() },
+            seekPlayer = { position, reason -> seekPlayer(position, reason) },
+            setPlayerPaused = { paused, reason -> setPlayerPaused(paused, reason) },
+            setPlayerPlaybackRate = { rate, reason -> setPlayerPlaybackRate(rate, reason) },
+            setPlayerVolume = { volume, reason -> setPlayerVolume(volume, reason) },
+            onDanmakuSeek = { position ->
+                if (::danmakuController.isInitialized) danmakuController.onSeek(position)
+            },
+            onDanmakuPlaybackRateChanged = { rate ->
+                if (::danmakuController.isInitialized) danmakuController.onPlaybackRateChanged(rate)
+            },
+        )
+    }
 
     /** 电视界面操作装配器。 */
     private val actionDispatcher = TvActionDispatcher(stateHolder, this)
@@ -2536,47 +2575,11 @@ class MainActivity : ComponentActivity(), TvActionHost {
         }
     }
 
-    /** 切换播放器的播放与暂停状态。 */
-    private fun togglePlayPause() {
-        if (!::playerEngine.isInitialized) {
-            LogHub.w(TAG, "togglePlayPause ignored: player engine unavailable")
-            return
-        }
-        if (ui.mode != TvMode.PLAYING && ui.mode != TvMode.LOADING) {
-            LogHub.d(TAG, "togglePlayPause ignored: mode=${ui.mode}")
-            return
-        }
-        val playing = playerIsPlaying()
-        setPlayerPaused(playing, "remote-toggle")
-        ui = ui.copy(
-            isPlaying = playerIsPlaying(),
-            hudVisible = true,
-        )
-    }
+    /** 切换播放与暂停。 */
+    private fun togglePlayPause() = playbackCoordinator.togglePlayPause()
 
     /** 按指定毫秒数调整当前播放位置。 */
-    private fun seekBy(ms: Long) {
-        if (current?.isLive == true) {
-            LogHub.w(TAG, "seek ignored for live delta=${ms}ms")
-            return
-        }
-        if (!::playerEngine.isInitialized) {
-            LogHub.w(TAG, "seekBy ignored: player engine unavailable")
-            return
-        }
-        val length = playerDurationMs()
-        val max = if (length > 0) length else Long.MAX_VALUE
-        val currentPosition = playerPositionMs()
-        val target = (currentPosition + ms).coerceIn(0L, max)
-        if (length <= 0) {
-            LogHub.w(TAG, "seekBy with unknown length; target=$target ms")
-        }
-        seekPlayer(target, "remote-seek")
-        if (::danmakuController.isInitialized) {
-            danmakuController.onSeek(target)
-        }
-        ui = ui.copy(positionMs = target, hudVisible = true)
-    }
+    private fun seekBy(ms: Long) = playbackCoordinator.seekBy(ms)
 
     /**
      * 预览性地跳转到新位置。
@@ -2584,62 +2587,13 @@ class MainActivity : ComponentActivity(), TvActionHost {
      * 每次方向键输入都会立即驱动 VLC 跳转，以便画面加载目标位置；待确认状态只用于
      * 控制进度条显示与自动提交，不会延后播放器的实际定位。
      */
-    private fun previewSeekBy(ms: Long) {
-        if (current?.isLive == true) return
-        if (!::playerEngine.isInitialized || ui.mode != TvMode.PLAYING) return
-
-        val duration = playerDurationMs()
-            .takeIf { it > 0L }
-            ?: ui.durationMs
-        if (duration <= 0L) {
-            LogHub.w(TAG, "previewSeekBy ignored: unknown duration")
-            return
-        }
-        val basePosition = ui.seekPreviewPositionMs
-            ?: playerPositionMs()
-        val target = (basePosition + ms).coerceIn(0L, duration)
-        seekPlayer(target, "remote-seek-preview")
-        if (::danmakuController.isInitialized) {
-            danmakuController.onSeek(target)
-        }
-        ui = ui.copy(
-            positionMs = target,
-            durationMs = duration,
-            seekPreviewPositionMs = target,
-        )
-    }
+    private fun previewSeekBy(ms: Long) = playbackCoordinator.previewSeekBy(ms)
 
     /** 结束当前预览会话；播放器已在预览期间定位到目标位置。 */
-    private fun confirmPreviewSeek() {
-        if (current?.isLive != true && ui.seekPreviewPositionMs != null) {
-            ui = ui.copy(seekPreviewPositionMs = null)
-        }
-    }
+    private fun confirmPreviewSeek() = playbackCoordinator.confirmPreviewSeek()
 
-    /** 将 VLC 与弹幕时钟切换到相同的标准播放速度。 */
-    private fun setPlaybackSpeed(rate: Float) {
-        if (current?.isLive == true) {
-            LogHub.w(TAG, "playback speed change ignored for live rate=$rate")
-            ui = ui.copy(toast = "直播不支持倍速")
-            return
-        }
-        if (!::playerEngine.isInitialized ||
-            (ui.mode != TvMode.PLAYING && ui.mode != TvMode.LOADING)
-        ) {
-            LogHub.w(TAG, "setPlaybackSpeed ignored: player unavailable or mode=${ui.mode}")
-            return
-        }
-        val target = PlaybackSpeed.normalize(rate)
-        val applied = setPlayerPlaybackRate(target, "remote-speed")
-        if (::danmakuController.isInitialized) {
-            danmakuController.onPlaybackRateChanged(applied)
-        }
-        ui = ui.copy(
-            playbackSpeed = applied,
-            hudVisible = true,
-            toast = "播放速度 ${PlaybackSpeed.label(applied)}",
-        )
-    }
+    /** 将播放器与弹幕时钟切换到相同的标准播放速度。 */
+    private fun setPlaybackSpeed(rate: Float) = playbackCoordinator.setPlaybackSpeed(rate)
 
     /** 更新弹幕设置并持久化。 */
     private fun updateDanmakuSettings(newSettings: DanmakuSettings) {
@@ -2730,15 +2684,8 @@ class MainActivity : ComponentActivity(), TvActionHost {
     }
 
     /** 设置播放器音量并同步界面状态。 */
-    private fun setVolume(volume: Int) {
-        if (!::playerEngine.isInitialized) {
-            LogHub.w(TAG, "setVolume ignored: player engine unavailable")
-            return
-        }
-        val v = volume.coerceIn(0, 100)
-        setPlayerVolume(v, "remote-volume")
-        ui = ui.copy(volume = v, hudVisible = true)
-    }
+    /** 设置音量，沿用界面的 0..100 标度。 */
+    private fun setVolume(volume: Int) = playbackCoordinator.setVolume(volume)
 
     /** 重试最近一次失败的解析或播放操作。 */
     private fun retryLastAction() {
@@ -2925,60 +2872,34 @@ class MainActivity : ComponentActivity(), TvActionHost {
     // helpers
     // ------------------------------------------------------------------ //
     /** 读取当前后端的统一播放状态，供 DLNA、弹幕和界面轮询使用。 */
-    private fun playerPositionMs(): Long = when (playbackBackend) {
-        PlaybackBackend.MEDIA3 -> media3Player?.positionMs() ?: 0L
-        PlaybackBackend.VLC -> runCatching { player.time.coerceAtLeast(0L) }.getOrDefault(0L)
-    }
+    private fun playerPositionMs(): Long = activePlaybackEngine.positionMs()
 
-    private fun playerDurationMs(): Long = when (playbackBackend) {
-        PlaybackBackend.MEDIA3 -> media3Player?.durationMs() ?: 0L
-        PlaybackBackend.VLC -> runCatching { player.length.coerceAtLeast(0L) }.getOrDefault(0L)
-    }
+    private fun playerDurationMs(): Long = activePlaybackEngine.durationMs()
 
-    private fun playerIsPlaying(): Boolean = when (playbackBackend) {
-        PlaybackBackend.MEDIA3 -> media3Player?.isPlaying() ?: false
-        PlaybackBackend.VLC -> runCatching { player.isPlaying }.getOrDefault(false)
-    }
+    private fun playerIsPlaying(): Boolean = activePlaybackEngine.isPlaying()
 
-    private fun playerVolume(): Int = when (playbackBackend) {
-        PlaybackBackend.MEDIA3 -> media3Player?.volume() ?: ui.volume
-        PlaybackBackend.VLC -> runCatching { player.volume }.getOrDefault(ui.volume)
-    }
+    private fun playerVolume(): Int = activePlaybackEngine.volume(ui.volume)
 
     private fun seekPlayer(positionMs: Long, reason: String): Long {
         if (current?.isLive != true) {
             vodSession?.recovery?.onSeek(positionMs, SystemClock.elapsedRealtime())
         }
-        return when (playbackBackend) {
-            PlaybackBackend.MEDIA3 -> media3Player?.seekTo(positionMs) ?: positionMs
-            PlaybackBackend.VLC -> playerEngine.seekTo(positionMs, reason)
-        }
+        return activePlaybackEngine.seekTo(positionMs, reason)
     }
 
     private fun setPlayerPaused(paused: Boolean, reason: String) {
-        when (playbackBackend) {
-            PlaybackBackend.MEDIA3 -> media3Player?.setPaused(paused)
-            PlaybackBackend.VLC -> playerEngine.setPaused(paused, reason)
-        }
+        activePlaybackEngine.setPaused(paused, reason)
     }
 
-    private fun setPlayerPlaybackRate(rate: Float, reason: String): Float = when (playbackBackend) {
-        PlaybackBackend.MEDIA3 -> media3Player?.setPlaybackRate(rate) ?: rate
-        PlaybackBackend.VLC -> playerEngine.setPlaybackRate(rate, reason)
-    }
+    private fun setPlayerPlaybackRate(rate: Float, reason: String): Float =
+        activePlaybackEngine.setPlaybackRate(rate, reason)
 
     private fun setPlayerVolume(volume: Int, reason: String) {
-        when (playbackBackend) {
-            PlaybackBackend.MEDIA3 -> media3Player?.setVolume(volume)
-            PlaybackBackend.VLC -> playerEngine.setPlayerVolume(volume, reason)
-        }
+        activePlaybackEngine.setVolume(volume, reason)
     }
 
     private fun stopActivePlayback(reason: String) {
-        when (playbackBackend) {
-            PlaybackBackend.MEDIA3 -> media3Player?.stop()
-            PlaybackBackend.VLC -> playerEngine.stopPlayback(reason)
-        }
+        activePlaybackEngine.stop(reason)
         setHdrWindowEnabled(false)
     }
 
@@ -3231,9 +3152,4 @@ class MainActivity : ComponentActivity(), TvActionHost {
         private var crashHandlerInstalled = false
     }
 
-    /** 当前用于输出视频和音频的实际播放后端。 */
-    private enum class PlaybackBackend {
-        VLC,
-        MEDIA3,
-    }
 }
