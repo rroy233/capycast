@@ -3,7 +3,7 @@ package com.roy233.tvcast.platform.player
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEngine
 
-/** 将现有 VLC 播放器门面适配为统一播放契约。 */
+/** 将 VLC 播放器门面适配为统一播放契约。 */
 class VlcPlaybackEngineAdapter(
     private val engine: VlcPlayerEngine,
 ) : PlaybackEngine {

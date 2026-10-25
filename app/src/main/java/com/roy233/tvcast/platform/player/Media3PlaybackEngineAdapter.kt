@@ -5,9 +5,9 @@ import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEngine
 
 /**
- * 将现有 Media3 播放器门面适配为统一播放契约。
+ * 将 Media3 播放器门面适配为统一播放契约。
  *
- * Media3 播放器按需创建，尚未创建时各读取方法返回与迁移前一致的空值语义。
+ * Media3 播放器按需创建；尚未创建时各读取方法返回空值语义。
  */
 @UnstableApi
 class Media3PlaybackEngineAdapter(

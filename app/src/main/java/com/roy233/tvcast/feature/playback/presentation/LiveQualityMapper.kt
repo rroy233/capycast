@@ -7,7 +7,7 @@ import com.roy233.tvcast.ui.model.LiveQualityOption
 /**
  * 直播画质名称与线路排序的展示映射。
  *
- * 全部为纯函数，名称、过滤条件与排序键与原 `MainActivity` 实现保持一致。
+ * 全部为纯函数，不读取外部状态。
  */
 object LiveQualityMapper {
 

@@ -13,8 +13,8 @@ import com.roy233.tvcast.ui.model.TvMode
 /**
  * 电视界面需要宿主执行的业务命令。
  *
- * 界面的纯状态切换由 [TvActionDispatcher] 自己完成；涉及播放、账号、更新、弹幕
- * 与持久化的动作通过本接口转交给宿主，迁移期间宿主再委托给原有实现。
+ * 界面的纯状态切换由 [TvActionDispatcher] 完成；涉及播放、账号、更新、弹幕与
+ * 持久化的动作通过本接口交给宿主执行。
  */
 interface TvActionHost {
     fun requestLogin()
@@ -59,7 +59,7 @@ interface TvActionHost {
  * 装配 [TvActions]，把界面操作分成两类处理。
  *
  * 纯界面状态（侧边栏、页面导航、控制栏、面板、停止确认等）直接写入 [TvStateHolder]；
- * 其余命令转交 [TvActionHost]，保持与迁移前完全一致的调用路径。
+ * 其余命令转交 [TvActionHost]。
  */
 class TvActionDispatcher(
     private val stateHolder: TvStateHolder,
@@ -183,7 +183,7 @@ class TvActionDispatcher(
     )
 
     private companion object {
-        /** 与宿主保持一致的日志标签，确保日志输出不变。 */
+        /** 日志标签。 */
         const val TAG = "SimpleBili"
     }
 }

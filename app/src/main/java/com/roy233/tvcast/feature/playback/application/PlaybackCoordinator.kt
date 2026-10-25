@@ -8,8 +8,8 @@ import com.roy233.tvcast.ui.model.TvUiState
 /**
  * 协调通用播放控制：暂停/恢复、进度调整、倍速与音量。
  *
- * 只承载与具体内容类型无关的传输操作；直播/点播会话、线路恢复和投屏解析仍由
- * 宿主与后续阶段拆分出的协调器负责。所有判断条件、日志与状态更新与迁移前一致。
+ * 只承载与具体内容类型无关的传输操作；直播/点播会话、线路恢复和投屏解析由
+ * 各自的协调器负责。
  */
 class PlaybackCoordinator(
     private val readState: () -> TvUiState,
@@ -145,7 +145,7 @@ class PlaybackCoordinator(
     }
 
     private companion object {
-        /** 与宿主保持一致的日志标签，确保日志输出不变。 */
+        /** 日志标签。 */
         const val TAG = "SimpleBili"
     }
 }

@@ -8,8 +8,7 @@ import com.roy233.tvcast.ui.model.TvUiState
 /**
  * 持有电视界面根状态，作为 Compose 重组的唯一可变来源。
  *
- * 首轮保留 [TvUiState] 的整体形状与全部字段，调用方仍以整体 `copy` 的方式更新状态；
- * 后续阶段再按功能切片，避免一次性改变状态结构。
+ * 状态以不可变 [TvUiState] 整体替换：调用方通过 `copy` 生成新值后提交。
  */
 class TvStateHolder(initial: TvUiState = TvUiState()) {
 

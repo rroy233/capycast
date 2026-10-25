@@ -6,7 +6,7 @@ import com.roy233.tvcast.data.bili.VodRecoveryController
 /**
  * 点播表示层与恢复判定规则。
  *
- * 全部为纯函数，不含状态与副作用；表达式与原 `MainActivity` 实现逐项一致。
+ * 全部为纯函数，不含状态与副作用。
  */
 object VodPlaybackRules {
 

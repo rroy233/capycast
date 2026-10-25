@@ -20,8 +20,7 @@ import kotlinx.coroutines.CoroutineScope
  * 应用依赖组合根。
  *
  * 集中创建投屏、账号、更新、历史与本地偏好等协作对象，让 `MainActivity` 只负责
- * Android 宿主生命周期与界面装配。所有协作对象的构造参数、默认值、Context、
- * 作用域和创建时机与迁移前保持一致，仍为首次访问时惰性创建。
+ * Android 宿主生命周期与界面装配。各协作对象在首次访问时惰性创建。
  */
 class CapyCastContainer(
     private val context: Context,

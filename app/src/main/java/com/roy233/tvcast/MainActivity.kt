@@ -112,7 +112,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
     private val vlcPlaybackEngine by lazy { VlcPlaybackEngineAdapter(playerEngine) }
     /** Media3 后端统一播放契约适配器。 */
     private val media3PlaybackEngine = Media3PlaybackEngineAdapter { media3Player }
-    /** 当前活跃的播放后端适配器；后端差异收敛于此。 */
+    /** 当前活跃的播放后端适配器。 */
     private val activePlaybackEngine: PlaybackEngine
         get() = when (playbackBackend) {
             PlaybackBackend.VLC -> vlcPlaybackEngine
@@ -262,8 +262,6 @@ class MainActivity : ComponentActivity(), TvActionHost {
 
     /** 提供给电视界面的操作回调集合。 */
     private val actions = actionDispatcher.actions
-
-    // ---- TvActionHost 过渡期实现：全部委托既有逻辑，行为与迁移前一致。 ----
 
     override fun requestLogin() = startQrLogin()
 
@@ -2508,7 +2506,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
         }
     }
 
-    /** 切换播放与暂停。 */
+    /** 切换播放器的播放与暂停状态。 */
     private fun togglePlayPause() = playbackCoordinator.togglePlayPause()
 
     /** 按指定毫秒数调整当前播放位置。 */
@@ -2525,7 +2523,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
     /** 结束当前预览会话；播放器已在预览期间定位到目标位置。 */
     private fun confirmPreviewSeek() = playbackCoordinator.confirmPreviewSeek()
 
-    /** 将播放器与弹幕时钟切换到相同的标准播放速度。 */
+    /** 将 VLC 与弹幕时钟切换到相同的标准播放速度。 */
     private fun setPlaybackSpeed(rate: Float) = playbackCoordinator.setPlaybackSpeed(rate)
 
     /** 更新弹幕设置并持久化。 */
