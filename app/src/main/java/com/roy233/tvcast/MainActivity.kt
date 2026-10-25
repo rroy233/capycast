@@ -55,6 +55,8 @@ import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.LivePlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.LivePlaybackHost
+import com.roy233.tvcast.feature.playback.application.PlaybackTicker
+import com.roy233.tvcast.feature.playback.application.PlaybackTickerHost
 import com.roy233.tvcast.feature.playback.application.VodPlaybackHost
 import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
 import com.roy233.tvcast.feature.playback.model.CastResolution
@@ -100,7 +102,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost {
+class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost {
 
     /** VLC 播放引擎。 */
     private lateinit var playerEngine: VlcPlayerEngine
@@ -174,6 +176,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private val vodCoordinator by lazy { VodPlaybackCoordinator(this) }
     /** 直播会话协调器。 */
     private val liveCoordinator by lazy { LivePlaybackCoordinator(this) }
+    /** 播放轮询协调器。 */
+    private val playbackTicker by lazy { PlaybackTicker(this) }
 
     /** 电视界面根状态持有者。 */
     private val stateHolder = TvStateHolder()
@@ -428,6 +432,54 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 可供解析器使用的应用上下文。 */
     override fun appContext(): Context = applicationContext
+
+    /** 播放器是否已经初始化。 */
+    override fun isEngineInitialized(): Boolean = ::playerEngine.isInitialized
+
+    /** 当前媒体时长，单位为毫秒。 */
+    override fun durationMs(): Long = playerDurationMs()
+
+    /** 当前音量。 */
+    override fun volume(): Int = playerVolume()
+
+    /** 当前内容是否为直播。 */
+    override fun isLive(): Boolean = current?.isLive == true
+
+    /** 当前是否存在播放信息。 */
+    override fun currentAvailable(): Boolean = current != null
+
+    /** 当前直播线路之外的备用源数量。 */
+    override fun liveBackupCount(): Int = current?.liveBackupCount ?: 0
+
+    /** VLC 直播播放进度快照。 */
+    override fun liveProgressSnapshot(): VlcPlayerEngine.LiveProgressSnapshot? =
+        if (::playerEngine.isInitialized) playerEngine.liveProgressSnapshot() else null
+
+    /** 刷新视频尺寸与弹幕布局。 */
+    override fun onRefreshVideoSize() = refreshVideoSize()
+
+    /** 将播放时间同步到弹幕时钟。 */
+    override fun onDanmakuPlayerTime(positionMs: Long) {
+        if (::danmakuController.isInitialized) danmakuController.onPlayerTime(positionMs)
+    }
+
+    /** 将轮询进度交给点播恢复状态机。 */
+    override fun onVodProgress(positionMs: Long, activelyPlaying: Boolean) =
+        observeVodProgress(positionMs, activelyPlaying)
+
+    /** 上报播放进度到观看历史。 */
+    override fun onHistoryPosition(positionMs: Long, durationMs: Long, playing: Boolean) =
+        playbackHistoryCoordinator.onPosition(positionMs, durationMs, playing)
+
+    /** 检测直播时间线是否连续无前进。 */
+    override fun onLiveProgress(progress: VlcPlayerEngine.LiveProgressSnapshot, playing: Boolean) =
+        observeLiveProgress(progress, playing)
+
+    /** 当前 Wi-Fi 名称。 */
+    override fun wifiName(): String = deviceInfo.wifiName()
+
+    /** 当前设备局域网地址。 */
+    override fun localIp(): String = LogHub.localIp()
 
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
     private val dlnaListener = object : DlnaRenderer.Listener {
@@ -2125,54 +2177,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 启动定时任务以同步播放进度和设备网络信息。 */
-    private fun startTicker() {
-        tickerJob?.cancel()
-        tickerJob = scope.launch {
-            var tick = 0
-            while (isActive) {
-                delay(500)
-                tick++
-                if (::playerEngine.isInitialized &&
-                    (ui.mode == TvMode.PLAYING || ui.mode == TvMode.LOADING)
-                ) {
-                    val pos = playerPositionMs()
-                    val len = playerDurationMs()
-                    val playing = playerIsPlaying()
-                    val activelyPlaying = playing && !ui.isBuffering
-                    val volume = playerVolume()
-                    val live = current?.isLive == true
-                    if (!live) observeVodProgress(pos, activelyPlaying)
-                    if (current != null) {
-                        playbackHistoryCoordinator.onPosition(
-                            positionMs = if (live) 0L else pos,
-                            durationMs = if (live) 0L else len,
-                            playing = activelyPlaying,
-                        )
-                    }
-                    if (live) observeLiveProgress(playerEngine.liveProgressSnapshot(), activelyPlaying)
-                    ui = ui.copy(
-                        positionMs = if (live) 0L else pos.coerceAtLeast(0L),
-                        durationMs = if (live) 0L else if (len > 0) len else ui.durationMs,
-                        isPlaying = playing,
-                        volume = volume,
-                        liveBackupCount = if (live) current?.liveBackupCount ?: 0 else 0,
-                    )
-                    if (playing && !ui.isBuffering) {
-                        refreshVideoSize()
-                        if (!live && ::danmakuController.isInitialized) {
-                            danmakuController.onPlayerTime(pos.coerceAtLeast(0L))
-                        }
-                    }
-                }
-                if (tick % 10 == 0) {
-                    ui = ui.copy(
-                        network = deviceInfo.wifiName(),
-                        ip = LogHub.localIp(),
-                    )
-                }
-            }
-        }
-    }
+    private fun startTicker() = playbackTicker.start()
 
     /** 检查直播时间线、网络读取或解码画面是否连续五秒没有前进。 */
     private fun observeLiveProgress(
@@ -2323,7 +2328,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         loginCoordinator.cancel()
         updateCoordinator.cancel()
         resolveJob?.cancel()
-        tickerJob?.cancel()
+        playbackTicker.stop()
         runCatching { if (::danmakuController.isInitialized) danmakuController.release() }
         runCatching { if (::liveDanmakuController.isInitialized) liveDanmakuController.release() }
         scope.cancel()
