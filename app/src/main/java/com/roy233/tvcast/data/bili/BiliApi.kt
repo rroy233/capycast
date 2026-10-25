@@ -32,6 +32,9 @@ object BiliApi {
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     /** 访问 Bilibili Web API 的 HTTP 客户端。 */
+    /** HTTP 请求执行器。 */
+    private val httpClient by lazy { BiliHttpClient(client, UA) }
+
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
@@ -228,56 +231,7 @@ object BiliApi {
      * @param url 请求地址。
      * @param purpose 请求用途，用于日志区分。
      */
-    private fun get(url: String, purpose: String): String {
-        val auth = if (cookie.isNotEmpty()) "account" else "guest"
-        val safeUrl = LogRedaction.url(url)
-        val startedAt = SystemClock.elapsedRealtime()
-        LogHub.d(TAG, "http start purpose=$purpose auth=$auth url=$safeUrl")
-        val builder = Request.Builder()
-            .url(url)
-            .header("User-Agent", UA)
-            .header("Referer", "https://www.bilibili.com/")
-            .header("Origin", "https://www.bilibili.com")
-            .header("Accept", "application/json, text/plain, */*")
-        if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
-        try {
-            client.newCall(builder.build()).execute().use { resp ->
-                val body = resp.body?.string().orEmpty()
-                val elapsed = SystemClock.elapsedRealtime() - startedAt
-                if (!resp.isSuccessful) {
-                    LogHub.e(
-                        TAG,
-                        "http failed purpose=$purpose status=${resp.code} " +
-                            "bytes=${body.length} ms=$elapsed url=$safeUrl " +
-                            "body=${LogRedaction.text(body.take(400))}",
-                    )
-                    val apiMessage = runCatching {
-                        JsonParser.parseString(body).asJsonObject
-                            .get("message")?.asString
-                    }.getOrNull()
-                    val suffix = apiMessage?.let { " ${LogRedaction.text(it).take(120)}" }.orEmpty()
-                    error("HTTP ${resp.code}$suffix ($purpose)")
-                }
-                LogHub.i(
-                    TAG,
-                    "http done purpose=$purpose status=${resp.code} " +
-                        "bytes=${body.length} ms=$elapsed",
-                )
-                if (body.isEmpty()) error("empty body ($purpose)")
-                return body
-            }
-        } catch (failure: IOException) {
-            val elapsed = SystemClock.elapsedRealtime() - startedAt
-            LogHub.e(
-                TAG,
-                "http error purpose=$purpose after=${elapsed}ms url=$safeUrl " +
-                    LogRedaction.reason(failure),
-                failure,
-                stack = true,
-            )
-            throw failure
-        }
-    }
+    private fun get(url: String, purpose: String): String = httpClient.get(url, purpose, cookie)
 
     /**
      * 发送带有公共请求头和登录 Cookie 的二进制 GET 请求。
@@ -287,52 +241,7 @@ object BiliApi {
      * @param url 请求地址。
      * @param purpose 请求用途，用于日志区分。
      */
-    fun getBytes(url: String, purpose: String): ByteArray {
-        val auth = if (cookie.isNotEmpty()) "account" else "guest"
-        val safeUrl = LogRedaction.url(url)
-        val startedAt = SystemClock.elapsedRealtime()
-        LogHub.d(TAG, "http(bin) start purpose=$purpose auth=$auth url=$safeUrl")
-        val builder = Request.Builder()
-            .url(url)
-            .header("User-Agent", UA)
-            .header("Referer", "https://www.bilibili.com/")
-            .header("Origin", "https://www.bilibili.com")
-            .header("Accept", "*/*")
-        if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
-        try {
-            client.newCall(builder.build()).execute().use { resp ->
-                val bytes = resp.body?.bytes() ?: ByteArray(0)
-                val elapsed = SystemClock.elapsedRealtime() - startedAt
-                if (!resp.isSuccessful) {
-                    val preview = String(bytes, Charsets.UTF_8).take(400)
-                    LogHub.e(
-                        TAG,
-                        "http(bin) failed purpose=$purpose status=${resp.code} " +
-                            "bytes=${bytes.size} ms=$elapsed url=$safeUrl " +
-                            "body=${LogRedaction.text(preview)}",
-                    )
-                    error("HTTP ${resp.code} ($purpose)")
-                }
-                LogHub.i(
-                    TAG,
-                    "http(bin) done purpose=$purpose status=${resp.code} " +
-                        "bytes=${bytes.size} ms=$elapsed",
-                )
-                if (bytes.isEmpty()) error("empty body ($purpose)")
-                return bytes
-            }
-        } catch (failure: IOException) {
-            val elapsed = SystemClock.elapsedRealtime() - startedAt
-            LogHub.e(
-                TAG,
-                "http(bin) error purpose=$purpose after=${elapsed}ms url=$safeUrl " +
-                    LogRedaction.reason(failure),
-                failure,
-                stack = true,
-            )
-            throw failure
-        }
-    }
+    fun getBytes(url: String, purpose: String): ByteArray = httpClient.getBytes(url, purpose, cookie)
 
     /**
      * 请求统一 API 并校验业务状态码。
