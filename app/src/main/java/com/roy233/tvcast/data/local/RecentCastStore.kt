@@ -40,6 +40,9 @@ class RecentCastStore(context: Context) {
             title = info.title,
             cover = info.cover,
             quality = info.qualityLabel,
+            isPgc = info.isPgc,
+            epId = info.epId,
+            seasonId = info.seasonId,
             at = System.currentTimeMillis(),
         )
         val list = (listOf(entry) + current.filterNot {

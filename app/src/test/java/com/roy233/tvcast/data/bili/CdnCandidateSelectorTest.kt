@@ -59,4 +59,38 @@ class CdnCandidateSelectorTest {
         assertEquals(dolby, CdnCandidateSelector.pickAudio(listOf(aac, dolby)))
         assertTrue(dolby.isDolbyAudio)
     }
+
+    @Test
+    fun `keeps DASH initialization and index ranges for PGC and DRM source construction`() {
+        val track = CdnCandidateSelector.parseTrack(
+            JsonParser.parseString(
+                """{
+                    "id":120,"codecid":12,"mimeType":"video/mp4","codecs":"hev1.2.4.L153.B0",
+                    "baseUrl":"https://upos.example.com/video.m4s?token=secret",
+                    "segmentBase":{"initialization":"0-1023","indexRange":"1024-2047"}
+                }""",
+            ).asJsonObject,
+        )
+
+        assertEquals("0-1023", track.initializationRange)
+        assertEquals("1024-2047", track.indexRange)
+        assertTrue(track.url.contains("upos.example.com"))
+    }
+
+    @Test
+    fun `uses server quality descriptions for newly named quality tiers`() {
+        val play = JsonParser.parseString(
+            """{
+                "support_formats":[
+                  {"quality":120,"new_description":"大视界4K","description":"4K 超清"},
+                  {"quality":125,"display_desc":"大视界4K HDR10","description":"HDR 真彩"}
+                ]
+            }""",
+        ).asJsonObject
+
+        val labels = BiliApi.qualityLabelsFrom(play)
+
+        assertEquals("大视界4K", labels[120])
+        assertEquals("大视界4K HDR10", labels[125])
+    }
 }

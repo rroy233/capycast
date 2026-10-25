@@ -21,6 +21,14 @@ import javax.crypto.spec.SecretKeySpec
  */
 object NvaExtDecoder {
 
+    /** 内容身份分类；优先识别直播与原生 PGC 标识，避免 aid/cid 抢先误分流。 */
+    enum class ContentKind {
+        LIVE,
+        PGC,
+        UGC,
+        UNKNOWN,
+    }
+
     /** 日志标签。 */
     private const val TAG = "NvaExt"
     /** 默认 AES 密钥及初始化向量文本。 */
@@ -70,12 +78,21 @@ object NvaExtDecoder {
         /** 投屏类型标识。 */
         val tp: Int = 0,
     ) {
+        /** 根据投屏协议标识确定唯一内容类型。 */
+        val contentKind: ContentKind
+            get() = when {
+                roomId > 0L -> ContentKind.LIVE
+                eid > 0L || sid > 0L -> ContentKind.PGC
+                aid > 0L && cid > 0L -> ContentKind.UGC
+                else -> ContentKind.UNKNOWN
+            }
+
         /** 是否包含普通视频的稿件和分P标识。 */
-        val hasUgc: Boolean get() = aid > 0 && cid > 0
-        /** 是否表示 PGC 内容且不包含普通视频标识。 */
-        val hasPgc: Boolean get() = (eid > 0 || sid > 0) && !hasUgc
-        /** 是否表示直播内容且不包含普通视频标识。 */
-        val hasLive: Boolean get() = roomId > 0 && !hasUgc
+        val hasUgc: Boolean get() = contentKind == ContentKind.UGC
+        /** 是否包含 PGC 分集或季标识。 */
+        val hasPgc: Boolean get() = contentKind == ContentKind.PGC
+        /** 是否表示直播。 */
+        val hasLive: Boolean get() = contentKind == ContentKind.LIVE
     }
 
     /** 解码 `<upnp:longDescription>` 中的 nva 扩展内容。 */
