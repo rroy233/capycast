@@ -1,4 +1,4 @@
-package com.roy233.tvcast.data.update
+package com.roy233.tvcast.feature.update.data
 
 import android.os.Build
 import com.roy233.tvcast.BuildConfig

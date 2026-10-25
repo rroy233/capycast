@@ -9,7 +9,7 @@ import android.os.SystemClock
 import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.data.local.UpdatePreferences
-import com.roy233.tvcast.data.update.ReleaseRepository
+import com.roy233.tvcast.feature.update.data.ReleaseRepository
 import com.roy233.tvcast.platform.installer.ApkUpdateInstaller
 import com.roy233.tvcast.ui.model.TvUiState
 import kotlinx.coroutines.CoroutineScope

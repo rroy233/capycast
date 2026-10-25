@@ -1,11 +1,11 @@
-package com.roy233.tvcast.feature.cast.domain
+package com.roy233.tvcast.feature.playback.presentation
 
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.ui.model.AudioOption
 import com.roy233.tvcast.ui.model.TrackOption
 
 /** 将已解析的播放轨道转换为电视端选择项。 */
-object TrackOptionFactory {
+object TrackOptionMapper {
 
     /**
      * 构造去重并排序后的视频清晰度选项。

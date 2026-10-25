@@ -72,7 +72,7 @@ import com.roy233.tvcast.core.danmaku.MediaClock
 import com.roy233.tvcast.feature.history.PlaybackHistoryContent
 import com.roy233.tvcast.feature.update.UpdateChannel
 import com.roy233.tvcast.platform.dlna.DlnaRenderer
-import com.roy233.tvcast.feature.cast.domain.TrackOptionFactory
+import com.roy233.tvcast.feature.playback.presentation.TrackOptionMapper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -2215,8 +2215,8 @@ class MainActivity : ComponentActivity(), TvActionHost {
             durationMs = if (info.isLive) 0L else info.durationSec * 1000,
             selectedQn = info.video.id,
             selectedAudioId = info.audio?.id ?: 0,
-            tracks = TrackOptionFactory.tracks(info),
-            audios = TrackOptionFactory.audios(info),
+            tracks = TrackOptionMapper.tracks(info),
+            audios = TrackOptionMapper.audios(info),
             hudVisible = true,
             panel = null,
             error = null,
