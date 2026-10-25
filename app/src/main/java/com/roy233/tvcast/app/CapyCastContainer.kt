@@ -9,11 +9,12 @@ import com.roy233.tvcast.data.local.PlaybackHistoryOutbox
 import com.roy233.tvcast.data.local.RecentCastStore
 import com.roy233.tvcast.data.local.UiPreferences
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
+import com.roy233.tvcast.feature.account.AccountUiState
 import com.roy233.tvcast.feature.history.PlaybackHistoryCoordinator
 import com.roy233.tvcast.feature.update.UpdateCoordinator
+import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.platform.device.DeviceInfoProvider
 import com.roy233.tvcast.platform.qr.QrCodeGenerator
-import com.roy233.tvcast.ui.model.TvUiState
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -25,8 +26,16 @@ import kotlinx.coroutines.CoroutineScope
 class CapyCastContainer(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val readState: () -> TvUiState,
-    private val writeState: (TvUiState) -> Unit,
+    private val readAccountState: () -> AccountUiState,
+    private val writeAccountState: (AccountUiState) -> Unit,
+    private val readUpdateState: () -> UpdateUiState,
+    private val writeUpdateState: (UpdateUiState) -> Unit,
+    private val onLogoutUi: () -> Unit,
+    private val onToast: (String) -> Unit,
+    private val openUpdateSettingsNavigation: () -> Unit,
+    private val closeUpdateSettingsNavigation: () -> Unit,
+    private val openUpdateNotesNavigation: () -> Unit,
+    private val closeUpdateNotesNavigation: () -> Unit,
     private val isPlaying: () -> Boolean,
     private val positionMs: () -> Long,
     private val durationMs: () -> Long,
@@ -68,8 +77,8 @@ class CapyCastContainer(
         AccountLoginCoordinator(
             context = context,
             scope = scope,
-            readState = readState,
-            writeState = writeState,
+            readState = readAccountState,
+            writeState = writeAccountState,
             authTokenStore = authTokenStore,
             qrCodeGenerator = QrCodeGenerator(),
             onTokenAvailable = {
@@ -84,6 +93,8 @@ class CapyCastContainer(
                 )
                 BiliApi.cookie = ""
             },
+            onLogoutUi = onLogoutUi,
+            onToast = onToast,
         )
     }
 
@@ -92,8 +103,13 @@ class CapyCastContainer(
         UpdateCoordinator(
             context = context,
             scope = scope,
-            readState = readState,
-            writeState = writeState,
+            readUpdateState = readUpdateState,
+            writeUpdateState = writeUpdateState,
+            openSettingsNavigation = openUpdateSettingsNavigation,
+            closeSettingsNavigation = closeUpdateSettingsNavigation,
+            openNotesNavigation = openUpdateNotesNavigation,
+            closeNotesNavigation = closeUpdateNotesNavigation,
+            onToast = onToast,
         )
     }
 }

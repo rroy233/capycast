@@ -26,6 +26,9 @@ import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.PlaybackUiState
+import com.roy233.tvcast.ui.model.playbackUiState
+import com.roy233.tvcast.ui.model.withPlaybackUiState
 import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.app.CapyCastContainer
 import com.roy233.tvcast.ui.tv.TvActionDispatcher
@@ -51,6 +54,7 @@ import com.roy233.tvcast.ui.model.LiveQualityOption
 import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEngine
+import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
 import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.LivePlaybackCoordinator
@@ -78,6 +82,7 @@ import com.roy233.tvcast.core.danmaku.LiveDanmakuController
 import com.roy233.tvcast.core.danmaku.MediaClock
 import com.roy233.tvcast.feature.history.PlaybackHistoryContent
 import com.roy233.tvcast.feature.update.UpdateChannel
+import com.roy233.tvcast.feature.account.AccountUiState
 import com.roy233.tvcast.platform.dlna.DlnaRenderer
 import com.roy233.tvcast.feature.playback.presentation.TrackOptionMapper
 import kotlinx.coroutines.CoroutineScope
@@ -196,8 +201,55 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         CapyCastContainer(
             context = this,
             scope = scope,
-            readState = { ui },
-            writeState = { ui = it },
+            readAccountState = {
+                AccountUiState(
+                    loggedIn = ui.loggedIn,
+                    accountName = ui.accountName,
+                    mid = ui.mid,
+                    vip = ui.vip,
+                    loginQr = ui.loginQr,
+                    loginStatus = ui.loginStatus,
+                    loginSkipped = ui.loginSkipped,
+                )
+            },
+            writeAccountState = { account ->
+                ui = ui.copy(
+                    loggedIn = account.loggedIn,
+                    accountName = account.accountName,
+                    mid = account.mid,
+                    vip = account.vip,
+                    loginQr = account.loginQr,
+                    loginStatus = account.loginStatus,
+                    loginSkipped = account.loginSkipped,
+                )
+            },
+            readUpdateState = { ui.update },
+            writeUpdateState = { update -> ui = ui.copy(update = update) },
+            onLogoutUi = {
+                ui = ui.copy(
+                    destination = TvDestination.HOME,
+                    sidebarVisible = true,
+                    showContinue = ui.rememberPlaybackContent,
+                )
+            },
+            onToast = { message -> ui = ui.copy(toast = message) },
+            openUpdateSettingsNavigation = {
+                ui = ui.copy(
+                    destination = TvDestination.SETTINGS,
+                    settingsPage = SettingsPage.UPDATE,
+                    sidebarVisible = false,
+                    hudVisible = false,
+                )
+            },
+            closeUpdateSettingsNavigation = {
+                ui = ui.copy(settingsPage = SettingsPage.ROOT)
+            },
+            openUpdateNotesNavigation = {
+                ui = ui.copy(settingsPage = SettingsPage.UPDATE_NOTES)
+            },
+            closeUpdateNotesNavigation = {
+                ui = ui.copy(settingsPage = SettingsPage.UPDATE)
+            },
             isPlaying = { playerIsPlaying() },
             positionMs = { playerPositionMs() },
             durationMs = { playerDurationMs() },
@@ -228,8 +280,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 通用播放控制协调器。 */
     private val playbackCoordinator by lazy {
         PlaybackCoordinator(
-            readState = { ui },
-            writeState = { ui = it },
+            readState = { ui.playbackUiState() },
+            writeState = { state -> ui = ui.withPlaybackUiState(state) },
             isEngineInitialized = { ::playerEngine.isInitialized },
             isLive = { current?.isLive == true },
             positionMs = { playerPositionMs() },
@@ -361,11 +413,11 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun handleHomeBack() = handleHomeBackInternal()
 
     /** 返回当前电视界面状态。 */
-    override fun state(): TvUiState = ui
+    override fun state(): PlaybackUiState = ui.playbackUiState()
 
     /** 提交新的电视界面状态。 */
-    override fun setState(state: TvUiState) {
-        ui = state
+    override fun setState(state: PlaybackUiState) {
+        ui = ui.withPlaybackUiState(state)
     }
 
     /** 返回当前播放信息。 */
@@ -409,6 +461,10 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 记录失败重试动作。 */
     override fun setRetry(action: (() -> Unit)?) {
         lastErrorRetry = action
+    }
+
+    override fun clearLoginUi() {
+        ui = ui.copy(loginQr = null, loginStatus = "")
     }
 
     /** 重新解析并播放指定 nva 内容。 */
@@ -585,8 +641,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             videoLayout.visibility = View.GONE
             media3PlayerView.visibility = View.VISIBLE
             runCatching {
-                media3Engine().open(info, seekToMs)
-                true
+                media3PlaybackEngine.open(BiliPlaybackMapper.map(info), seekToMs)
             }.onFailure { error ->
                 LogHub.e(
                     TAG,
@@ -601,7 +656,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             playbackBackend = PlaybackBackend.VLC
             media3PlayerView.visibility = View.GONE
             videoLayout.visibility = View.VISIBLE
-            playerEngine.open(info, seekToMs)
+            vlcPlaybackEngine.open(BiliPlaybackMapper.map(info), seekToMs)
         }
     }
 
@@ -2042,8 +2097,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         runCatching { if (::danmakuController.isInitialized) danmakuController.release() }
         runCatching { if (::liveDanmakuController.isInitialized) liveDanmakuController.release() }
         scope.cancel()
-        runCatching { media3Player?.release() }
-        runCatching { if (::playerEngine.isInitialized) playerEngine.release() }
+        runCatching { media3PlaybackEngine.release() }
+        runCatching { if (::playerEngine.isInitialized) vlcPlaybackEngine.release() }
         LogHub.stop()
     }
 

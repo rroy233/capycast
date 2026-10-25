@@ -6,8 +6,6 @@ import com.roy233.tvcast.data.auth.AuthTokenStore
 import com.roy233.tvcast.data.auth.CastAuth
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.platform.qr.QrCodeGenerator
-import com.roy233.tvcast.ui.model.TvDestination
-import com.roy233.tvcast.ui.model.TvUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,10 +20,10 @@ class AccountLoginCoordinator(
     private val context: Context,
     /** 执行登录协程的作用域。 */
     private val scope: CoroutineScope,
-    /** 读取当前界面状态的回调。 */
-    private val readState: () -> TvUiState,
-    /** 写入更新后界面状态的回调。 */
-    private val writeState: (TvUiState) -> Unit,
+    /** 读取账号功能独占的状态切片。 */
+    private val readState: () -> AccountUiState,
+    /** 写入账号功能独占的状态切片。 */
+    private val writeState: (AccountUiState) -> Unit,
     /** 登录令牌存储。 */
     private val authTokenStore: AuthTokenStore,
     /** 二维码生成器。 */
@@ -34,6 +32,10 @@ class AccountLoginCoordinator(
     private val onTokenAvailable: (CastAuth.Token) -> Unit,
     /** 退出登录时的回调。 */
     private val onLogout: () -> Unit,
+    /** 退出登录后的导航和续播状态更新。 */
+    private val onLogoutUi: () -> Unit,
+    /** 显示账号功能提示。 */
+    private val onToast: (String) -> Unit,
 ) {
 
     /** 当前二维码登录任务。 */
@@ -202,15 +204,13 @@ class AccountLoginCoordinator(
                 mid = 0L,
                 accountName = "未登录",
                 vip = false,
-                destination = TvDestination.HOME,
-                sidebarVisible = true,
                 loginQr = null,
                 loginStatus = "",
                 loginSkipped = false,
-                showContinue = it.rememberPlaybackContent,
-                toast = "已退出登录",
             )
         }
+        onLogoutUi()
+        onToast("已退出登录")
         startQrLogin()
     }
 
@@ -239,7 +239,7 @@ class AccountLoginCoordinator(
     }
 
     /** 使用转换函数更新当前界面状态。 */
-    private fun update(transform: (TvUiState) -> TvUiState) {
+    private fun update(transform: (AccountUiState) -> AccountUiState) {
         writeState(transform(readState()))
     }
 

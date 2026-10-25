@@ -1,7 +1,9 @@
 package com.roy233.tvcast.platform.player
 
 import com.roy233.tvcast.core.playback.PlaybackBackend
+import com.roy233.tvcast.core.playback.PlaybackCapabilities
 import com.roy233.tvcast.core.playback.PlaybackEngine
+import com.roy233.tvcast.core.playback.PlaybackRequest
 
 /** 将 VLC 播放器门面适配为统一播放契约。 */
 class VlcPlaybackEngineAdapter(
@@ -9,6 +11,18 @@ class VlcPlaybackEngineAdapter(
 ) : PlaybackEngine {
 
     override val backend: PlaybackBackend = PlaybackBackend.VLC
+
+    override val capabilities = PlaybackCapabilities(
+        supportsDrm = false,
+        supportsDolbyVision = false,
+        supportsLiveStatistics = true,
+        supportsTrackDiagnostics = true,
+    )
+
+    override fun open(request: PlaybackRequest, seekToMs: Long): Boolean =
+        engine.open(request, seekToMs)
+
+    override fun release() = engine.release()
 
     override fun positionMs(): Long =
         runCatching { engine.player.time.coerceAtLeast(0L) }.getOrDefault(0L)

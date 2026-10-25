@@ -20,7 +20,7 @@ import com.roy233.tvcast.ui.model.PlaybackSpeed
 import com.roy233.tvcast.ui.model.RecentCast
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
-import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,8 +31,8 @@ import android.os.SystemClock
 
 /** 投屏会话需要宿主提供的解析、播放与界面能力。 */
 interface CastSessionHost {
-    fun state(): TvUiState
-    fun setState(state: TvUiState)
+    fun state(): PlaybackUiState
+    fun setState(state: PlaybackUiState)
     fun coroutineScope(): CoroutineScope
     fun isResolving(): Boolean
     fun setResolving(resolving: Boolean)
@@ -45,6 +45,7 @@ interface CastSessionHost {
     fun setLastNva(nva: NvaExtDecoder.NvaExtContent?)
     fun setLastTitle(title: String)
     fun setRetry(action: (() -> Unit)?)
+    fun clearLoginUi()
     fun setPendingPause(paused: Boolean)
     fun reportError(title: String, message: String, code: String, canRetry: Boolean, keepVideo: Boolean)
     fun addRecentRecord(info: BiliApi.PlayInfo)
@@ -186,6 +187,7 @@ class CastSessionCoordinator(
         playback.setPendingPause(false)
         playback.setLastNva(null)
         playback.setRetry(null)
+        playback.clearLoginUi()
         LogHub.setCast(title)
         val state = playback.state()
         playback.setState(
@@ -211,8 +213,6 @@ class CastSessionCoordinator(
                 panel = null,
                 stopCastConfirm = false,
                 error = null,
-                loginQr = null,
-                loginStatus = "",
                 tracks = emptyList(),
                 audios = emptyList(),
             ),

@@ -9,7 +9,7 @@ import android.view.View
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
-import com.roy233.tvcast.data.bili.BiliApi
+import com.roy233.tvcast.core.playback.PlaybackRequest
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -125,7 +125,7 @@ class VlcPlayerEngine(
      * @param seekToMs 开始播放前需要跳转的位置，单位为毫秒。
      * @return 是否已经成功发起播放。
      */
-    fun open(info: BiliApi.PlayInfo, seekToMs: Long): Boolean {
+    fun open(info: PlaybackRequest, seekToMs: Long): Boolean {
         if (released) {
             LogHub.e(TAG, "open rejected after engine release")
             PlaybackDiagnostics.fail(
@@ -273,7 +273,7 @@ class VlcPlayerEngine(
      * 仅在用户选中 dash.dolby.audio 且 libVLC 确认当前输出可直通时启用数字音频。
      * 失败时保留普通解码路径，避免电视内置扬声器无声。
      */
-    private fun configureDolbyAudioPassthrough(info: BiliApi.PlayInfo) {
+    private fun configureDolbyAudioPassthrough(info: PlaybackRequest) {
         val dolbyAudio = info.audio?.isDolbyAudio == true
         val available = dolbyAudio && runCatching { player.canDoPassthrough() }.getOrDefault(false)
         val configurationApplied = runCatching { player.setAudioDigitalOutputEnabled(available) }.getOrElse { error ->
@@ -653,7 +653,7 @@ class VlcPlayerEngine(
 
     /** 一次可恢复的打开请求。 */
     private data class OpenRequest(
-        val info: BiliApi.PlayInfo,
+        val info: PlaybackRequest,
         val seekToMs: Long,
     )
 }

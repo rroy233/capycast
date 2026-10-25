@@ -18,7 +18,7 @@ import com.roy233.tvcast.data.bili.RankedLiveSource
 import com.roy233.tvcast.feature.playback.model.LiveSession
 import com.roy233.tvcast.feature.playback.model.PendingLiveRouteSwitch
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
-import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -29,8 +29,8 @@ import kotlinx.coroutines.withContext
 
 /** 直播会话需要宿主提供的播放能力与界面状态。 */
 interface LivePlaybackHost {
-    fun state(): TvUiState
-    fun setState(state: TvUiState)
+    fun state(): PlaybackUiState
+    fun setState(state: PlaybackUiState)
     fun currentInfo(): BiliApi.PlayInfo?
     fun setCurrent(info: BiliApi.PlayInfo)
     fun isCastActive(): Boolean

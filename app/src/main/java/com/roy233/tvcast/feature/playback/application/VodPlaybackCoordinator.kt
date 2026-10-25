@@ -7,11 +7,12 @@ import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.CdnCandidateSelector
 import com.roy233.tvcast.data.bili.RankedVodRoute
 import com.roy233.tvcast.data.bili.VodCdnCoordinator
-import com.roy233.tvcast.data.bili.VodRecoveryController
+import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
 import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
+import com.roy233.tvcast.feature.playback.domain.VodRecoveryController
 import com.roy233.tvcast.feature.playback.model.PendingVodRouteSwitch
 import com.roy233.tvcast.feature.playback.model.VodSession
-import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,8 +24,8 @@ import android.os.SystemClock
 
 /** 点播会话需要宿主提供的播放能力与界面状态。 */
 interface VodPlaybackHost {
-    fun state(): TvUiState
-    fun setState(state: TvUiState)
+    fun state(): PlaybackUiState
+    fun setState(state: PlaybackUiState)
     fun currentInfo(): BiliApi.PlayInfo?
     fun setCurrent(info: BiliApi.PlayInfo)
     fun isCastActive(): Boolean
@@ -129,7 +130,7 @@ class VodPlaybackCoordinator(
         }
         if (preferCodecFallback && scheduleVodRepresentationFallback(reason, session, info)) return true
         if (preferCodecFallback) {
-            session.attemptedRepresentations += VodPlaybackRules.representationKey(info.video)
+            session.attemptedRepresentations += VodPlaybackRules.representationKey(BiliPlaybackMapper.mapTrack(info.video))
             LogHub.w(
                 TAG,
                 "VOD decoder fallback unavailable qn=${info.video.id} codec=${info.video.codecid}; " +
@@ -202,7 +203,7 @@ class VodPlaybackCoordinator(
         session: VodSession,
         info: BiliApi.PlayInfo,
     ): Boolean {
-        session.attemptedRepresentations += VodPlaybackRules.representationKey(info.video)
+        session.attemptedRepresentations += VodPlaybackRules.representationKey(BiliPlaybackMapper.mapTrack(info.video))
         val candidate = nextVodRepresentation(info, session.attemptedRepresentations) ?: return false
         if (switching) return false
         switching = true
@@ -234,7 +235,7 @@ class VodPlaybackCoordinator(
                 if (!opened) {
                     session.info = previousInfo
                     session.videoRoutes = previousRoutes
-                    session.attemptedRepresentations += VodPlaybackRules.representationKey(candidate)
+                    session.attemptedRepresentations += VodPlaybackRules.representationKey(BiliPlaybackMapper.mapTrack(candidate))
                     playback.setCurrent(previousInfo)
                     LogHub.e(
                         TAG,
@@ -279,11 +280,13 @@ class VodPlaybackCoordinator(
     ): BiliApi.Track? {
         val currentTrack = info.video
         val remaining = info.videos.filter { track ->
-            VodPlaybackRules.representationKey(track) !in attempted && track.url.isNotBlank() &&
+            VodPlaybackRules.representationKey(BiliPlaybackMapper.mapTrack(track)) !in attempted && track.url.isNotBlank() &&
                 CdnCandidateSelector.isSupportedVideoCodec(track.codecid)
         }
         val sameQuality = remaining.filter { it.id == currentTrack.id }
-        if (sameQuality.isNotEmpty()) return sameQuality.maxByOrNull(VodPlaybackRules::videoCodecRank)
+        if (sameQuality.isNotEmpty()) return sameQuality.maxByOrNull {
+            VodPlaybackRules.videoCodecRank(BiliPlaybackMapper.mapTrack(it))
+        }
 
         val currentRank = info.acceptQualities.indexOf(currentTrack.id)
         val lowerQuality = remaining.filter { track ->
@@ -293,18 +296,15 @@ class VodPlaybackCoordinator(
         return if (currentRank >= 0) {
             lowerQuality.minWithOrNull(
                 compareBy<BiliApi.Track> { info.acceptQualities.indexOf(it.id).takeIf { rank -> rank >= 0 } ?: Int.MAX_VALUE }
-                    .thenByDescending(VodPlaybackRules::videoCodecRank),
+                    .thenByDescending { VodPlaybackRules.videoCodecRank(BiliPlaybackMapper.mapTrack(it)) },
             )
         } else {
-            lowerQuality.maxWithOrNull(compareBy<BiliApi.Track> { it.id }.thenBy(VodPlaybackRules::videoCodecRank))
+            lowerQuality.maxWithOrNull(
+                compareBy<BiliApi.Track> { it.id }
+                    .thenBy { VodPlaybackRules.videoCodecRank(BiliPlaybackMapper.mapTrack(it)) },
+            )
         }
     }
-
-    fun VodPlaybackRules.representationKey(track: BiliApi.Track): String =
-        VodPlaybackRules.representationKey(track)
-
-    fun VodPlaybackRules.videoCodecRank(track: BiliApi.Track): Int =
-        VodPlaybackRules.videoCodecRank(track)
 
     /** 稳定播放确认后才结束切源事务并提示用户。 */
     fun completeRouteSwitch() {
@@ -378,13 +378,7 @@ class VodPlaybackCoordinator(
         }
     }
 
-    fun VodPlaybackRules.recoveryReason(failure: VodRecoveryController.Failure): String =
-        VodPlaybackRules.recoveryReason(failure)
-
     /** 只有播放器错误或已经经过稳定期验证的恢复故障才允许消耗 PCDN 候选。 */
-    fun VodPlaybackRules.isSubstantiveVodFailure(reason: String): Boolean =
-        VodPlaybackRules.isSubstantiveVodFailure(reason)
-
     /** 每 30 秒刷新备用线路排序，不更改当前播放地址。 */
     fun startBackupRefresh() {
         backupRefreshJob?.cancel()

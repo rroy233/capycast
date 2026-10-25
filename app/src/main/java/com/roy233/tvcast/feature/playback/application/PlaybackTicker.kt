@@ -5,7 +5,7 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.platform.player.VlcPlayerEngine
 import com.roy233.tvcast.ui.model.TvMode
-import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -16,8 +16,8 @@ import kotlinx.coroutines.launch
 interface PlaybackTickerHost {
     val coroutineScope: CoroutineScope
     fun isEngineInitialized(): Boolean
-    fun state(): TvUiState
-    fun setState(state: TvUiState)
+    fun state(): PlaybackUiState
+    fun setState(state: PlaybackUiState)
     fun positionMs(): Long
     fun durationMs(): Long
     fun isPlaying(): Boolean

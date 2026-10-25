@@ -1,6 +1,7 @@
 package com.roy233.tvcast.data.bili
 
 import com.roy233.tvcast.data.auth.BiliSessionProvider
+import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
 
 import android.os.SystemClock
 import com.google.gson.JsonArray
@@ -27,9 +28,7 @@ object BiliApi {
     private const val TAG = "BiliApi"
 
     /** 播放请求使用的客户端 User-Agent。 */
-    const val UA =
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    const val UA = DEFAULT_PLAYBACK_USER_AGENT
 
     /** 访问 Bilibili Web API 的 HTTP 客户端。 */
     /** HTTP 请求执行器。 */

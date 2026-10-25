@@ -1,7 +1,6 @@
 package com.roy233.tvcast.feature.playback.domain
 
-import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.bili.VodRecoveryController
+import com.roy233.tvcast.core.playback.MediaTrack
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,14 +8,14 @@ import org.junit.Test
 
 class VodPlaybackRulesTest {
 
-    private fun track(id: Int, codecid: Int, codecs: String = "hvc1") = BiliApi.Track(
+    private fun track(id: Int, codecid: Int, codecs: String = "hvc1") = MediaTrack(
         id = id,
-        codecid = codecid,
+        codecId = codecid,
         width = 3840,
         height = 2160,
         bandwidth = 5_000_000,
         url = "https://example.com/video.m4s",
-        backup = emptyList(),
+        backupUrls = emptyList(),
         mimeType = "video/mp4",
         codecs = codecs,
     )

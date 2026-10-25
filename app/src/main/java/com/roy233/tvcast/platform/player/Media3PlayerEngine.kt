@@ -28,8 +28,10 @@ import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
-import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.bili.PgcPlaybackException
+import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.MediaTrack
+import com.roy233.tvcast.core.playback.PlaybackFailure
+import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
 import java.nio.charset.StandardCharsets
 import java.io.IOException
 import java.util.Collections
@@ -68,19 +70,19 @@ class Media3PlayerEngine(
     private var activeDrm = false
 
     private val drmHttpFactory = DefaultHttpDataSource.Factory()
-        .setUserAgent(BiliApi.UA)
+        .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
         .setDefaultRequestProperties(
             mapOf(
                 "Origin" to WEB_ORIGIN,
                 "Referer" to WEB_REFERER,
-                "User-Agent" to BiliApi.UA,
+                "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT,
             ),
         )
 
     private val mediaHttpFactory = DefaultHttpDataSource.Factory()
-        .setUserAgent(BiliApi.UA)
+        .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
         .setDefaultRequestProperties(
-            mapOf("Referer" to WEB_REFERER, "User-Agent" to BiliApi.UA),
+            mapOf("Referer" to WEB_REFERER, "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT),
         )
 
     private val drmProvider = DefaultDrmSessionManagerProvider().apply {
@@ -151,7 +153,7 @@ class Media3PlayerEngine(
     }
 
     /** 打开当前轨道；HDR 直接交给 Android 的硬解码和 SurfaceFlinger 输出。 */
-    fun open(info: BiliApi.PlayInfo, seekToMs: Long) {
+    fun open(info: PlaybackRequest, seekToMs: Long) {
         require(info.video.isHdr || info.video.isDolbyVision || info.isDrm) {
             "Media3 engine requires HDR, Dolby Vision, or DRM media"
         }
@@ -162,7 +164,7 @@ class Media3PlayerEngine(
             // challenge/license 交换。
             val pssh = listOf(info.video.psshBase64, info.audio?.psshBase64.orEmpty())
                 .firstOrNull(String::isNotBlank)
-                ?: throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine PSSH 缺失")
+                ?: throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "Widevine PSSH 缺失")
             val manifest = PgcDashManifest.buildDataUri(info, pssh)
             val drm = MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
                 .setLicenseUri(Uri.parse(WIDEVINE_LICENSE_URL))
@@ -252,13 +254,13 @@ class Media3PlayerEngine(
     fun isPlaying(): Boolean = player.isPlaying
     fun volume(): Int = (player.volume * 100).toInt().coerceIn(0, 100)
 
-    private fun progressiveSource(track: BiliApi.Track): MediaSource {
+    private fun progressiveSource(track: MediaTrack): MediaSource {
         val headers = mapOf(
             "Referer" to "https://www.bilibili.com/",
-            "User-Agent" to BiliApi.UA,
+            "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT,
         )
         val factory = DefaultHttpDataSource.Factory()
-            .setUserAgent(BiliApi.UA)
+            .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
             .setDefaultRequestProperties(headers)
         val item = MediaItem.Builder()
             .setUri(track.url)
@@ -269,7 +271,7 @@ class Media3PlayerEngine(
 
     /** 由服务器返回的 SegmentBase 范围构建仅含当前表示层的内存 DASH 清单。 */
     private object PgcDashManifest {
-        fun buildDataUri(info: BiliApi.PlayInfo, psshBase64: String): String {
+        fun buildDataUri(info: PlaybackRequest, psshBase64: String): String {
             val video = representation(info.video, "video", psshBase64)
             val audio = info.audio?.takeIf { it.url.isNotBlank() }?.let {
                 representation(it, "audio", psshBase64.ifBlank { it.psshBase64 })
@@ -290,14 +292,14 @@ class Media3PlayerEngine(
                 Base64.encodeToString(mpd.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
         }
 
-        private fun representation(track: BiliApi.Track, type: String, fallbackPssh: String): String {
+        private fun representation(track: MediaTrack, type: String, fallbackPssh: String): String {
             if (track.url.isBlank()) {
-                throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "$type 表示层缺少媒体 URL")
+                throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "$type 表示层缺少媒体 URL")
             }
             val initRange = parseRange(track.initializationRange)
-                ?: throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "$type 初始化范围无效")
+                ?: throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "$type 初始化范围无效")
             val indexRange = parseRange(track.indexRange)
-                ?: throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "$type 索引范围无效")
+                ?: throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "$type 索引范围无效")
             val pssh = track.psshBase64.ifBlank { fallbackPssh }
             val protection = if (pssh.isBlank()) "" else """
                 <ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cenc"/>

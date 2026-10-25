@@ -14,6 +14,24 @@ interface PlaybackEngine {
     /** 当前实现对应的后端标识。 */
     val backend: PlaybackBackend
 
+    /** 打开媒体并开始播放；返回是否已发起打开流程。 */
+    fun open(request: PlaybackRequest, seekToMs: Long): Boolean
+
+    /** 释放后端和它拥有的原生资源。 */
+    fun release()
+
+    /** 当前后端能力。 */
+    val capabilities: PlaybackCapabilities
+
+    /** 返回当前播放器状态的不可变快照。 */
+    fun snapshot(fallbackVolume: Int): PlaybackSnapshot = PlaybackSnapshot(
+        positionMs = positionMs(),
+        durationMs = durationMs(),
+        isPlaying = isPlaying(),
+        volume = volume(fallbackVolume),
+        backend = backend,
+    )
+
     /** 当前播放位置，单位为毫秒。 */
     fun positionMs(): Long
 

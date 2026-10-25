@@ -6,7 +6,7 @@ import com.roy233.tvcast.data.bili.LiveStreamCandidate
 import com.roy233.tvcast.data.bili.RankedLiveSource
 import com.roy233.tvcast.data.bili.RankedVodPlayback
 import com.roy233.tvcast.data.bili.RankedVodRoute
-import com.roy233.tvcast.data.bili.VodRecoveryController
+import com.roy233.tvcast.feature.playback.domain.VodRecoveryController
 
 /** 一次投屏请求解析后的内容类型与播放输入。 */
 sealed interface CastResolution {

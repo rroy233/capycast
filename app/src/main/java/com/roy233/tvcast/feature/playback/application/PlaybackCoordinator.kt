@@ -3,7 +3,7 @@ package com.roy233.tvcast.feature.playback.application
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.ui.model.PlaybackSpeed
 import com.roy233.tvcast.ui.model.TvMode
-import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.PlaybackUiState
 
 /**
  * 协调通用播放控制：暂停/恢复、进度调整、倍速与音量。
@@ -12,8 +12,8 @@ import com.roy233.tvcast.ui.model.TvUiState
  * 各自的协调器负责。
  */
 class PlaybackCoordinator(
-    private val readState: () -> TvUiState,
-    private val writeState: (TvUiState) -> Unit,
+    private val readState: () -> PlaybackUiState,
+    private val writeState: (PlaybackUiState) -> Unit,
     private val isEngineInitialized: () -> Boolean,
     private val isLive: () -> Boolean,
     private val positionMs: () -> Long,

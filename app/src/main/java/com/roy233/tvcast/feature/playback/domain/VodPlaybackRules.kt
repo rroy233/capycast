@@ -1,7 +1,6 @@
 package com.roy233.tvcast.feature.playback.domain
 
-import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.bili.VodRecoveryController
+import com.roy233.tvcast.core.playback.MediaTrack
 
 /**
  * 点播表示层与恢复判定规则。
@@ -11,11 +10,11 @@ import com.roy233.tvcast.data.bili.VodRecoveryController
 object VodPlaybackRules {
 
     /** 表示层唯一标识，用于判定某档位是否已经尝试过。 */
-    fun representationKey(track: BiliApi.Track): String =
-        "${track.id}:${track.codecid}:${track.codecs}:${track.mimeType}:${track.width}x${track.height}"
+    fun representationKey(track: MediaTrack): String =
+        "${track.id}:${track.codecId}:${track.codecs}:${track.mimeType}:${track.width}x${track.height}"
 
     /** 编码优先级：HEVC > AV1 > H.264 > 其他。 */
-    fun videoCodecRank(track: BiliApi.Track): Int = when (track.codecid) {
+    fun videoCodecRank(track: MediaTrack): Int = when (track.codecId) {
         12 -> 3
         13 -> 2
         7 -> 1
