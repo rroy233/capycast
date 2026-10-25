@@ -79,25 +79,8 @@ class DlnaRenderer(
     }
 
     /** 保存 DLNA 传输状态和媒体元数据。 */
-    private class TransportState {
-        /** 当前传输状态。 */
-        @Volatile var transport: String = "NO_MEDIA_PRESENT"
-        /** 当前媒体地址。 */
-        @Volatile var uri: String = ""
-        /** 当前 DIDL-Lite 元数据。 */
-        @Volatile var metadata: String = ""
-        /** 当前媒体标题。 */
-        @Volatile var title: String = ""
-        /** 当前媒体时长，单位为毫秒。 */
-        @Volatile var durationMs: Long = 0L
-        /** 当前音量值。 */
-        @Volatile var volume: Int = 50
-        /** 当前是否静音。 */
-        @Volatile var mute: Boolean = false
-    }
-
     /** 线程安全的 DLNA 传输状态。 */
-    private val state = TransportState()
+    private val state = DlnaTransportState()
     /** 设备对外使用的 IPv4 地址。 */
     private val ip: String = LogHub.localIp()
     /** HTTP 描述和控制服务端口。 */
