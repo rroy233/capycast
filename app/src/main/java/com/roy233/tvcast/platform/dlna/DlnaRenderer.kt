@@ -5,16 +5,9 @@ import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.R
-import java.io.BufferedInputStream
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
 import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.net.Socket
 import java.util.Locale
 import java.util.UUID
-import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
 /**
@@ -90,7 +83,7 @@ class DlnaRenderer(
     @Volatile
     private var running = false
     /** HTTP 服务实例。 */
-    private var http: HttpServer? = null
+    private var http: DlnaHttpServer? = null
     /** SSDP 服务实例。 */
     private var ssdp: SsdpDiscoveryService? = null
     /** SSDP 保活线程。 */
@@ -105,7 +98,7 @@ class DlnaRenderer(
         if (running) return
         running = true
         try {
-            http = HttpServer().also { it.start() }
+            http = DlnaHttpServer(port, ::handleGet, ::handlePost).also { it.start() }
         } catch (t: Throwable) {
             LogHub.e(TAG, "http start failed: ${t.message}", t)
             running = false
@@ -160,104 +153,6 @@ class DlnaRenderer(
         LogHub.i(TAG, "markCastFailed reason=$reason transport=${state.transport}")
     }
 
-    // ------------------------------------------------------------------ //
-    // HTTP
-    // ------------------------------------------------------------------ //
-    /** 接收并处理 DLNA HTTP 请求的内部服务。 */
-    private inner class HttpServer {
-        /** 监听 HTTP 请求的服务端套接字。 */
-        private val serverSocket = ServerSocket().apply {
-            reuseAddress = true
-            bind(InetSocketAddress(port))
-        }
-        /** 处理 HTTP 请求的线程池。 */
-        private val pool = Executors.newCachedThreadPool()
-        /** HTTP 服务是否继续接受请求。 */
-        @Volatile
-        private var alive = true
-
-        /** 启动 HTTP 接受线程。 */
-        fun start() {
-            thread(name = "dlna-http", isDaemon = true) {
-                while (alive) {
-                    val socket = try {
-                        serverSocket.accept()
-                    } catch (t: Throwable) {
-                        if (alive) LogHub.e(TAG, "accept failed: ${t.message}", t)
-                        break
-                    }
-                    pool.execute {
-                        runCatching { handle(socket) }
-                            .onFailure { LogHub.e(TAG, "http handler failed: ${it.message}", it) }
-                    }
-                }
-            }
-        }
-
-        /** 停止 HTTP 接受线程并关闭线程池。 */
-        fun stop() {
-            alive = false
-            runCatching { serverSocket.close() }
-            pool.shutdownNow()
-        }
-
-        /** 读取并处理单个 HTTP 连接。 */
-        private fun handle(socket: Socket) {
-            socket.use { s ->
-                s.soTimeout = 15_000
-                val input = BufferedInputStream(s.getInputStream())
-                val requestLine = readLine(input) ?: return
-                val parts = requestLine.split(' ')
-                if (parts.size < 2) {
-                    write(s, response(400, "Bad Request", "text/plain", "bad request"))
-                    return
-                }
-                val method = parts[0].uppercase(Locale.US)
-                val path = parts[1].substringBefore('?')
-                val headers = readHeaders(input)
-                if (headers["expect"]?.contains("100-continue", ignoreCase = true) == true) {
-                    s.getOutputStream().write("HTTP/1.1 100 Continue\r\n\r\n".toByteArray())
-                    s.getOutputStream().flush()
-                }
-                val body = readBody(input, headers)
-                LogHub.i(
-                    TAG,
-                    "HTTP $method $path from ${s.inetAddress?.hostAddress} " +
-                        "soap=${headers["soapaction"]?.take(80)} body=${body.size}B"
-                )
-                val resp = when (method) {
-                    "GET", "HEAD" -> handleGet(path)
-                    "POST" -> handlePost(path, headers, body)
-                    "SUBSCRIBE" -> response(
-                        200, "OK", "text/xml; charset=\"utf-8\"", ByteArray(0),
-                        mapOf(
-                            "SID" to "uuid:${UUID.randomUUID()}",
-                            "TIMEOUT" to "Second-1800",
-                        )
-                    )
-                    "UNSUBSCRIBE" -> response(200, "OK", "text/plain", ByteArray(0))
-                    else -> response(405, "Method Not Allowed", "text/plain", "method not allowed")
-                }
-                val out = if (method == "HEAD") resp.copy(body = ByteArray(0)) else resp
-                write(s, out)
-            }
-        }
-    }
-
-    /** 表示待写回客户端的 HTTP 响应。 */
-    private data class HttpResponse(
-        /** HTTP 状态码。 */
-        val code: Int,
-        /** HTTP 状态原因短语。 */
-        val reason: String,
-        /** 响应内容类型。 */
-        val contentType: String,
-        /** 响应正文。 */
-        val body: ByteArray,
-        /** 额外响应头。 */
-        val extra: Map<String, String> = emptyMap(),
-    )
-
     /** 使用字符串正文构造 HTTP 响应。 */
     private fun response(
         code: Int,
@@ -265,7 +160,7 @@ class DlnaRenderer(
         type: String,
         body: String,
         extra: Map<String, String> = emptyMap(),
-    ): HttpResponse = response(code, reason, type, body.toByteArray(Charsets.UTF_8), extra)
+    ): DlnaHttpResponse = DlnaHttpResponse(code, reason, type, body.toByteArray(Charsets.UTF_8), extra)
 
     /** 使用字节正文构造 HTTP 响应。 */
     private fun response(
@@ -274,102 +169,10 @@ class DlnaRenderer(
         type: String,
         body: ByteArray,
         extra: Map<String, String> = emptyMap(),
-    ): HttpResponse = HttpResponse(code, reason, type, body, extra)
-
-    /** 将 HTTP 响应写入套接字。 */
-    private fun write(socket: Socket, resp: HttpResponse) {
-        val head = StringBuilder()
-        head.append("HTTP/1.1 ${resp.code} ${resp.reason}\r\n")
-        head.append("Content-Type: ${resp.contentType}\r\n")
-        head.append("Content-Length: ${resp.body.size}\r\n")
-        head.append("Connection: close\r\n")
-        for ((k, v) in resp.extra) head.append("$k: $v\r\n")
-        head.append("\r\n")
-        val out = socket.getOutputStream()
-        out.write(head.toString().toByteArray(Charsets.UTF_8))
-        if (resp.body.isNotEmpty()) out.write(resp.body)
-        out.flush()
-    }
-
-    /** 从输入流读取一行 UTF-8 文本。 */
-    private fun readLine(input: InputStream): String? {
-        val out = ByteArrayOutputStream()
-        while (true) {
-            val b = input.read()
-            if (b < 0) return if (out.size() == 0) null else out.toString("UTF-8")
-            if (b == '\n'.code) {
-                val bytes = out.toByteArray()
-                val len = if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) {
-                    bytes.size - 1
-                } else {
-                    bytes.size
-                }
-                return String(bytes, 0, len, Charsets.UTF_8)
-            }
-            out.write(b)
-            if (out.size() > 32_768) return null
-        }
-    }
-
-    /** 读取并规范化 HTTP 请求头。 */
-    private fun readHeaders(input: InputStream): Map<String, String> {
-        val map = mutableMapOf<String, String>()
-        while (true) {
-            val line = readLine(input) ?: break
-            if (line.isEmpty()) break
-            val idx = line.indexOf(':')
-            if (idx > 0) {
-                map[line.substring(0, idx).trim().lowercase(Locale.US)] =
-                    line.substring(idx + 1).trim()
-            }
-        }
-        return map
-    }
-
-    /** 根据请求头读取 HTTP 请求正文。 */
-    private fun readBody(input: InputStream, headers: Map<String, String>): ByteArray {
-        if (headers["transfer-encoding"]?.contains("chunked", ignoreCase = true) == true) {
-            return readChunked(input)
-        }
-        val length = headers["content-length"]?.toIntOrNull() ?: 0
-        if (length <= 0) return ByteArray(0)
-        if (length > MAX_BODY) error("body too large: $length")
-        val data = ByteArray(length)
-        var read = 0
-        while (read < length) {
-            val n = input.read(data, read, length - read)
-            if (n < 0) break
-            read += n
-        }
-        return if (read == length) data else data.copyOf(read)
-    }
-
-    /** 读取 chunked 编码的 HTTP 请求正文。 */
-    private fun readChunked(input: InputStream): ByteArray {
-        val out = ByteArrayOutputStream()
-        while (true) {
-            val line = readLine(input) ?: break
-            val size = line.substringBefore(';').trim().toIntOrNull(16) ?: break
-            if (size == 0) {
-                readLine(input)
-                break
-            }
-            if (out.size() + size > MAX_BODY) error("chunked body too large")
-            val data = ByteArray(size)
-            var read = 0
-            while (read < size) {
-                val n = input.read(data, read, size - read)
-                if (n < 0) break
-                read += n
-            }
-            out.write(data, 0, read)
-            readLine(input)
-        }
-        return out.toByteArray()
-    }
+    ): DlnaHttpResponse = DlnaHttpResponse(code, reason, type, body, extra)
 
     /** 处理设备描述、服务描述和状态页面的 GET 请求。 */
-    private fun handleGet(path: String): HttpResponse = when (path) {
+    private fun handleGet(path: String): DlnaHttpResponse = when (path) {
         "/bilibili/description.xml", "/description.xml", "/dd.xml" ->
             response(200, "OK", "text/xml; charset=\"utf-8\"", descriptionXml())
         "/scpd/avt.xml", "/scpd.xml" ->
@@ -399,7 +202,7 @@ class DlnaRenderer(
         path: String,
         headers: Map<String, String>,
         body: ByteArray,
-    ): HttpResponse {
+    ): DlnaHttpResponse {
         if (path.startsWith("/nva") || path.contains("nva", ignoreCase = true)) {
             LogHub.i(TAG, "NVA-like POST $path body=${body.size}B")
             return response(200, "OK", "text/plain", ByteArray(0))
