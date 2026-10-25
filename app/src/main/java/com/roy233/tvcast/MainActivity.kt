@@ -34,6 +34,7 @@ import com.roy233.tvcast.ui.tv.TvKeyHandler
 import com.roy233.tvcast.data.local.RecentCastStore
 import com.roy233.tvcast.data.local.UiPreferences
 import com.roy233.tvcast.data.auth.AuthTokenStore
+import com.roy233.tvcast.data.auth.CastAuth
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.LiveCdnCoordinator
 import com.roy233.tvcast.data.bili.LivePlayInfo
@@ -55,7 +56,10 @@ import com.roy233.tvcast.core.danmaku.DfmDanmakuEngine
 import com.roy233.tvcast.core.danmaku.LiveDanmakuController
 import com.roy233.tvcast.core.danmaku.MediaClock
 import com.roy233.tvcast.data.local.DanmakuPreferences
+import com.roy233.tvcast.data.local.PlaybackHistoryOutbox
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
+import com.roy233.tvcast.feature.history.PlaybackHistoryContent
+import com.roy233.tvcast.feature.history.PlaybackHistoryCoordinator
 import com.roy233.tvcast.feature.update.UpdateCoordinator
 import com.roy233.tvcast.platform.device.DeviceInfoProvider
 import com.roy233.tvcast.platform.dlna.DlnaRenderer
@@ -187,6 +191,16 @@ class MainActivity : ComponentActivity() {
     private val recentCastStore by lazy { RecentCastStore(this) }
     /** TV 登录令牌存储；直播协议需要其中的 access_key。 */
     private val authTokenStore by lazy { AuthTokenStore(this) }
+    /** 将投屏进度与直播心跳同步到 B 站账号。 */
+    private val playbackHistoryCoordinator by lazy {
+        PlaybackHistoryCoordinator(
+            scope = scope,
+            authTokenStore = authTokenStore,
+            outbox = PlaybackHistoryOutbox(this),
+            isEnabled = { uiPreferences.syncPlaybackHistory },
+            buildNumber = CastAuth.tvBuildNumber,
+        )
+    }
     /** 首页双击返回退出计时。 */
     private val homeBackExitGate = DoubleBackExitGate(HOME_BACK_EXIT_WINDOW_MS)
     /** 设备身份偏好读取器。 */
@@ -208,8 +222,18 @@ class MainActivity : ComponentActivity() {
             writeState = { ui = it },
             authTokenStore = authTokenStore,
             qrCodeGenerator = QrCodeGenerator(),
-            onTokenAvailable = { BiliApi.cookie = it.cookie },
-            onLogout = { BiliApi.cookie = "" },
+            onTokenAvailable = {
+                BiliApi.cookie = it.cookie
+                playbackHistoryCoordinator.onAccountAvailable(it.mid)
+            },
+            onLogout = {
+                playbackHistoryCoordinator.onAccountLoggedOut(
+                    playing = playerIsPlaying(),
+                    positionMs = playerPositionMs(),
+                    durationMs = playerDurationMs(),
+                )
+                BiliApi.cookie = ""
+            },
         )
     }
     /** 应用更新流程协调器。 */
@@ -342,6 +366,14 @@ class MainActivity : ComponentActivity() {
                 )
             }
         },
+        onSetSyncPlaybackHistory = { enabled ->
+            uiPreferences.syncPlaybackHistory = enabled
+            ui = ui.copy(syncPlaybackHistory = enabled)
+            playbackHistoryCoordinator.onEnabledChanged(
+                enabled = enabled,
+                accountMid = authTokenStore.load()?.mid ?: ui.mid,
+            )
+        },
         onHomeBack = { handleHomeBack() },
     )
 
@@ -382,6 +414,7 @@ class MainActivity : ComponentActivity() {
         /** 处理远端停止命令。 */
         override fun onStop() {
             pendingPause = false
+            playbackHistoryCoordinator.finish("dlna-stop")
             clearLiveSession("dlna-stop")
             if (::playerEngine.isInitialized) {
                 stopActivePlayback("dlna-stop")
@@ -565,11 +598,14 @@ class MainActivity : ComponentActivity() {
         }
 
         val rememberPlaybackContent = uiPreferences.rememberPlaybackContent
+        val syncPlaybackHistory = uiPreferences.syncPlaybackHistory
         ui = ui.copy(
             rememberPlaybackContent = rememberPlaybackContent,
+            syncPlaybackHistory = syncPlaybackHistory,
             recents = if (rememberPlaybackContent) recentCastStore.load() else emptyList(),
             showContinue = rememberPlaybackContent,
         )
+        playbackHistoryCoordinator
         startOrLogin()
         startTicker()
         updateCoordinator.checkAutomaticallyOnLaunch()
@@ -609,6 +645,13 @@ class MainActivity : ComponentActivity() {
             positionMs = if (seek > 0L) seek else playerPositionMs(),
             durationMs = playerDurationMs().takeIf { it > 0L } ?: ui.durationMs,
         )
+        current?.let { info ->
+            playbackHistoryCoordinator.onPlaying(
+                content = playbackHistoryContent(info),
+                positionMs = playerPositionMs(),
+                durationMs = playerDurationMs(),
+            )
+        }
         if (::danmakuController.isInitialized) {
             val position = if (seek > 0L) seek else playerPositionMs()
             danmakuController.onPlaying(position)
@@ -619,6 +662,7 @@ class MainActivity : ComponentActivity() {
     private fun handleDolbyVisionPaused() {
         if (playbackBackend != PlaybackBackend.MEDIA3) return
         ui = ui.copy(isPlaying = false)
+        playbackHistoryCoordinator.onPaused(playerPositionMs(), playerDurationMs())
         if (::danmakuController.isInitialized) danmakuController.onPaused(playerPositionMs())
     }
 
@@ -632,6 +676,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleDolbyVisionEnded() {
         if (playbackBackend != PlaybackBackend.MEDIA3) return
+        playbackHistoryCoordinator.finish("media3-ended", ended = true)
         clearLiveSession("media3-ended")
         castActive = false
         current = null
@@ -663,6 +708,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleDolbyVisionError(error: PlaybackException) {
         if (playbackBackend != PlaybackBackend.MEDIA3) return
+        playbackHistoryCoordinator.finish("media3-error")
         val info = current
         lastErrorRetry = info?.let { currentInfo -> { play(currentInfo, playerPositionMs()) } }
         LogHub.e(TAG, "Media3 Dolby Vision failed: ${LogRedaction.reason(error)}", error)
@@ -718,6 +764,13 @@ class MainActivity : ComponentActivity() {
                         danmakuController.onPlaying(position)
                         if (seek > 0) danmakuController.onSeek(seek)
                     }
+                    current?.let { info ->
+                        playbackHistoryCoordinator.onPlaying(
+                            content = playbackHistoryContent(info),
+                            positionMs = playerPositionMs(),
+                            durationMs = playerDurationMs(),
+                        )
+                    }
                 }
             }
 
@@ -725,6 +778,7 @@ class MainActivity : ComponentActivity() {
                 LogHub.d(TAG, "ui paused")
                 runOnUiThread {
                     ui = ui.copy(isPlaying = false)
+                    playbackHistoryCoordinator.onPaused(playerPositionMs(), playerDurationMs())
                     if (current?.isLive == true) {
                         if (::liveDanmakuController.isInitialized) liveDanmakuController.onPaused()
                     } else if (::danmakuController.isInitialized) {
@@ -746,6 +800,7 @@ class MainActivity : ComponentActivity() {
 
             MediaPlayer.Event.EndReached -> {
                 LogHub.i(TAG, "ui end reached")
+                playbackHistoryCoordinator.finish("vlc-ended", ended = true)
                 clearLiveSession("vlc-end-reached")
                 castActive = false
                 current = null
@@ -782,6 +837,7 @@ class MainActivity : ComponentActivity() {
                 val snapshot = runCatching { playerEngine.stateSnapshot() }
                     .getOrDefault("(snapshot unavailable)")
                 LogHub.e(TAG, "ui playback failed code=PLAYBACK_FAILED snapshot=$snapshot")
+                playbackHistoryCoordinator.finish("vlc-error")
                 val info = current
                 if (info?.isLive == true) {
                     handleLivePlaybackFailure("player-error")
@@ -870,6 +926,8 @@ class MainActivity : ComponentActivity() {
             LogHub.w(TAG, "recast ignored: another resolve is running")
             return
         }
+        playbackHistoryCoordinator.onNewCast()
+        lastNva = null
         PlaybackDiagnostics.beginSession("recast")
         PlaybackDiagnostics.attribute("cast.source", "recent")
         PlaybackDiagnostics.attribute("recent.aid", recent.aid.toString())
@@ -943,6 +1001,7 @@ class MainActivity : ComponentActivity() {
     // ------------------------------------------------------------------ //
     /** 处理 DLNA 投屏请求并解析其媒体身份。 */
     private fun handleCast(uri: String, title: String, longDescription: String) {
+        playbackHistoryCoordinator.onNewCast()
         PlaybackDiagnostics.beginSession("cast")
         PlaybackDiagnostics.attribute("cast.source", "dlna")
         PlaybackDiagnostics.attribute("cast.uri", LogRedaction.url(uri))
@@ -1729,6 +1788,7 @@ class MainActivity : ComponentActivity() {
             return false
         }
         current = info
+        if (info.isLive) playbackHistoryCoordinator.updateLiveUrl(info.video.url)
         castActive = true
         lastTitle = info.title
         lastErrorRetry = null
@@ -2230,6 +2290,7 @@ class MainActivity : ComponentActivity() {
     /** 关闭错误状态并恢复空闲界面。 */
     private fun dismissError() {
         LogHub.i(TAG, "dismiss error; current=${current != null} castActive=$castActive")
+        playbackHistoryCoordinator.finish("dismiss-error")
         clearLiveSession("dismiss-error")
         if (::playerEngine.isInitialized) {
             stopActivePlayback("dismiss-error")
@@ -2272,6 +2333,7 @@ class MainActivity : ComponentActivity() {
         )
         resolveJob?.cancel()
         resolveJob = null
+        playbackHistoryCoordinator.finish("user-stop")
         clearLiveSession("user-stop")
         pendingPause = false
         pendingSeekMs = 0L
@@ -2327,6 +2389,7 @@ class MainActivity : ComponentActivity() {
         canRetry: Boolean,
         keepVideo: Boolean = false,
     ) {
+        playbackHistoryCoordinator.finish("error:$code")
         val snapshot = if (::playerEngine.isInitialized) {
             runCatching { playerEngine.stateSnapshot() }.getOrDefault("(unavailable)")
         } else {
@@ -2448,9 +2511,17 @@ class MainActivity : ComponentActivity() {
                     val pos = playerPositionMs()
                     val len = playerDurationMs()
                     val playing = playerIsPlaying()
+                    val activelyPlaying = playing && !ui.isBuffering
                     val volume = playerVolume()
                     val live = current?.isLive == true
-                    if (live) observeLiveProgress(playerEngine.liveProgressSnapshot(), playing)
+                    if (current != null) {
+                        playbackHistoryCoordinator.onPosition(
+                            positionMs = if (live) 0L else pos,
+                            durationMs = if (live) 0L else len,
+                            playing = activelyPlaying,
+                        )
+                    }
+                    if (live) observeLiveProgress(playerEngine.liveProgressSnapshot(), activelyPlaying)
                     ui = ui.copy(
                         positionMs = if (live) 0L else pos.coerceAtLeast(0L),
                         durationMs = if (live) 0L else if (len > 0) len else ui.durationMs,
@@ -2516,6 +2587,54 @@ class MainActivity : ComponentActivity() {
         LogHub.w(TAG, "player read failed field=$field: ${LogRedaction.reason(error)}")
     }
 
+    /** 将当前媒体与投屏 NVA 身份映射到 B 站 TV 历史业务类型。 */
+    private fun playbackHistoryContent(info: BiliApi.PlayInfo): PlaybackHistoryContent {
+        val nva = lastNva?.takeIf { candidate ->
+            if (info.isLive) {
+                candidate.roomId > 0L && (info.cid <= 0L || candidate.roomId == info.cid)
+            } else {
+                (info.aid <= 0L || candidate.aid <= 0L || candidate.aid == info.aid) &&
+                    (info.cid <= 0L || candidate.cid <= 0L || candidate.cid == info.cid)
+            }
+        }
+        if (info.isLive) {
+            val roomId = nva?.roomId?.takeIf { it > 0L } ?: info.cid
+            return PlaybackHistoryContent(
+                stableKey = "live:$roomId",
+                aid = 0L,
+                cid = roomId,
+                sid = 0L,
+                epid = 0L,
+                serialId = 0L,
+                type = HISTORY_TYPE_LIVE,
+                business = HISTORY_BUSINESS_LIVE,
+                isLive = true,
+                roomId = roomId,
+                livePlayUrl = info.video.url,
+            )
+        }
+
+        val isPgc = nva != null && (nva.eid > 0L || nva.sid > 0L)
+        val aid = info.aid.takeIf { it > 0L } ?: nva?.aid ?: 0L
+        val cid = info.cid.takeIf { it > 0L } ?: nva?.cid ?: 0L
+        val sid = if (isPgc) nva?.sid ?: 0L else 0L
+        val epid = if (isPgc) nva?.eid ?: 0L else 0L
+        val type = if (isPgc) HISTORY_TYPE_PGC else HISTORY_TYPE_UGC
+        return PlaybackHistoryContent(
+            stableKey = if (isPgc) "pgc:$sid:$epid:$cid" else "ugc:$aid:$cid",
+            aid = aid,
+            cid = cid,
+            sid = sid,
+            epid = epid,
+            serialId = 0L,
+            type = type,
+            business = if (isPgc) HISTORY_BUSINESS_PGC else HISTORY_BUSINESS_ARCHIVE,
+            isLive = false,
+            roomId = 0L,
+            livePlayUrl = "",
+        )
+    }
+
     /** 将播放信息整理为诊断日志摘要。 */
     private fun describe(info: BiliApi.PlayInfo?): String {
         if (info == null) return ""
@@ -2557,6 +2676,14 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         LogHub.i(TAG, "activity destroy")
+        if (current != null) {
+            playbackHistoryCoordinator.onPosition(
+                positionMs = playerPositionMs(),
+                durationMs = playerDurationMs(),
+                playing = playerIsPlaying(),
+            )
+        }
+        playbackHistoryCoordinator.close()
         clearLiveSession("activity-destroy")
         PlaybackDiagnostics.closeSession("activity-destroyed")
         runCatching { dlna.stop() }
@@ -2581,6 +2708,15 @@ class MainActivity : ComponentActivity() {
         private const val LIVE_BACKUP_REFRESH_INTERVAL_MS = 30_000L
         /** 直播播放位置无前进时触发故障切源的时间阈值。 */
         private const val LIVE_STALL_TIMEOUT_MS = 5_000L
+        /** B 站 TV 历史接口的业务类型：普通稿件。 */
+        private const val HISTORY_TYPE_UGC = 3
+        /** B 站 TV 历史接口的业务类型：番剧等 PGC。 */
+        private const val HISTORY_TYPE_PGC = 4
+        /** B 站 TV 历史接口的业务类型：直播。 */
+        private const val HISTORY_TYPE_LIVE = 6
+        private const val HISTORY_BUSINESS_ARCHIVE = "archive"
+        private const val HISTORY_BUSINESS_PGC = "pgc"
+        private const val HISTORY_BUSINESS_LIVE = "live"
         /** 是否已经安装全局崩溃记录器。 */
         @Volatile
         private var crashHandlerInstalled = false

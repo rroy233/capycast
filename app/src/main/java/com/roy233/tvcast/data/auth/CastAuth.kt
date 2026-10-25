@@ -35,6 +35,9 @@ object CastAuth {
     private const val CHANNEL = "yst"
     /** 请求使用的客户端版本号。 */
     private const val BUILD = "108700"
+    /** 官方 TV 客户端版本号，直播心跳的 build 字段也使用该值。 */
+    val tvBuildNumber: Int
+        get() = BUILD.toInt()
     /** Passport 服务根地址。 */
     private const val PASSPORT = "https://passport.bilibili.com"
     /** 认证请求使用的 User-Agent。 */
