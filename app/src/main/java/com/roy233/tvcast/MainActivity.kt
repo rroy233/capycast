@@ -45,18 +45,17 @@ import com.roy233.tvcast.data.bili.PgcPlaybackException
 import com.roy233.tvcast.data.bili.PgcPlaybackResolver
 import com.roy233.tvcast.data.bili.RankedVodPlayback
 import com.roy233.tvcast.data.bili.RankedVodRoute
-import com.roy233.tvcast.data.bili.VodCdnCoordinator
-import com.roy233.tvcast.data.bili.VodRecoveryController
 import com.roy233.tvcast.ui.model.LiveQualityOption
 import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEngine
 import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
+import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
+import com.roy233.tvcast.feature.playback.application.VodPlaybackHost
 import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
 import com.roy233.tvcast.feature.playback.model.CastResolution
 import com.roy233.tvcast.feature.playback.model.LiveSession
 import com.roy233.tvcast.feature.playback.model.PendingLiveRouteSwitch
-import com.roy233.tvcast.feature.playback.model.PendingVodRouteSwitch
 import com.roy233.tvcast.feature.playback.model.VodSession
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
 import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
@@ -97,7 +96,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity(), TvActionHost {
+class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
 
     /** VLC 播放引擎。 */
     private lateinit var playerEngine: VlcPlayerEngine
@@ -148,8 +147,6 @@ class MainActivity : ComponentActivity(), TvActionHost {
     private var resolveJob: Job? = null
     /** 直播备用线路刷新任务。 */
     private var liveBackupRefreshJob: Job? = null
-    /** 点播备用线路后台刷新任务。 */
-    private var vodBackupRefreshJob: Job? = null
     /** 播放进度轮询任务。 */
     private var tickerJob: Job? = null
 
@@ -175,12 +172,8 @@ class MainActivity : ComponentActivity(), TvActionHost {
     private var liveSession: LiveSession? = null
     /** 直播线路测速与排序器。 */
     private val liveCdnCoordinator = LiveCdnCoordinator()
-    /** 点播线路探测与同表示层切换协调器。 */
-    private val vodCdnCoordinator = VodCdnCoordinator()
-    /** 当前点播线路、测速结果与失败切换状态。 */
-    private var vodSession: VodSession? = null
-    /** 避免多个播放器回调同时触发点播切源。 */
-    private var vodSwitchInProgress = false
+    /** 点播会话协调器。 */
+    private val vodCoordinator by lazy { VodPlaybackCoordinator(this) }
     /** 直播缓冲阈值统计。 */
     private val livePlaybackHealth = LivePlaybackHealth()
     /** 直播时钟为零时改用读取和解码计数检测卡顿。 */
@@ -189,8 +182,6 @@ class MainActivity : ComponentActivity(), TvActionHost {
     private var liveSwitchInProgress = false
     /** 等待 VLC 确认开始播放后显示右下角切源提示的信息。 */
     private var pendingLiveRouteSwitch: PendingLiveRouteSwitch? = null
-    /** 等待实际进入播放态后显示点播线路切换提示。 */
-    private var pendingVodRouteSwitch: PendingVodRouteSwitch? = null
 
     /** 电视界面根状态持有者。 */
     private val stateHolder = TvStateHolder()
@@ -368,6 +359,34 @@ class MainActivity : ComponentActivity(), TvActionHost {
     }
 
     override fun handleHomeBack() = handleHomeBackInternal()
+
+    /** 返回当前电视界面状态。 */
+    override fun state(): TvUiState = ui
+
+    /** 提交新的电视界面状态。 */
+    override fun setState(state: TvUiState) {
+        ui = state
+    }
+
+    /** 返回当前播放信息。 */
+    override fun currentInfo(): BiliApi.PlayInfo? = current
+
+    /** 记录当前播放信息。 */
+    override fun setCurrent(info: BiliApi.PlayInfo) {
+        current = info
+    }
+
+    /** 当前是否存在活动投屏。 */
+    override fun isCastActive(): Boolean = castActive
+
+    /** 当前播放位置，单位为毫秒。 */
+    override fun positionMs(): Long = playerPositionMs()
+
+    /** 使用指定播放信息打开播放器。 */
+    override fun openPlayback(info: BiliApi.PlayInfo, seekToMs: Long): Boolean = play(info, seekToMs)
+
+    /** 用于后台线路探测的协程作用域。 */
+    override val coroutineScope: CoroutineScope get() = scope
 
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
     private val dlnaListener = object : DlnaRenderer.Listener {
@@ -628,11 +647,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
     /** Media3 的状态回调映射为现有 UI 与弹幕状态机。 */
     private fun handleDolbyVisionPlaying() {
         if (playbackBackend != PlaybackBackend.MEDIA3) return
-        vodSession?.let { session ->
-            session.recovery.onPlaying(playerPositionMs(), SystemClock.elapsedRealtime())
-            session.lastPositionMs = playerPositionMs()
-            session.lastProgressAtMs = SystemClock.elapsedRealtime()
-        }
+        vodCoordinator.onPlaying()
         val seek = pendingSeekMs
         pendingSeekMs = 0L
         ui = ui.copy(
@@ -748,11 +763,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
                 pendingSeekMs = 0L
                 LogHub.i(TAG, "ui playing initialPosition=${seek}ms")
                 runOnUiThread {
-                    vodSession?.let { session ->
-                        session.recovery.onPlaying(playerPositionMs(), SystemClock.elapsedRealtime())
-                        session.lastPositionMs = playerPositionMs()
-                        session.lastProgressAtMs = SystemClock.elapsedRealtime()
-                    }
+                    vodCoordinator.onPlaying()
                     ui = ui.copy(
                         mode = TvMode.PLAYING,
                         isPlaying = true,
@@ -1174,7 +1185,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
                             CastResolution.Live(liveInfo, routes)
                         }
                         nva.hasPgc -> CastResolution.Vod(
-                            vodCdnCoordinator.rankPlayback(
+                            vodCoordinator.cdn.rankPlayback(
                                 PgcPlaybackResolver().resolve(
                                 epId = nva.eid,
                                 seasonId = nva.sid,
@@ -1186,7 +1197,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
                             ),
                         )
                         nva.hasUgc -> CastResolution.Vod(
-                            vodCdnCoordinator.rankPlayback(
+                            vodCoordinator.cdn.rankPlayback(
                                 BiliApi.resolveByAidCid(nva.aid, nva.cid, title, nva.bvid ?: ""),
                             ),
                         )
@@ -1202,7 +1213,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
                     is CastResolution.Vod -> {
                         val playback = resolved.playback
                         val info = playback.info
-                        vodSession = VodSession(
+                        vodCoordinator.activeSession = VodSession(
                             info = info,
                             videoRoutes = playback.videoRoutes,
                             audioRoutes = playback.audioRoutes,
@@ -1299,7 +1310,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
         livePlaybackHealth.reset()
         liveSwitchInProgress = false
         pendingLiveRouteSwitch = null
-        pendingVodRouteSwitch = null
+        vodCoordinator.pendingSwitch = null
         liveStallWatchdog.reset()
         val session = LiveSession(
             stream = stream,
@@ -1778,12 +1789,8 @@ class MainActivity : ComponentActivity(), TvActionHost {
         val session = liveSession
         liveBackupRefreshJob?.cancel()
         liveBackupRefreshJob = null
-        vodBackupRefreshJob?.cancel()
-        vodBackupRefreshJob = null
-        val oldVodSession = vodSession
-        vodSession = null
-        vodSwitchInProgress = false
-        pendingVodRouteSwitch = null
+        val oldVodSession = vodCoordinator.activeSession
+        vodCoordinator.clear()
         liveSession = null
         liveSwitchInProgress = false
         pendingLiveRouteSwitch = null
@@ -1794,339 +1801,23 @@ class MainActivity : ComponentActivity(), TvActionHost {
         if (oldVodSession != null) LogHub.i(TAG, "VOD session cleared reason=$reason")
     }
 
-    /**
-     * 将播放器缓冲事件交给恢复状态机。初始化和定位阶段的缓冲只保留诊断，稳定
-     * 播放后持续达到阈值的两次缓冲才会触发线路恢复。
-     */
-    private fun observeVodBuffering(buffering: Boolean) {
-        val session = vodSession ?: return
-        val update = session.recovery.onBufferingChanged(buffering, SystemClock.elapsedRealtime())
-        val host = LogRedaction.host(session.info.video.url)
-        when {
-            update.failure != null -> {
-                LogHub.w(
-                    TAG,
-                    "VOD rebuffer recovery required failure=${update.failure} count=${session.recovery.rebufferCount} " +
-                        "duration=${update.durationMs}ms qn=${session.info.video.id} host=$host " +
-                        session.recovery.snapshot(),
-                )
-                handleVodPlaybackFailure(recoveryReason(update.failure))
-            }
-            update.countedRebuffer -> LogHub.w(
-                TAG,
-                "VOD severe rebuffer count=${session.recovery.rebufferCount} duration=${update.durationMs}ms " +
-                    "qn=${session.info.video.id} host=$host ${session.recovery.snapshot()}",
-            )
-            update.ignored && buffering -> LogHub.d(
-                TAG,
-                "VOD buffering ignored during ${update.phase} qn=${session.info.video.id} host=$host " +
-                    session.recovery.snapshot(),
-            )
-        }
-    }
 
-    /** 自动恢复网络/缓冲故障時切到同一画质与表示层的下一条 CDN。 */
-    private fun handleVodPlaybackFailure(reason: String, preferCodecFallback: Boolean = false): Boolean {
-        if (current?.isLive == true || !castActive || vodSwitchInProgress) return false
-        val session = vodSession ?: return false
-        val info = current ?: return false
-        pendingVodRouteSwitch?.let { pending ->
-            LogHub.e(
-                TAG,
-                "VOD CDN switch failed reason=${pending.reason} qn=${pending.quality} " +
-                    "host=${LogRedaction.host(pending.target.url)} nextReason=$reason",
-            )
-            pendingVodRouteSwitch = null
-        }
-        if (preferCodecFallback && scheduleVodRepresentationFallback(reason, session, info)) return true
-        if (preferCodecFallback) {
-            session.attemptedRepresentations += representationKey(info.video)
-            LogHub.w(
-                TAG,
-                "VOD decoder fallback unavailable qn=${info.video.id} codec=${info.video.codecid}; " +
-                    "will try network routes or report the player error",
-            )
-        }
-        val fromUrl = info.video.url
-        session.attemptedUrls += fromUrl
-        val next = vodCdnCoordinator.nextSameRepresentation(
-            ordered = session.videoRoutes,
-            activeUrl = fromUrl,
-            attemptedUrls = session.attemptedUrls,
-            allowPcdn = isSubstantiveVodFailure(reason),
-        ) ?: run {
-            LogHub.e(
-                TAG,
-                "VOD CDN switch exhausted reason=$reason qn=${info.video.id} " +
-                    "attempted=${session.attemptedUrls.size} routes=${session.videoRoutes.size}",
-            )
-            return scheduleVodRepresentationFallback(reason, session, info)
-        }
-        val activeAudio = info.audio
-        if (activeAudio != null) session.attemptedAudioUrls += activeAudio.url
-        val nextAudioRoute = activeAudio?.let { audio ->
-            session.audioRoutes.firstOrNull { it.url != audio.url && it.url !in session.attemptedAudioUrls }
-        }
-        val nextAudio = if (activeAudio != null && nextAudioRoute != null) {
-            vodCdnCoordinator.applyRoute(activeAudio, nextAudioRoute, session.audioRoutes)
-        } else {
-            activeAudio
-        }
-        vodSwitchInProgress = true
-        session.recovery.onSwitching()
-        val position = playerPositionMs()
-        val nextTrack = vodCdnCoordinator.applyRoute(info.video, next, session.videoRoutes)
-        val nextInfo = info.copy(video = nextTrack, audio = nextAudio)
-        pendingVodRouteSwitch = PendingVodRouteSwitch(
-            reason = reason,
-            fromUrl = fromUrl,
-            target = next,
-            quality = info.video.id,
-            codecId = info.video.codecid,
-            positionMs = position,
-        )
-        val opened = runCatching { play(nextInfo, position) }
-            .onFailure { error ->
-                LogHub.e(TAG, "VOD CDN switch open failed reason=$reason", error, stack = true)
-            }
-            .getOrDefault(false)
-        if (!opened) {
-            vodSwitchInProgress = false
-            pendingVodRouteSwitch = null
-            session.attemptedUrls += next.url
-            return false
-        }
-        session.info = nextInfo
-        session.lastPositionMs = position
-        session.lastProgressAtMs = SystemClock.elapsedRealtime()
-        LogHub.i(
-            TAG,
-            "VOD CDN switch opened reason=$reason qn=${info.video.id} " +
-                "from=${LogRedaction.host(fromUrl)} to=${LogRedaction.host(next.url)} position=${position}ms",
-        )
-        return true
-    }
+    /** 将播放器缓冲事件交给点播恢复状态机。 */
+    private fun observeVodBuffering(buffering: Boolean) = vodCoordinator.observeBuffering(buffering)
 
-    /** 解码失败或同档线路耗尽后，先切到同档备用编码，再试响应实际返回的下一档。 */
-    private fun scheduleVodRepresentationFallback(
-        reason: String,
-        session: VodSession,
-        info: BiliApi.PlayInfo,
-    ): Boolean {
-        session.attemptedRepresentations += representationKey(info.video)
-        val candidate = nextVodRepresentation(info, session.attemptedRepresentations) ?: return false
-        if (vodSwitchInProgress) return false
-        vodSwitchInProgress = true
-        session.recovery.onSwitching()
-        val position = playerPositionMs()
-        LogHub.w(
-            TAG,
-            "VOD representation fallback scheduled reason=$reason fromQn=${info.video.id} " +
-                "fromCodec=${info.video.codecid} toQn=${candidate.id} toCodec=${candidate.codecid} " +
-                "host=${LogRedaction.host(candidate.url)} position=${position}ms",
-        )
-        scope.launch {
-            var opened = false
-            try {
-                val routes = withContext(Dispatchers.IO) { vodCdnCoordinator.rankTrack(candidate) }
-                    .ifEmpty { listOf(RankedVodRoute(candidate.url)) }
-                if (vodSession !== session || current?.video?.url != info.video.url || !castActive) return@launch
-                val selected = vodCdnCoordinator.applyRoute(candidate, routes.first(), routes)
-                val nextInfo = info.copy(video = selected)
-                val previousRoutes = session.videoRoutes
-                val previousInfo = session.info
-                session.info = nextInfo
-                session.videoRoutes = routes
-                session.attemptedUrls.clear()
-                session.lastPositionMs = position
-                session.lastProgressAtMs = SystemClock.elapsedRealtime()
-                pendingVodRouteSwitch = null
-                opened = play(nextInfo, position)
-                if (!opened) {
-                    session.info = previousInfo
-                    session.videoRoutes = previousRoutes
-                    session.attemptedRepresentations += representationKey(candidate)
-                    current = previousInfo
-                    LogHub.e(
-                        TAG,
-                        "VOD representation fallback open failed qn=${candidate.id} codec=${candidate.codecid} " +
-                            "host=${LogRedaction.host(candidate.url)}",
-                    )
-                } else {
-                    LogHub.i(
-                        TAG,
-                        "VOD representation fallback opened reason=$reason qn=${candidate.id} " +
-                            "codec=${candidate.codecid} host=${LogRedaction.host(selected.url)} " +
-                            "position=${position}ms",
-                    )
-                    PlaybackDiagnostics.event(
-                        "VodRepresentationFallback",
-                        "reason=$reason qn=${candidate.id} codec=${candidate.codecid} " +
-                            "host=${LogRedaction.host(selected.url)} position=${position}ms",
-                    )
-                }
-            } catch (failure: Exception) {
-                LogHub.e(
-                    TAG,
-                    "VOD representation fallback failed qn=${candidate.id} codec=${candidate.codecid} " +
-                        "reason=${LogRedaction.reason(failure)}",
-                )
-            } finally {
-                if (!opened) {
-                    vodSwitchInProgress = false
-                }
-                if (!opened && vodSession === session && castActive) {
-                    handleVodPlaybackFailure("representation-fallback-open-failed")
-                }
-            }
-        }
-        return true
-    }
+    /** 处理点播播放故障，优先在同表示层内切换线路。 */
+    private fun handleVodPlaybackFailure(reason: String, preferCodecFallback: Boolean = false): Boolean =
+        vodCoordinator.handleFailure(reason, preferCodecFallback)
 
-    /** 优先同 qn 的另一种编码；再依据服务端 accept_quality 顺序选择更低画质。 */
-    private fun nextVodRepresentation(
-        info: BiliApi.PlayInfo,
-        attempted: Set<String>,
-    ): BiliApi.Track? {
-        val currentTrack = info.video
-        val remaining = info.videos.filter { track ->
-            representationKey(track) !in attempted && track.url.isNotBlank() &&
-                CdnCandidateSelector.isSupportedVideoCodec(track.codecid)
-        }
-        val sameQuality = remaining.filter { it.id == currentTrack.id }
-        if (sameQuality.isNotEmpty()) return sameQuality.maxByOrNull(::videoCodecRank)
+    /** 播放稳定后结束切源事务并提示用户。 */
+    private fun completeVodRouteSwitch() = vodCoordinator.completeRouteSwitch()
 
-        val currentRank = info.acceptQualities.indexOf(currentTrack.id)
-        val lowerQuality = remaining.filter { track ->
-            val rank = info.acceptQualities.indexOf(track.id)
-            if (currentRank >= 0 && rank >= 0) rank > currentRank else track.id < currentTrack.id
-        }
-        return if (currentRank >= 0) {
-            lowerQuality.minWithOrNull(
-                compareBy<BiliApi.Track> { info.acceptQualities.indexOf(it.id).takeIf { rank -> rank >= 0 } ?: Int.MAX_VALUE }
-                    .thenByDescending(::videoCodecRank),
-            )
-        } else {
-            lowerQuality.maxWithOrNull(compareBy<BiliApi.Track> { it.id }.thenBy(::videoCodecRank))
-        }
-    }
-
-    private fun representationKey(track: BiliApi.Track): String =
-        VodPlaybackRules.representationKey(track)
-
-    private fun videoCodecRank(track: BiliApi.Track): Int =
-        VodPlaybackRules.videoCodecRank(track)
-
-    /** 稳定播放确认后才结束切源事务并提示用户。 */
-    private fun completeVodRouteSwitch() {
-        val switched = pendingVodRouteSwitch
-        if (switched == null) {
-            vodSwitchInProgress = false
-            return
-        }
-        pendingVodRouteSwitch = null
-        vodSwitchInProgress = false
-        val host = LogRedaction.host(switched.target.url)
-        val probe = switched.target.result
-        val detail = "reason=${switched.reason} qn=${switched.quality} codec=${switched.codecId} " +
-            "from=${LogRedaction.host(switched.fromUrl)} to=$host " +
-            "pcdn=${CdnCandidateSelector.isPcdn(switched.target.url)} " +
-            "ttfb=${probe?.firstByteMs ?: -1}ms throughput=${probe?.throughputBytesPerSecond ?: 0}Bps " +
-            "position=${switched.positionMs}ms"
-        LogHub.i(TAG, "VOD CDN switch succeeded $detail")
-        PlaybackDiagnostics.event("VodRouteSwitchSuccess", detail)
-        ui = ui.copy(toast = "播放线路已切换：$host")
-    }
-
-    /** 检测稳定播放态下的无进度，并处理长期打开/缓冲超时。 */
-    private fun observeVodProgress(positionMs: Long, activelyPlaying: Boolean) {
-        val session = vodSession ?: return
-        val now = SystemClock.elapsedRealtime()
-        val progress = session.recovery.onProgress(positionMs, activelyPlaying, now)
-        if (progress.becameStable) {
-            LogHub.i(
-                TAG,
-                "VOD playback stabilized qn=${session.info.video.id} " +
-                    "host=${LogRedaction.host(session.info.video.url)} ${session.recovery.snapshot()}",
-            )
-            completeVodRouteSwitch()
-        }
-        if (!activelyPlaying && !ui.isBuffering && !ui.isPlaying) {
-            return
-        }
-        session.recovery.onTick(now)?.let { failure ->
-            LogHub.e(
-                TAG,
-                "VOD recovery timeout failure=$failure qn=${session.info.video.id} " +
-                    "host=${LogRedaction.host(session.info.video.url)} ${session.recovery.snapshot()}",
-            )
-            handleVodPlaybackFailure(recoveryReason(failure))
-            return
-        }
-        if (progress.phase != VodRecoveryController.Phase.STABLE || !activelyPlaying) {
-            session.lastPositionMs = positionMs
-            session.lastProgressAtMs = now
-            return
-        }
-        if (positionMs > session.lastPositionMs) {
-            session.lastPositionMs = positionMs
-            session.lastProgressAtMs = now
-            return
-        }
-        if (now - session.lastProgressAtMs >= VOD_STALL_TIMEOUT_MS) {
-            LogHub.e(
-                TAG,
-                "VOD playback stalled for ${VOD_STALL_TIMEOUT_MS}ms qn=${session.info.video.id} " +
-                    "position=${positionMs}ms host=${LogRedaction.host(session.info.video.url)}",
-            )
-            PlaybackDiagnostics.event(
-                "VodPlaybackStalled",
-                "duration=${VOD_STALL_TIMEOUT_MS}ms qn=${session.info.video.id} position=${positionMs}ms " +
-                    "host=${LogRedaction.host(session.info.video.url)}",
-            )
-            session.lastProgressAtMs = now
-            handleVodPlaybackFailure("playback-time-stalled-5s")
-        }
-    }
-
-    private fun recoveryReason(failure: VodRecoveryController.Failure): String =
-        VodPlaybackRules.recoveryReason(failure)
-
-    /** 只有播放器错误或已经经过稳定期验证的恢复故障才允许消耗 PCDN 候选。 */
-    private fun isSubstantiveVodFailure(reason: String): Boolean =
-        VodPlaybackRules.isSubstantiveVodFailure(reason)
+    /** 在稳定播放态下检测无进度并处理恢复超时。 */
+    private fun observeVodProgress(positionMs: Long, activelyPlaying: Boolean) =
+        vodCoordinator.observeProgress(positionMs, activelyPlaying)
 
     /** 每 30 秒刷新备用线路排序，不更改当前播放地址。 */
-    private fun startVodBackupRefresh() {
-        vodBackupRefreshJob?.cancel()
-        vodBackupRefreshJob = scope.launch {
-            while (isActive) {
-                delay(VOD_BACKUP_REFRESH_INTERVAL_MS)
-                val session = vodSession ?: return@launch
-                val activeUrl = session.info.video.url
-                val refreshed = runCatching {
-                    withContext(Dispatchers.IO) {
-                        vodCdnCoordinator.refreshBackups(
-                            track = session.info.video,
-                            activeUrl = activeUrl,
-                            excludedUrls = session.attemptedUrls,
-                        )
-                    }
-                }.onFailure { error ->
-                    LogHub.e(TAG, "VOD backup CDN refresh failed ${LogRedaction.reason(error)}", error)
-                }.getOrDefault(emptyList())
-                if (vodSession !== session || refreshed.isEmpty()) continue
-                val active = session.videoRoutes.firstOrNull { it.url == activeUrl }
-                session.videoRoutes = refreshed + listOfNotNull(active)
-                    .filterNot { route -> refreshed.any { it.url == route.url } }
-                LogHub.i(
-                    TAG,
-                    "VOD backup CDN ranking refreshed active=${LogRedaction.host(activeUrl)} " +
-                        "routes=${session.videoRoutes.take(8).joinToString(",") { LogRedaction.host(it.url) }}",
-                )
-            }
-        }
-    }
+    private fun startVodBackupRefresh() = vodCoordinator.startBackupRefresh()
 
     /** 直播 qn 与点播 qn 数值体系不同，使用直播清晰度名称。 */
     private fun liveQualityLabel(qn: Int): String = LiveQualityMapper.label(qn)
@@ -2177,7 +1868,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
         lastErrorRetry = null
         pendingSeekMs = seekToMs.coerceAtLeast(0L)
         val vodGeneration = if (!info.isLive) {
-            vodSession?.recovery?.onOpening(pendingSeekMs, SystemClock.elapsedRealtime())
+            vodCoordinator.onOpening(pendingSeekMs)
         } else null
         LogHub.i(
             TAG,
@@ -2333,7 +2024,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
             )
             return
         }
-        if (vodSwitchInProgress) return
+        if (vodCoordinator.switching) return
         val position = playerPositionMs()
         LogHub.i(
             TAG,
@@ -2345,17 +2036,17 @@ class MainActivity : ComponentActivity(), TvActionHost {
             "qn=$qn codec=${track.codecid} size=${track.width}x${track.height} " +
                 "host=${LogRedaction.host(track.url)} at=${position}ms",
         )
-        vodSwitchInProgress = true
+        vodCoordinator.switching = true
         scope.launch {
             try {
-                val routes = withContext(Dispatchers.IO) { vodCdnCoordinator.rankTrack(track) }
+                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(track) }
                 if (current?.video?.id != info.video.id || !castActive) return@launch
                 val route = routes.firstOrNull() ?: RankedVodRoute(track.url)
                 val orderedRoutes = routes.ifEmpty { listOf(route) }
-                val selected = vodCdnCoordinator.applyRoute(track, route, orderedRoutes)
+                val selected = vodCoordinator.cdn.applyRoute(track, route, orderedRoutes)
                 val nextInfo = info.copy(video = selected)
-                val oldSession = vodSession
-                vodSession = VodSession(
+                val oldSession = vodCoordinator.activeSession
+                vodCoordinator.activeSession = VodSession(
                     info = nextInfo,
                     videoRoutes = orderedRoutes,
                     audioRoutes = oldSession?.audioRoutes.orEmpty(),
@@ -2374,7 +2065,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
                 LogHub.e(TAG, "quality switch failed qn=$qn ${LogRedaction.reason(error)}", error)
                 ui = ui.copy(toast = "画质切换失败")
             } finally {
-                vodSwitchInProgress = false
+                vodCoordinator.switching = false
             }
         }
     }
@@ -2476,17 +2167,17 @@ class MainActivity : ComponentActivity(), TvActionHost {
             "AudioSwitch",
             "id=$id host=${LogRedaction.host(track.url)} at=${position}ms",
         )
-        if (vodSwitchInProgress) return
-        vodSwitchInProgress = true
+        if (vodCoordinator.switching) return
+        vodCoordinator.switching = true
         scope.launch {
             try {
-                val routes = withContext(Dispatchers.IO) { vodCdnCoordinator.rankTrack(track) }
+                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(track) }
                 if (current?.video?.id != info.video.id || !castActive) return@launch
                 val route = routes.firstOrNull() ?: RankedVodRoute(track.url)
                 val orderedRoutes = routes.ifEmpty { listOf(route) }
-                val selected = vodCdnCoordinator.applyRoute(track, route, orderedRoutes)
+                val selected = vodCoordinator.cdn.applyRoute(track, route, orderedRoutes)
                 val nextInfo = info.copy(audio = selected)
-                vodSession?.let { session ->
+                vodCoordinator.activeSession?.let { session ->
                     session.info = nextInfo
                     session.audioRoutes = orderedRoutes
                     session.attemptedAudioUrls.clear()
@@ -2501,7 +2192,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
                 LogHub.e(TAG, "audio switch failed id=$id ${LogRedaction.reason(error)}", error)
                 ui = ui.copy(toast = "音轨切换失败")
             } finally {
-                vodSwitchInProgress = false
+                vodCoordinator.switching = false
             }
         }
     }
@@ -2813,7 +2504,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
 
     private fun seekPlayer(positionMs: Long, reason: String): Long {
         if (current?.isLive != true) {
-            vodSession?.recovery?.onSeek(positionMs, SystemClock.elapsedRealtime())
+            vodCoordinator.onSeek(positionMs)
         }
         return activePlaybackEngine.seekTo(positionMs, reason)
     }
