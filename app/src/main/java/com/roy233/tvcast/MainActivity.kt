@@ -11,9 +11,6 @@ import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.media3.common.PlaybackException
@@ -23,19 +20,18 @@ import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.PlaybackSpeed
 import com.roy233.tvcast.ui.model.RecentCast
 import com.roy233.tvcast.ui.model.SettingsPage
-import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.tv.TvRoot
+import com.roy233.tvcast.app.CapyCastContainer
+import com.roy233.tvcast.ui.tv.TvActionDispatcher
+import com.roy233.tvcast.ui.tv.TvActionHost
+import com.roy233.tvcast.ui.tv.TvStateHolder
 import com.roy233.tvcast.ui.tv.DoubleBackExitGate
 import com.roy233.tvcast.ui.tv.HomeBackExitTiming
 import com.roy233.tvcast.ui.tv.TvKeyHandler
-import com.roy233.tvcast.data.local.RecentCastStore
-import com.roy233.tvcast.data.local.UiPreferences
-import com.roy233.tvcast.data.auth.AuthTokenStore
-import com.roy233.tvcast.data.auth.CastAuth
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.CdnCandidateSelector
 import com.roy233.tvcast.data.bili.LiveCdnCoordinator
@@ -63,15 +59,9 @@ import com.roy233.tvcast.core.danmaku.DanmakuSettings
 import com.roy233.tvcast.core.danmaku.DfmDanmakuEngine
 import com.roy233.tvcast.core.danmaku.LiveDanmakuController
 import com.roy233.tvcast.core.danmaku.MediaClock
-import com.roy233.tvcast.data.local.DanmakuPreferences
-import com.roy233.tvcast.data.local.PlaybackHistoryOutbox
-import com.roy233.tvcast.feature.account.AccountLoginCoordinator
 import com.roy233.tvcast.feature.history.PlaybackHistoryContent
-import com.roy233.tvcast.feature.history.PlaybackHistoryCoordinator
-import com.roy233.tvcast.feature.update.UpdateCoordinator
-import com.roy233.tvcast.platform.device.DeviceInfoProvider
+import com.roy233.tvcast.feature.update.UpdateChannel
 import com.roy233.tvcast.platform.dlna.DlnaRenderer
-import com.roy233.tvcast.platform.qr.QrCodeGenerator
 import com.roy233.tvcast.feature.cast.domain.TrackOptionFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -95,7 +85,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), TvActionHost {
 
     /** VLC 播放引擎。 */
     private lateinit var playerEngine: VlcPlayerEngine
@@ -224,197 +214,161 @@ class MainActivity : ComponentActivity() {
         val positionMs: Long,
     )
 
-    /** 电视界面状态。 */
-    private var ui by mutableStateOf(TvUiState())
-    /** 最近投屏记录存储。 */
-    private val recentCastStore by lazy { RecentCastStore(this) }
-    /** TV 登录令牌存储；直播协议需要其中的 access_key。 */
-    private val authTokenStore by lazy { AuthTokenStore(this) }
-    /** 将投屏进度与直播心跳同步到 B 站账号。 */
-    private val playbackHistoryCoordinator by lazy {
-        PlaybackHistoryCoordinator(
-            scope = scope,
-            authTokenStore = authTokenStore,
-            outbox = PlaybackHistoryOutbox(this),
-            isEnabled = { uiPreferences.syncPlaybackHistory },
-            buildNumber = CastAuth.tvBuildNumber,
-        )
-    }
-    /** 首页双击返回退出计时。 */
-    private val homeBackExitGate = DoubleBackExitGate(HOME_BACK_EXIT_WINDOW_MS)
-    /** 设备身份偏好读取器。 */
-    private val uiPreferences by lazy { UiPreferences(this) }
-    /** 弹幕设置读取器。 */
-    private val danmakuPreferences by lazy { DanmakuPreferences(this) }
-    /** 设备信息读取器。 */
-    private val deviceInfo by lazy { DeviceInfoProvider(this) }
-    /** 对外显示并广播的投屏设备名称。 */
-    private val castDeviceName by lazy {
-        deviceInfo.castDeviceName(uiPreferences.deviceName)
-    }
-    /** 账号二维码登录协调器。 */
-    private val loginCoordinator by lazy {
-        AccountLoginCoordinator(
+    /** 电视界面根状态持有者。 */
+    private val stateHolder = TvStateHolder()
+
+    /** 电视界面状态；读取即订阅 Compose 快照，写入即触发重组。 */
+    private var ui: TvUiState
+        get() = stateHolder.read()
+        set(value) = stateHolder.set(value)
+
+    /** 应用依赖组合根。 */
+    private val container by lazy {
+        CapyCastContainer(
             context = this,
             scope = scope,
             readState = { ui },
             writeState = { ui = it },
-            authTokenStore = authTokenStore,
-            qrCodeGenerator = QrCodeGenerator(),
-            onTokenAvailable = {
-                BiliApi.cookie = it.cookie
-                playbackHistoryCoordinator.onAccountAvailable(it.mid)
-            },
-            onLogout = {
-                playbackHistoryCoordinator.onAccountLoggedOut(
-                    playing = playerIsPlaying(),
-                    positionMs = playerPositionMs(),
-                    durationMs = playerDurationMs(),
-                )
-                BiliApi.cookie = ""
-            },
-        )
-    }
-    /** 应用更新流程协调器。 */
-    private val updateCoordinator by lazy {
-        UpdateCoordinator(
-            context = this,
-            scope = scope,
-            readState = { ui },
-            writeState = { ui = it },
+            isPlaying = { playerIsPlaying() },
+            positionMs = { playerPositionMs() },
+            durationMs = { playerDurationMs() },
         )
     }
 
+    /** 最近投屏记录存储。 */
+    private val recentCastStore get() = container.recentCastStore
+    /** TV 登录令牌存储；直播协议需要其中的 access_key。 */
+    private val authTokenStore get() = container.authTokenStore
+    /** 将投屏进度与直播心跳同步到 B 站账号。 */
+    private val playbackHistoryCoordinator get() = container.playbackHistoryCoordinator
+    /** 首页双击返回退出计时。 */
+    private val homeBackExitGate = DoubleBackExitGate(HOME_BACK_EXIT_WINDOW_MS)
+    /** 设备身份偏好读取器。 */
+    private val uiPreferences get() = container.uiPreferences
+    /** 弹幕设置读取器。 */
+    private val danmakuPreferences get() = container.danmakuPreferences
+    /** 设备信息读取器。 */
+    private val deviceInfo get() = container.deviceInfo
+    /** 对外显示并广播的投屏设备名称。 */
+    private val castDeviceName get() = container.castDeviceName
+    /** 账号二维码登录协调器。 */
+    private val loginCoordinator get() = container.loginCoordinator
+    /** 应用更新流程协调器。 */
+    private val updateCoordinator get() = container.updateCoordinator
+
+    /** 电视界面操作装配器。 */
+    private val actionDispatcher = TvActionDispatcher(stateHolder, this)
+
     /** 提供给电视界面的操作回调集合。 */
-    private val actions = TvActions(
-        onLogin = { startQrLogin() },
-        onSkipLogin = { skipLogin() },
-        onOpenSidebar = {
-            ui = ui.copy(sidebarVisible = true)
-        },
-        onCloseSidebar = {
-            ui = ui.copy(sidebarVisible = false)
-        },
-        onNavigateHome = {
+    private val actions = actionDispatcher.actions
+
+    // ---- TvActionHost 过渡期实现：全部委托既有逻辑，行为与迁移前一致。 ----
+
+    override fun requestLogin() = startQrLogin()
+
+    override fun requestSkipLogin() = skipLogin()
+
+    override fun requestLogout() = logout()
+
+    override fun openUpdateSettings() = updateCoordinator.openSettings()
+
+    override fun closeUpdateSettings() = updateCoordinator.closeSettings()
+
+    override fun openUpdateNotes() = updateCoordinator.openNotes()
+
+    override fun closeUpdateNotes() = updateCoordinator.closeNotes()
+
+    override fun selectUpdateChannel(channel: UpdateChannel) =
+        updateCoordinator.selectChannel(channel)
+
+    override fun setAutomaticUpdateCheck(enabled: Boolean) =
+        updateCoordinator.setAutomaticCheck(enabled)
+
+    override fun checkForUpdates() = updateCoordinator.checkForUpdates()
+
+    override fun downloadUpdate() = updateCoordinator.downloadUpdate()
+
+    override fun cancelUpdateDownload() = updateCoordinator.cancelUpdateDownload()
+
+    override fun installUpdate() = updateCoordinator.installUpdate()
+
+    override fun requestPlayPause() = togglePlayPause()
+
+    override fun requestSeekBy(deltaMs: Long) = seekBy(deltaMs)
+
+    override fun requestPreviewSeekBy(deltaMs: Long) = previewSeekBy(deltaMs)
+
+    override fun requestConfirmSeek() = confirmPreviewSeek()
+
+    override fun requestPlaybackSpeed(speed: Float) = setPlaybackSpeed(speed)
+
+    override fun toggleDanmaku() {
+        val enabled = !danmakuSettings.enabled
+        updateDanmakuSettings(danmakuSettings.copy(enabled = enabled))
+        ui = ui.copy(toast = if (enabled) "弹幕已开启" else "弹幕已关闭")
+    }
+
+    override fun setDanmakuAiShield(level: AiShieldLevel) =
+        updateDanmakuSettings(danmakuSettings.copy(aiShield = level))
+
+    override fun setDanmakuArea(ratio: Float) =
+        updateDanmakuSettings(danmakuSettings.copy(areaRatio = ratio))
+
+    override fun setDanmakuMaxOnScreen(max: Int) =
+        updateDanmakuSettings(danmakuSettings.copy(maxOnScreen = max))
+
+    override fun setDanmakuOpacity(opacity: Float) =
+        updateDanmakuSettings(danmakuSettings.copy(opacity = opacity))
+
+    override fun setDanmakuFontScale(scale: Float) =
+        updateDanmakuSettings(danmakuSettings.copy(fontScale = scale))
+
+    override fun setDanmakuDuration(seconds: Float) =
+        updateDanmakuSettings(danmakuSettings.copy(durationSec = seconds))
+
+    override fun requestVolume(volume: Int) = setVolume(volume)
+
+    override fun selectQuality(qn: Int) = switchQuality(qn)
+
+    override fun selectAudio(id: Int) = switchAudio(id)
+
+    override fun requestRetry() = retryLastAction()
+
+    override fun requestDismissError() = dismissError()
+
+    override fun requestConfirmStopCast() = stopCasting()
+
+    override fun requestClearToast() = clearToast()
+
+    override fun requestRecast(target: RecentCast) = recast(target)
+
+    override fun setRememberPlaybackContent(enabled: Boolean) {
+        uiPreferences.rememberPlaybackContent = enabled
+        if (enabled) {
             ui = ui.copy(
-                destination = TvDestination.HOME,
-                settingsPage = SettingsPage.ROOT,
-                sidebarVisible = true,
-                hudVisible = ui.mode == TvMode.PLAYING,
+                rememberPlaybackContent = true,
+                showContinue = ui.recents.isNotEmpty(),
             )
-        },
-        onNavigateSettings = {
+        } else {
+            recentCastStore.clear()
             ui = ui.copy(
-                destination = TvDestination.SETTINGS,
-                settingsPage = SettingsPage.ROOT,
-                sidebarVisible = true,
-                hudVisible = false,
+                rememberPlaybackContent = false,
+                recents = emptyList(),
+                showContinue = false,
             )
-        },
-        onOpenUpdateSettings = { updateCoordinator.openSettings() },
-        onCloseUpdateSettings = { updateCoordinator.closeSettings() },
-        onOpenUpdateNotes = { updateCoordinator.openNotes() },
-        onCloseUpdateNotes = { updateCoordinator.closeNotes() },
-        onSelectUpdateChannel = { channel -> updateCoordinator.selectChannel(channel) },
-        onSetAutoUpdateCheck = { enabled -> updateCoordinator.setAutomaticCheck(enabled) },
-        onCheckForUpdates = { updateCoordinator.checkForUpdates() },
-        onDownloadUpdate = { updateCoordinator.downloadUpdate() },
-        onCancelUpdateDownload = { updateCoordinator.cancelUpdateDownload() },
-        onInstallUpdate = { updateCoordinator.installUpdate() },
-        onShowHelp = {
-            ui = ui.copy(helpVisible = true)
-        },
-        onCloseHelp = { ui = ui.copy(helpVisible = false) },
-        onLogout = { logout() },
-        onPlayPause = { togglePlayPause() },
-        onSeekBy = { seekBy(it) },
-        onPreviewSeekBy = { previewSeekBy(it) },
-        onConfirmSeek = { confirmPreviewSeek() },
-        onSetPlaybackSpeed = { setPlaybackSpeed(it) },
-        onToggleDanmaku = {
-            val enabled = !danmakuSettings.enabled
-            updateDanmakuSettings(danmakuSettings.copy(enabled = enabled))
-            ui = ui.copy(toast = if (enabled) "弹幕已开启" else "弹幕已关闭")
-        },
-        onSetDanmakuAiShield = {
-            updateDanmakuSettings(danmakuSettings.copy(aiShield = it))
-        },
-        onSetDanmakuArea = {
-            updateDanmakuSettings(danmakuSettings.copy(areaRatio = it))
-        },
-        onSetDanmakuMaxOnScreen = {
-            updateDanmakuSettings(danmakuSettings.copy(maxOnScreen = it))
-        },
-        onSetDanmakuOpacity = {
-            updateDanmakuSettings(danmakuSettings.copy(opacity = it))
-        },
-        onSetDanmakuFontScale = {
-            updateDanmakuSettings(danmakuSettings.copy(fontScale = it))
-        },
-        onSetDanmakuDuration = {
-            updateDanmakuSettings(danmakuSettings.copy(durationSec = it))
-        },
-        onSetVolume = { setVolume(it) },
-        onShowHud = { ui = ui.copy(hudVisible = true) },
-        onHideHud = {
-            if (ui.mode == TvMode.PLAYING &&
-                ui.panel == null &&
-                ui.error == null &&
-                !ui.stopCastConfirm
-            ) {
-                ui = ui.copy(hudVisible = false)
-            }
-        },
-        onOpenPanel = { kind ->
-            if (ui.isLive && kind != PanelKind.ROOT && kind != PanelKind.LIVE_QUALITY) {
-                LogHub.i(TAG, "live playback ignored unsupported panel=$kind")
-            } else {
-                ui = ui.copy(
-                    panel = kind,
-                    hudVisible = true,
-                    stopCastConfirm = false,
-                )
-            }
-        },
-        onClosePanel = { ui = ui.copy(panel = null, hudVisible = true) },
-        onSelectQuality = { qn -> switchQuality(qn) },
-        onSelectAudio = { id -> switchAudio(id) },
-        onRetry = { retryLastAction() },
-        onDismissError = { dismissError() },
-        onRequestStopCast = {
-            ui = ui.copy(stopCastConfirm = true, hudVisible = true)
-        },
-        onConfirmStopCast = { stopCasting() },
-        onCancelStopCast = { ui = ui.copy(stopCastConfirm = false, hudVisible = true) },
-        onClearToast = { clearToast() },
-        onRecast = { recast(it) },
-        onDismissContinue = { ui = ui.copy(showContinue = false) },
-        onSetRememberPlaybackContent = { enabled ->
-            uiPreferences.rememberPlaybackContent = enabled
-            if (enabled) {
-                ui = ui.copy(
-                    rememberPlaybackContent = true,
-                    showContinue = ui.recents.isNotEmpty(),
-                )
-            } else {
-                recentCastStore.clear()
-                ui = ui.copy(
-                    rememberPlaybackContent = false,
-                    recents = emptyList(),
-                    showContinue = false,
-                )
-            }
-        },
-        onSetSyncPlaybackHistory = { enabled ->
-            uiPreferences.syncPlaybackHistory = enabled
-            ui = ui.copy(syncPlaybackHistory = enabled)
-            playbackHistoryCoordinator.onEnabledChanged(
-                enabled = enabled,
-                accountMid = authTokenStore.load()?.mid ?: ui.mid,
-            )
-        },
-        onHomeBack = { handleHomeBack() },
-    )
+        }
+    }
+
+    override fun setSyncPlaybackHistory(enabled: Boolean) {
+        uiPreferences.syncPlaybackHistory = enabled
+        ui = ui.copy(syncPlaybackHistory = enabled)
+        playbackHistoryCoordinator.onEnabledChanged(
+            enabled = enabled,
+            accountMid = authTokenStore.load()?.mid ?: ui.mid,
+        )
+    }
+
+    override fun handleHomeBack() = handleHomeBackInternal()
 
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
     private val dlnaListener = object : DlnaRenderer.Listener {
@@ -2958,7 +2912,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /** 首页连续两次返回退出，首按显示明确提示。 */
-    private fun handleHomeBack() {
+    private fun handleHomeBackInternal() {
         finish()
     }
 
