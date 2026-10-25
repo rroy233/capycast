@@ -1,5 +1,7 @@
 package com.roy233.tvcast
 
+import android.content.Context
+import com.roy233.tvcast.data.auth.CastAuth
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -51,6 +53,8 @@ import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEngine
 import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
+import com.roy233.tvcast.feature.playback.application.LivePlaybackCoordinator
+import com.roy233.tvcast.feature.playback.application.LivePlaybackHost
 import com.roy233.tvcast.feature.playback.application.VodPlaybackHost
 import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
 import com.roy233.tvcast.feature.playback.model.CastResolution
@@ -96,7 +100,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
+class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost {
 
     /** VLC 播放引擎。 */
     private lateinit var playerEngine: VlcPlayerEngine
@@ -145,8 +149,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     /** 当前媒体解析任务。 */
     private var resolveJob: Job? = null
-    /** 直播备用线路刷新任务。 */
-    private var liveBackupRefreshJob: Job? = null
     /** 播放进度轮询任务。 */
     private var tickerJob: Job? = null
 
@@ -168,20 +170,10 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
     private var lastErrorRetry: (() -> Unit)? = null
     /** 最近一次播放器读取失败告警的单调时刻。 */
     private var lastPlayerReadWarningAt = 0L
-    /** 当前直播线路与同画质故障切换状态。 */
-    private var liveSession: LiveSession? = null
-    /** 直播线路测速与排序器。 */
-    private val liveCdnCoordinator = LiveCdnCoordinator()
     /** 点播会话协调器。 */
     private val vodCoordinator by lazy { VodPlaybackCoordinator(this) }
-    /** 直播缓冲阈值统计。 */
-    private val livePlaybackHealth = LivePlaybackHealth()
-    /** 直播时钟为零时改用读取和解码计数检测卡顿。 */
-    private val liveStallWatchdog = LivePlaybackStallWatchdog()
-    /** 避免多路播放器事件同时启动多个线路切换。 */
-    private var liveSwitchInProgress = false
-    /** 等待 VLC 确认开始播放后显示右下角切源提示的信息。 */
-    private var pendingLiveRouteSwitch: PendingLiveRouteSwitch? = null
+    /** 直播会话协调器。 */
+    private val liveCoordinator by lazy { LivePlaybackCoordinator(this) }
 
     /** 电视界面根状态持有者。 */
     private val stateHolder = TvStateHolder()
@@ -387,6 +379,55 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
 
     /** 用于后台线路探测的协程作用域。 */
     override val coroutineScope: CoroutineScope get() = scope
+
+    /** 播放器是否正在播放。 */
+    override fun isPlaying(): Boolean = playerIsPlaying()
+
+    /** VLC 播放器的失败快照，用于直播故障诊断。 */
+    override fun stateSnapshot(): String =
+        if (::playerEngine.isInitialized) playerEngine.stateSnapshot() else ""
+
+    /** 记录起播后是否保持暂停。 */
+    override fun setPendingPause(paused: Boolean) {
+        pendingPause = paused
+    }
+
+    /** 最近一次解析得到的 nva 内容。 */
+    override fun lastNva(): NvaExtDecoder.NvaExtContent? = lastNva
+
+    /** 最近一次投屏标题。 */
+    override fun lastTitle(): String = lastTitle
+
+    /** 记录失败重试动作。 */
+    override fun setRetry(action: (() -> Unit)?) {
+        lastErrorRetry = action
+    }
+
+    /** 重新解析并播放指定 nva 内容。 */
+    override fun resolveLast(nva: NvaExtDecoder.NvaExtContent) = resolveNvaAndPlay(nva, lastTitle)
+
+    /** 展示错误提示。 */
+    override fun reportError(
+        title: String,
+        message: String,
+        code: String,
+        canRetry: Boolean,
+        keepVideo: Boolean,
+    ) = showError(title, message, code, canRetry, keepVideo)
+
+    /** 清除尚未确认的点播线路切换提示。 */
+    override fun clearVodPendingSwitch() {
+        vodCoordinator.pendingSwitch = null
+    }
+
+    /** 更新 DLNA 报告的媒体时长。 */
+    override fun setCastDurationMs(durationMs: Long) = dlna.setDurationMs(durationMs)
+
+    /** 读取当前电视端登录令牌。 */
+    override fun authToken(): CastAuth.Token? = authTokenStore.load()
+
+    /** 可供解析器使用的应用上下文。 */
+    override fun appContext(): Context = applicationContext
 
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
     private val dlnaListener = object : DlnaRenderer.Listener {
@@ -777,8 +818,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
                     refreshVideoSize()
                     if (current?.isLive == true) {
                         if (::liveDanmakuController.isInitialized) liveDanmakuController.onPlaying()
-                        livePlaybackHealth.onPlaying()
-                        liveStallWatchdog.reset()
+                        liveCoordinator.health.onPlaying()
+                        liveCoordinator.stallWatchdog.reset()
                         completeLiveRouteSwitch()
                     } else if (::danmakuController.isInitialized) {
                         val position = if (seek > 0) {
@@ -890,7 +931,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
                 runOnUiThread {
                     ui = ui.copy(isBuffering = buffering)
                     if (current?.isLive == true &&
-                        livePlaybackHealth.onBuffering(buffering)
+                        liveCoordinator.health.onBuffering(buffering)
                     ) {
                         handleLivePlaybackFailure("two-consecutive-rebuffers")
                     }
@@ -1180,7 +1221,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
                                 accessKey = token.accessKey,
                                 roomId = nva.roomId,
                             )
-                            val routes = liveCdnCoordinator.rankInitial(liveInfo.qualityCandidates)
+                            val routes = liveCoordinator.cdn.rankInitial(liveInfo.qualityCandidates)
                             if (routes.isEmpty()) error("live response has no eligible CDN routes")
                             CastResolution.Live(liveInfo, routes)
                         }
@@ -1289,513 +1330,57 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
         }
     }
 
-    /** 采用首次线路测速结果启动直播，并记录备用线路状态。 */
-    private fun startLivePlayback(
-        stream: LivePlayInfo,
-        routes: List<RankedLiveSource>,
-        title: String,
-    ) {
-        val first = routes.firstOrNull { it.candidate.quality == stream.quality }
-            ?: routes.firstOrNull()
-            ?: run {
-                showError(
-                    title = "直播线路不可用",
-                    message = "TV 接口没有返回可播放的直播线路。",
-                    code = "LIVE_NO_CANDIDATE",
-                    canRetry = true,
-                )
-                return
-            }
-        liveBackupRefreshJob?.cancel()
-        livePlaybackHealth.reset()
-        liveSwitchInProgress = false
-        pendingLiveRouteSwitch = null
-        vodCoordinator.pendingSwitch = null
-        liveStallWatchdog.reset()
-        val session = LiveSession(
-            stream = stream,
-            routes = routes.toMutableList(),
-            active = first.candidate,
-        )
-        session.attemptedUrls += first.candidate.url
-        liveSession = session
-        dlna.setDurationMs(0L)
-        PlaybackDiagnostics.attribute("live.roomId", stream.roomId.toString())
-        PlaybackDiagnostics.attribute("live.requestedQn", stream.requestedQuality.toString())
-        PlaybackDiagnostics.attribute("live.actualQn", stream.quality.toString())
-        PlaybackDiagnostics.attribute(
-            "live.acceptedQn",
-            stream.acceptedQualities.joinToString(","),
-        )
-        PlaybackDiagnostics.attribute("live.format", first.candidate.format)
-        PlaybackDiagnostics.attribute("live.codec", first.candidate.codecName)
-        PlaybackDiagnostics.attribute("live.cdn", first.candidate.cdnLabel)
-        PlaybackDiagnostics.attribute("live.backupCount", (routes.size - 1).coerceAtLeast(0).toString())
-        routes.forEachIndexed { index, route ->
-            PlaybackDiagnostics.track(
-                "live-route",
-                mapOf(
-                    "index" to index.toString(),
-                    "quality" to route.candidate.quality.toString(),
-                    "format" to route.candidate.format,
-                    "codec" to route.candidate.codecName,
-                    "host" to route.candidate.cdnLabel,
-                    "pcdn" to route.candidate.pcdn.toString(),
-                    "probe" to (route.result?.let {
-                        "${it.success}:${it.firstByteMs}ms:${it.throughputBytesPerSecond}Bps"
-                    } ?: "unprobed"),
-                    "selected" to (route.candidate.url == first.candidate.url).toString(),
-                ),
-            )
-        }
-        LogHub.i(
-            TAG,
-            "live start room=${stream.roomId} requestedQn=${stream.requestedQuality} " +
-                "actualQn=${stream.quality} accepted=${stream.acceptedQualities} " +
-                "selected=${first.candidate.cdnLabel}/${first.candidate.format}/" +
-                "${first.candidate.codecName} routes=${routes.size}",
-        )
-        if (first.candidate.pcdn) {
-            LogHub.w(TAG, "live PCDN fallback selected because no official CDN route is available")
-            PlaybackDiagnostics.event(
-                "LivePcdnFallback",
-                "room=${stream.roomId} quality=${stream.quality} host=${first.candidate.cdnLabel}",
-            )
-        }
-        val started = play(livePlayInfo(session, first.candidate, title), 0L)
-        if (started) startLiveBackupRefresh(session)
-        else scope.launch { handleLiveRouteOpenFailure("initial-open-failed") }
-    }
+    /** 采用首次线路测速结果启动直播。 */
+    private fun startLivePlayback(stream: LivePlayInfo, routes: List<RankedLiveSource>, title: String) =
+        liveCoordinator.start(stream, routes, title)
 
-    /** 将一条直播源适配到共用播放器模型；直播时长、音轨和续播身份均为空。 */
+    /** 将直播线路转换为播放信息，附带同画质备用地址。 */
     private fun livePlayInfo(
         session: LiveSession,
         candidate: LiveStreamCandidate,
         title: String,
-    ): BiliApi.PlayInfo {
-        val backups = session.routes.asSequence()
-            .map { it.candidate }
-            .filter { it.url != candidate.url && it.quality == candidate.quality }
-            .map { it.url }
-            .distinct()
-            .toList()
-        val track = BiliApi.Track(
-            id = candidate.quality,
-            codecid = candidate.codecid,
-            width = candidate.width,
-            height = candidate.height,
-            bandwidth = candidate.bandwidth,
-            url = candidate.url,
-            backup = backups,
-            pcdn = candidate.pcdn,
-            mimeType = if (candidate.format == "flv") "video/x-flv" else "video/mp4",
-            codecs = candidate.codecName,
-        )
-        return BiliApi.PlayInfo(
-            title = title.ifBlank { "直播间 ${session.stream.roomId}" },
-            bvid = "",
-            aid = 0L,
-            cid = session.stream.roomId,
-            durationSec = 0L,
-            video = track,
-            audio = null,
-            progressiveUrl = candidate.url,
-            videos = listOf(track),
-            audios = emptyList(),
-            isLive = true,
-            liveFormat = candidate.format,
-            liveCdn = candidate.cdnLabel,
-            liveBackupCount = backups.size,
-        )
-    }
+    ): BiliApi.PlayInfo = liveCoordinator.livePlayInfo(session, candidate, title)
 
-    /** 每三十秒后台重测最多三条备用线路，更新后续切源排序但不动当前播放。 */
-    private fun startLiveBackupRefresh(session: LiveSession) {
-        liveBackupRefreshJob?.cancel()
-        liveBackupRefreshJob = scope.launch {
-            while (isActive && liveSession === session) {
-                delay(LIVE_BACKUP_REFRESH_INTERVAL_MS)
-                if (!isActive || liveSession !== session || !castActive) break
-                val activeUrl = session.active.url
-                val refresh = withContext(Dispatchers.IO) {
-                    liveCdnCoordinator.refreshBackups(
-                        candidates = session.stream.qualityCandidates,
-                        excludedUrls = session.attemptedUrls + activeUrl,
-                    )
-                }
-                if (liveSession !== session) break
-                if (refresh.isEmpty()) continue
-                val refreshedByUrl = refresh.associateBy { it.candidate.url }
-                val remaining = session.routes
-                    .filterNot { it.candidate.url == activeUrl }
-                    .map { refreshedByUrl[it.candidate.url] ?: it }
-                val official = remaining.filterNot { it.candidate.pcdn }
-                val pcNodes = remaining.filter { it.candidate.pcdn }
-                val successful = official.filter { it.result?.success == true }
-                    .sortedWith(liveProbeOrder())
-                val unmeasured = official.filter { it.result == null }
-                val failed = official.filter { it.result?.success == false }
-                    .sortedWith(liveProbeOrder())
-                val successfulPcdn = pcNodes.filter { it.result?.success == true }
-                    .sortedWith(liveProbeOrder())
-                val unmeasuredPcdn = pcNodes.filter { it.result == null }
-                val failedPcdn = pcNodes.filter { it.result?.success == false }
-                    .sortedWith(liveProbeOrder())
-                session.routes = (
-                    successful + unmeasured + successfulPcdn + unmeasuredPcdn +
-                        failed + failedPcdn
-                    ).toMutableList()
-                session.routes.add(0, RankedLiveSource(session.active))
-                current = livePlayInfo(session, session.active, lastTitle)
-                ui = ui.copy(liveBackupCount = current?.liveBackupCount ?: 0)
-                PlaybackDiagnostics.attribute(
-                    "live.backupCount",
-                    (session.routes.size - 1).coerceAtLeast(0).toString(),
-                )
-                PlaybackDiagnostics.event(
-                    "LiveBackupRefresh",
-                    refresh.joinToString(";") { route ->
-                        "host=${route.candidate.cdnLabel} format=${route.candidate.format} " +
-                            "codec=${route.candidate.codecName} " +
-                            "firstByte=${route.result?.firstByteMs ?: -1}ms " +
-                            "throughput=${route.result?.throughputBytesPerSecond ?: 0}Bps " +
-                            "success=${route.result?.success}"
-                    },
-                )
-                LogHub.i(
-                    TAG,
-                    "live backup refresh room=${session.stream.roomId} " +
-                        "active=${session.active.cdnLabel} " +
-                        "ranked=${refresh.joinToString(",") { it.candidate.cdnLabel }} " +
-                        "backupCount=${session.routes.size - 1}",
-                )
-            }
-        }
-    }
+    /** 定时刷新直播备用线路排序。 */
+    private fun startLiveBackupRefresh(session: LiveSession) = liveCoordinator.startBackupRefresh(session)
 
-    /** 播放器的同步 open 失败时立即试下一条同画质线路。 */
-    private suspend fun handleLiveRouteOpenFailure(reason: String) {
-        val session = liveSession ?: return
-        try {
-            while (liveSession === session && castActive) {
-                val next = liveCdnCoordinator.nextSameQuality(
-                    ordered = session.routes,
-                    quality = session.stream.quality,
-                    attemptedUrls = session.attemptedUrls,
-                )
-                if (next == null) {
-                    continueLiveFallback(reason)
-                    return
-                }
-                if (switchLiveRoute(next, reason, null)) return
-                LogHub.e(
-                    TAG,
-                    "live candidate open failed room=${session.stream.roomId} " +
-                        "quality=${session.stream.quality} host=${next.candidate.cdnLabel} " +
-                        "format=${next.candidate.format} codec=${next.candidate.codecName}",
-                )
-            }
-        } catch (failure: Throwable) {
-            LogHub.e(
-                TAG,
-                "live route open recovery failed room=${session.stream.roomId} " +
-                    "error=${failure.javaClass.simpleName}",
-            )
-            failLivePlayback("LIVE_ROUTE_OPEN_FAILED", "直播线路无法打开")
-        }
-    }
+    /** 打开直播线路失败时按候选顺序继续尝试。 */
+    private suspend fun handleLiveRouteOpenFailure(reason: String) =
+        liveCoordinator.handleLiveRouteOpenFailure(reason)
 
-    /** 处理播放器运行期错误、缓冲或停滞并切换同档线路。 */
-    private fun handleLivePlaybackFailure(reason: String) {
-        if (liveSwitchInProgress || liveSession == null || !castActive) return
-        liveSwitchInProgress = true
-        scope.launch {
-            try {
-                val session = liveSession ?: return@launch
-                val failed = session.active
-                val snapshot = runCatching { playerEngine.stateSnapshot() }
-                    .getOrDefault("(snapshot unavailable)")
-                LogHub.e(
-                    TAG,
-                    "live playback failure room=${session.stream.roomId} reason=$reason " +
-                        "quality=${session.stream.quality} format=${failed.format} " +
-                        "codec=${failed.codecName} host=${failed.cdnLabel} snapshot=$snapshot",
-                )
-                PlaybackDiagnostics.event(
-                    "LiveRouteFailure",
-                    "room=${session.stream.roomId} reason=$reason quality=${session.stream.quality} " +
-                        "format=${failed.format} codec=${failed.codecName} " +
-                        "host=${failed.cdnLabel} failure=player-event",
-                )
-                pendingLiveRouteSwitch = null
-                val sameCodec = session.routes.firstOrNull { route ->
-                    route.candidate.quality == session.stream.quality &&
-                        route.candidate.codecid == failed.codecid &&
-                        route.candidate.url !in session.attemptedUrls
-                }
-                if (sameCodec != null) {
-                    if (!switchLiveRoute(sameCodec, reason, failed)) {
-                        handleLiveRouteOpenFailure("route-open-failed:$reason")
-                    }
-                } else {
-                    continueLiveFallback(reason)
-                }
-            } catch (failure: Throwable) {
-                LogHub.e(
-                    TAG,
-                    "live route switch failed reason=$reason " +
-                        "error=${failure.javaClass.simpleName}",
-                )
-                PlaybackDiagnostics.fail(
-                    code = "LIVE_ROUTE_SWITCH_FAILED",
-                    message = "直播线路切换失败",
-                    detail = "reason=$reason error=${failure.javaClass.simpleName}",
-                )
-                failLivePlayback("LIVE_ROUTE_SWITCH_FAILED", "直播线路切换失败")
-            } finally {
-                liveSwitchInProgress = false
-            }
-        }
-    }
+    /** 处理直播播放故障并触发降级。 */
+    private fun handleLivePlaybackFailure(reason: String) = liveCoordinator.handleFailure(reason)
 
-    /** 切换到已排序的同档线路，并保留用户当前的暂停状态。 */
+    /** 切换到指定直播线路。 */
     private fun switchLiveRoute(
         target: RankedLiveSource,
         reason: String,
         from: LiveStreamCandidate?,
-    ): Boolean {
-        val session = liveSession ?: return false
-        if (target.candidate.url in session.attemptedUrls) return false
-        val prior = from ?: session.active
-        session.attemptedUrls += target.candidate.url
-        session.active = target.candidate
-        liveStallWatchdog.reset()
-        pendingLiveRouteSwitch = PendingLiveRouteSwitch(
-            reason = reason,
-            from = prior,
-            target = target.candidate,
-            firstByteMs = target.result?.firstByteMs,
-            throughputBytesPerSecond = target.result?.throughputBytesPerSecond,
-        )
-        val stayPaused = !ui.isPlaying && !ui.isBuffering && !playerIsPlaying()
-        pendingPause = stayPaused
-        val info = livePlayInfo(session, target.candidate, lastTitle)
-        LogHub.i(
-            TAG,
-            "live switch attempt reason=$reason room=${session.stream.roomId} " +
-                "quality=${session.stream.quality} " +
-                "from=${prior.cdnLabel}/${prior.format}/${prior.codecName} " +
-                "to=${target.candidate.cdnLabel}/${target.candidate.format}/" +
-                "${target.candidate.codecName} firstByte=${target.result?.firstByteMs ?: -1}ms " +
-                "throughput=${target.result?.throughputBytesPerSecond ?: 0}Bps " +
-                "failure=${target.result?.failure.orEmpty()}",
-        )
-        PlaybackDiagnostics.event(
-            "LiveRouteSwitchAttempt",
-            "reason=$reason room=${session.stream.roomId} quality=${session.stream.quality} " +
-                "from=${prior.cdnLabel}/${prior.format}/${prior.codecName} " +
-                "to=${target.candidate.cdnLabel}/${target.candidate.format}/" +
-                "${target.candidate.codecName} firstByte=${target.result?.firstByteMs ?: -1}ms " +
-                "throughput=${target.result?.throughputBytesPerSecond ?: 0}Bps " +
-                "failure=${target.result?.failure.orEmpty()}",
-        )
-        if (target.candidate.pcdn) {
-            LogHub.w(
-                TAG,
-                "live PCDN fallback activated after official routes exhausted " +
-                    "host=${target.candidate.cdnLabel} quality=${session.stream.quality}",
-            )
-            PlaybackDiagnostics.event(
-                "LivePcdnFallback",
-                "reason=$reason room=${session.stream.roomId} " +
-                    "quality=${session.stream.quality} host=${target.candidate.cdnLabel}",
-            )
-        }
-        val started = play(info, 0L)
-        if (!started) {
-            pendingLiveRouteSwitch = null
-            PlaybackDiagnostics.event(
-                "LiveRouteOpenFailure",
-                "room=${session.stream.roomId} reason=$reason " +
-                    "quality=${session.stream.quality} format=${target.candidate.format} " +
-                    "codec=${target.candidate.codecName} host=${target.candidate.cdnLabel}",
-            )
-        }
-        return started
-    }
+    ): Boolean = liveCoordinator.switchRoute(target, reason, from)
 
-    /** 没有同档线路时先尝试 HEVC→AVC，再按服务端公布的档位逐级重新解析。 */
-    private suspend fun continueLiveFallback(reason: String) {
-        val session = liveSession ?: return
-        val active = session.active
-        if (active.codecid == 12 && !session.avcFallbackAttempted) {
-            session.avcFallbackAttempted = true
-            resolveLiveFallback(session, session.stream.quality, forceAvc = true, reason = "hevc-fallback:$reason")
-            return
-        }
-        val lowerQuality = LivePlayUrlResolver.fallbackQualities(
-            currentQuality = session.stream.quality,
-            acceptedQualities = session.stream.acceptedQualities,
-        ).firstOrNull { it !in session.downshiftedQualities }
-        if (lowerQuality != null) {
-            session.downshiftedQualities += lowerQuality
-            resolveLiveFallback(session, lowerQuality, forceAvc = active.codecid == 7, reason = "quality-downshift:$reason")
-            return
-        }
-        failLivePlayback(
-            code = "LIVE_SOURCES_EXHAUSTED",
-            message = "当前账号画质下的直播线路均不可用。",
-        )
-    }
+    /** 继续尝试剩余直播候选项。 */
+    private suspend fun continueLiveFallback(reason: String) = liveCoordinator.continueFallback(reason)
 
-    /** 重新请求 AVC 或服务端认可的较低档位，并在新候选中完成首播选路。 */
+    /** 重新请求 AVC 或较低档位，并在新候选中完成首播选路。 */
     private suspend fun resolveLiveFallback(
         session: LiveSession,
         quality: Int,
         forceAvc: Boolean,
         reason: String,
-    ) {
-        val token = authTokenStore.load() ?: error("TV login expired during live route fallback")
-        val resolved = withContext(Dispatchers.IO) {
-            val live = LivePlayUrlResolver.resolve(
-                context = applicationContext,
-                accessKey = token.accessKey,
-                roomId = session.stream.roomId,
-                quality = quality,
-                forceAvc = forceAvc,
-            )
-            live to liveCdnCoordinator.rankInitial(live.qualityCandidates)
-        }
-        if (liveSession !== session || !castActive) return
-        if (resolved.second.isEmpty()) error("live fallback returned no routes")
-        val actual = resolved.first
-        if (quality < session.stream.quality && actual.quality >= session.stream.quality) {
-            val nextQuality = LivePlayUrlResolver.fallbackQualities(
-                currentQuality = session.stream.quality,
-                acceptedQualities = session.stream.acceptedQualities,
-            ).firstOrNull { it !in session.downshiftedQualities }
-            LogHub.w(
-                TAG,
-                "live quality fallback request not applied room=${session.stream.roomId} " +
-                    "requested=$quality actual=${actual.quality} next=${nextQuality ?: "none"}",
-            )
-            PlaybackDiagnostics.event(
-                "LiveQualityFallbackRejected",
-                "room=${session.stream.roomId} requested=$quality actual=${actual.quality} " +
-                    "next=${nextQuality ?: "none"}",
-            )
-            if (nextQuality != null) {
-                session.downshiftedQualities += nextQuality
-                resolveLiveFallback(
-                    session = session,
-                    quality = nextQuality,
-                    forceAvc = session.active.codecid == 7,
-                    reason = "quality-downshift:$reason",
-                )
-            } else {
-                failLivePlayback(
-                    "LIVE_QUALITY_DOWNGRADE_REJECTED",
-                    "服务器未提供更低画质的直播流。",
-                )
-            }
-            return
-        }
-        val old = session.active
-        session.stream = actual
-        session.routes = resolved.second.toMutableList()
-        session.attemptedUrls.clear()
-        session.avcFallbackAttempted = forceAvc
-        val next = session.routes.firstOrNull { it.candidate.quality == actual.quality }
-            ?: session.routes.first()
-        PlaybackDiagnostics.event(
-            "LiveQualityFallback",
-            "reason=$reason room=${actual.roomId} requested=${actual.requestedQuality} " +
-                "actual=${actual.quality} from=${old.cdnLabel}/${old.format}/${old.codecName} " +
-                "to=${next.candidate.cdnLabel}/${next.candidate.format}/" +
-                "${next.candidate.codecName}",
-        )
-        LogHub.w(
-            TAG,
-            "live re-resolved reason=$reason requested=${actual.requestedQuality} " +
-                "actual=${actual.quality} forceAvc=$forceAvc " +
-                "selected=${next.candidate.cdnLabel}/${next.candidate.format}/" +
-                "${next.candidate.codecName}",
-        )
-        if (!switchLiveRoute(next, reason, old)) {
-            handleLiveRouteOpenFailure("fallback-open-failed:$reason")
-        }
-    }
+    ) = liveCoordinator.resolveFallback(session, quality, forceAvc, reason)
 
-    /** 线路和已公布的降级档位均耗尽时展示可重试错误。 */
-    private fun failLivePlayback(code: String, message: String) {
-        val session = liveSession ?: return
-        LogHub.e(
-            TAG,
-            "live playback exhausted room=${session.stream.roomId} qn=${session.stream.quality} " +
-                "attempted=${session.attemptedUrls.size} reason=$code",
-        )
-        PlaybackDiagnostics.fail(
-            code = code,
-            message = message,
-            detail = "room=${session.stream.roomId} quality=${session.stream.quality} " +
-                "attempted=${session.attemptedUrls.size} active=${session.active.cdnLabel}/" +
-                "${session.active.format}/${session.active.codecName}",
-        )
-        val nva = lastNva
-        if (nva != null) lastErrorRetry = { resolveNvaAndPlay(nva, lastTitle) }
-        showError(
-            title = "直播播放失败",
-            message = message,
-            code = code,
-            canRetry = nva != null,
-        )
-    }
+    /** 直播线路耗尽后展示失败提示。 */
+    private fun failLivePlayback(code: String, message: String) = liveCoordinator.fail(code, message)
 
-    /** 线路成功进入 Playing 后记录结果并复用现有右下角 toast。 */
-    private fun completeLiveRouteSwitch() {
-        val switched = pendingLiveRouteSwitch ?: return
-        pendingLiveRouteSwitch = null
-        val session = liveSession ?: return
-        LogHub.i(
-            TAG,
-            "live switch succeeded reason=${switched.reason} room=${session.stream.roomId} " +
-                "quality=${session.stream.quality} " +
-                "from=${switched.from?.cdnLabel ?: "(initial)"}/" +
-                "${switched.from?.format.orEmpty()}/${switched.from?.codecName.orEmpty()} " +
-                "to=${switched.target.cdnLabel}/${switched.target.format}/" +
-                "${switched.target.codecName} firstByte=${switched.firstByteMs ?: -1}ms " +
-                "throughput=${switched.throughputBytesPerSecond ?: 0}Bps",
-        )
-        PlaybackDiagnostics.event(
-            "LiveRouteSwitchSuccess",
-            "reason=${switched.reason} room=${session.stream.roomId} " +
-                "quality=${session.stream.quality} " +
-                "from=${switched.from?.cdnLabel ?: "(initial)"} " +
-                "to=${switched.target.cdnLabel}/${switched.target.format}/" +
-                "${switched.target.codecName} firstByte=${switched.firstByteMs ?: -1}ms " +
-                "throughput=${switched.throughputBytesPerSecond ?: 0}Bps",
-        )
-        ui = ui.copy(
-            toast = if (switched.reason.startsWith("user-quality")) {
-                "已切换至 ${liveQualityLabel(session.stream.quality)}"
-            } else {
-                "已自动切换至更流畅线路"
-            },
-        )
-    }
+    /** 播放稳定后结束直播切源事务。 */
+    private fun completeLiveRouteSwitch() = liveCoordinator.completeRouteSwitch()
 
     /** 清理直播专属任务和阈值，防止用户停止后触发后台自动重连。 */
     private fun clearLiveSession(reason: String) {
-        val session = liveSession
-        liveBackupRefreshJob?.cancel()
-        liveBackupRefreshJob = null
+        val session = liveCoordinator.activeSession
+        liveCoordinator.clear()
         val oldVodSession = vodCoordinator.activeSession
         vodCoordinator.clear()
-        liveSession = null
-        liveSwitchInProgress = false
-        pendingLiveRouteSwitch = null
-        livePlaybackHealth.reset()
-        liveStallWatchdog.reset()
         if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
         if (session != null) LogHub.i(TAG, "live session cleared room=${session.stream.roomId} reason=$reason")
         if (oldVodSession != null) LogHub.i(TAG, "VOD session cleared reason=$reason")
@@ -1898,7 +1483,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
             liveCdn = info.liveCdn,
             liveBackupCount = info.liveBackupCount,
             liveQualities = if (info.isLive) {
-                liveSession?.let { liveQualityOptions(it) } ?: emptyList()
+                liveCoordinator.activeSession?.let { liveQualityOptions(it) } ?: emptyList()
             } else {
                 emptyList()
             },
@@ -2072,14 +1657,14 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
 
     /** 按用户选择重新解析并播放指定直播画质。 */
     private fun switchLiveQuality(qn: Int) {
-        val session = liveSession ?: return
+        val session = liveCoordinator.activeSession ?: return
         if (!castActive) return
         if (qn == session.stream.quality) {
             ui = ui.copy(toast = "已是当前画质")
             return
         }
-        if (liveSwitchInProgress) return
-        liveSwitchInProgress = true
+        if (liveCoordinator.switching) return
+        liveCoordinator.switching = true
         scope.launch {
             try {
                 val token = authTokenStore.load()
@@ -2093,9 +1678,9 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
                         quality = qn,
                         forceAvc = forceAvc,
                     )
-                    live to liveCdnCoordinator.rankInitial(live.qualityCandidates)
+                    live to liveCoordinator.cdn.rankInitial(live.qualityCandidates)
                 }
-                if (liveSession !== session || !castActive) return@launch
+                if (liveCoordinator.activeSession !== session || !castActive) return@launch
                 if (resolved.second.isEmpty()) error("live quality switch returned no routes")
                 val actual = resolved.first
                 val old = session.active
@@ -2134,7 +1719,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
                 )
                 ui = ui.copy(toast = "画质切换失败")
             } finally {
-                liveSwitchInProgress = false
+                liveCoordinator.switching = false
             }
         }
     }
@@ -2595,7 +2180,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
         playing: Boolean,
     ) {
         val now = SystemClock.elapsedRealtime()
-        val stalled = liveStallWatchdog.observe(
+        val stalled = liveCoordinator.stallWatchdog.observe(
             positionMs = progress.positionMs,
             readBytes = progress.readBytes,
             demuxReadBytes = progress.demuxReadBytes,
@@ -2612,11 +2197,11 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost {
             LogHub.e(
                 TAG,
                 "live playback stalled for ${LIVE_STALL_TIMEOUT_MS}ms " +
-                    "room=${liveSession?.stream?.roomId} $detail",
+                    "room=${liveCoordinator.activeSession?.stream?.roomId} $detail",
             )
             PlaybackDiagnostics.event(
                 "LivePlaybackStalled",
-                "room=${liveSession?.stream?.roomId} duration=${LIVE_STALL_TIMEOUT_MS}ms $detail",
+                "room=${liveCoordinator.activeSession?.stream?.roomId} duration=${LIVE_STALL_TIMEOUT_MS}ms $detail",
             )
             handleLivePlaybackFailure("playback-time-stalled-5s")
         }
