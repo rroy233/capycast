@@ -124,10 +124,15 @@ object BiliApi {
         val actualQuality: Int = video.id,
         /** 服务端返回的可选质量列表。 */
         val acceptQualities: List<Int> = emptyList(),
+        /** 服务端 support_formats 中面向用户的画质名称，优先于本地 qn 映射。 */
+        val qualityLabels: Map<Int, String> = emptyMap(),
     ) {
         /** 当前视频轨道的展示名称。 */
         val qualityLabel: String
-            get() = qnLabel(video.id)
+            get() = qualityLabelFor(video.id)
+
+        /** 返回一个视频轨道的服务端画质名称；缺失时保留兼容的 qn 映射。 */
+        fun qualityLabelFor(qn: Int): String = qualityLabels[qn].orEmpty().ifBlank { qnLabel(qn) }
 
         /** 当前音频轨道的展示名称。 */
         val audioLabel: String
@@ -509,6 +514,7 @@ object BiliApi {
                     videos = videos,
                     audios = audios,
                     cover = cover,
+                    qualityLabels = qualityLabelsFrom(play),
                 )
             }
             LogHub.w(TAG, "playurl dash has no video tracks; trying durl fallback")
@@ -546,6 +552,7 @@ object BiliApi {
                 videos = listOf(track),
                 audios = emptyList(),
                 cover = cover,
+                qualityLabels = qualityLabelsFrom(play),
             )
         }
         LogHub.e(
@@ -582,11 +589,33 @@ object BiliApi {
             val codecs = runCatching {
                 format.arrayOrNull("codecs")?.joinToString(",") { codec -> codec.asString }
             }.getOrNull()
+            val label = qualityLabelFromFormat(format)
             "qn=${format.get("quality")?.asInt ?: -1}" +
+                if (label.isBlank()) "" else "[$label]" +
                 if (codecs.isNullOrBlank()) "" else "($codecs)"
         }
         LogHub.i(TAG, "playurl supportFormats=$summary")
     }
+
+    /** 从服务端画质描述提取稳定的展示名称，兼容大视界等新增命名。 */
+    fun qualityLabelsFrom(play: JsonObject): Map<Int, String> = buildMap {
+        play.arrayOrNull("support_formats")?.forEach { element ->
+            val format = runCatching { element.asJsonObject }.getOrNull() ?: return@forEach
+            val quality = runCatching { format.get("quality")?.asInt ?: 0 }.getOrDefault(0)
+            val label = qualityLabelFromFormat(format)
+            if (quality > 0 && label.isNotBlank()) put(quality, label)
+        }
+    }
+
+    private fun qualityLabelFromFormat(format: JsonObject): String = listOf(
+        format.stringOrEmpty("new_description"),
+        format.stringOrEmpty("display_desc"),
+        format.stringOrEmpty("description"),
+        format.stringOrEmpty("format"),
+    ).firstOrNull(String::isNotBlank).orEmpty()
+
+    private fun JsonObject.stringOrEmpty(name: String): String =
+        runCatching { get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty() }.getOrDefault("")
 
     /** 将 JSON 数组压缩为短文本。 */
     private fun jsonArrayText(array: com.google.gson.JsonArray?): String =

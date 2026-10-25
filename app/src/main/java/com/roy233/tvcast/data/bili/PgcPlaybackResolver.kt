@@ -314,6 +314,7 @@ class PgcPlaybackResolver(
                 isPreview = isPreview,
                 actualQuality = play.int("quality", selectedVideo.id),
                 acceptQualities = play.intArray("accept_quality"),
+                qualityLabels = BiliApi.qualityLabelsFrom(play),
             )
         }
 
@@ -340,6 +341,7 @@ class PgcPlaybackResolver(
                 hasPaid = hasPaid, isPreview = isPreview,
                 actualQuality = play.int("quality", track.id),
                 acceptQualities = play.intArray("accept_quality"),
+                qualityLabels = BiliApi.qualityLabelsFrom(play),
             )
         }
 

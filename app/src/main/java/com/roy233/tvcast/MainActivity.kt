@@ -3,6 +3,7 @@ package com.roy233.tvcast
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.content.pm.ActivityInfo
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -995,7 +996,11 @@ class MainActivity : ComponentActivity() {
         PlaybackDiagnostics.attribute("recent.aid", recent.aid.toString())
         PlaybackDiagnostics.attribute("recent.cid", recent.cid.toString())
         PlaybackDiagnostics.attribute("recent.title", recent.title)
-        LogHub.i(TAG, "recast begin aid=${recent.aid} cid=${recent.cid} title=${recent.title.take(40)}")
+        LogHub.i(
+            TAG,
+            "recast begin aid=${recent.aid} cid=${recent.cid} pgc=${recent.isPgc} " +
+                "epId=${recent.epId} seasonId=${recent.seasonId} title=${recent.title.take(40)}",
+        )
         scope.launch {
             resolving = true
             ui = ui.copy(
@@ -1008,7 +1013,18 @@ class MainActivity : ComponentActivity() {
             )
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    BiliApi.resolveByAidCid(recent.aid, recent.cid, recent.title)
+                    if (recent.isPgc && (recent.epId > 0L || recent.seasonId > 0L)) {
+                        PgcPlaybackResolver().resolve(
+                            epId = recent.epId,
+                            seasonId = recent.seasonId,
+                            cid = recent.cid,
+                            aid = recent.aid,
+                            bvid = "",
+                            titleFallback = recent.title,
+                        )
+                    } else {
+                        BiliApi.resolveByAidCid(recent.aid, recent.cid, recent.title)
+                    }
                 }
             }
             resolving = false
@@ -2284,12 +2300,17 @@ class MainActivity : ComponentActivity() {
         )
         if (!info.isLive) addRecent(info)
 
-        val requiresMedia3 = info.video.isDolbyVision || info.isDrm
+        val requiresMedia3 = info.video.isHdr || info.video.isDolbyVision || info.isDrm
         val started = if (requiresMedia3) {
             // 先切换状态再停止 VLC，忽略旧播放器随后送达的 Stopped 事件。
             playbackBackend = PlaybackBackend.MEDIA3
+            setHdrWindowEnabled(info.video.isHdr || info.video.isDolbyVision)
             playerEngine.stopPlayback(
-                if (info.isDrm) "switch-to-media3-widevine" else "switch-to-media3-dolby-vision",
+                when {
+                    info.isDrm -> "switch-to-media3-widevine"
+                    info.video.isDolbyVision -> "switch-to-media3-dolby-vision"
+                    else -> "switch-to-media3-hdr"
+                },
             )
             videoLayout.visibility = View.GONE
             media3PlayerView.visibility = View.VISIBLE
@@ -2299,13 +2320,14 @@ class MainActivity : ComponentActivity() {
             }.onFailure { error ->
                 LogHub.e(
                     TAG,
-                    "open Media3 failed drm=${info.isDrm} dolbyVision=${info.video.isDolbyVision} " +
+                    "open Media3 failed drm=${info.isDrm} hdr=${info.video.isHdr} dolbyVision=${info.video.isDolbyVision} " +
                         "error=${if (info.isDrm) error.javaClass.simpleName else LogRedaction.reason(error)}",
                 )
             }.getOrDefault(false)
         } else {
             // Media3 的 Surface 必须先隐藏，避免两个视频输出竞争同一窗口合成层。
             media3Player?.stop()
+            setHdrWindowEnabled(false)
             playbackBackend = PlaybackBackend.VLC
             media3PlayerView.visibility = View.GONE
             videoLayout.visibility = View.VISIBLE
@@ -2421,7 +2443,7 @@ class MainActivity : ComponentActivity() {
                     ui = ui.copy(
                         panel = PanelKind.QUALITY,
                         qualitySource = "手动",
-                        toast = "已切换 ${BiliApi.qnLabel(qn)}",
+                        toast = "已切换 ${nextInfo.qualityLabel}",
                     )
                 }
             } catch (error: Throwable) {
@@ -3003,6 +3025,21 @@ class MainActivity : ComponentActivity() {
             PlaybackBackend.MEDIA3 -> media3Player?.stop()
             PlaybackBackend.VLC -> playerEngine.stopPlayback(reason)
         }
+        setHdrWindowEnabled(false)
+    }
+
+    /** HDR 视频进入专用显示模式，结束或切回 VLC 时立即恢复系统默认色彩模式。 */
+    private fun setHdrWindowEnabled(enabled: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val mode = if (enabled) ActivityInfo.COLOR_MODE_HDR else ActivityInfo.COLOR_MODE_DEFAULT
+        runCatching { window.colorMode = mode }
+            .onSuccess {
+                PlaybackDiagnostics.attribute("renderer.window.colorMode", if (enabled) "hdr" else "default")
+                LogHub.i(TAG, "HDR window color mode=${if (enabled) "hdr" else "default"}")
+            }
+            .onFailure { error ->
+                LogHub.e(TAG, "HDR window color mode update failed: ${LogRedaction.reason(error)}")
+            }
     }
 
     /** 启动定时任务以同步播放进度和设备网络信息。 */

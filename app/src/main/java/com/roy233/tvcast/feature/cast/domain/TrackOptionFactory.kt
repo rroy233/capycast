@@ -26,7 +26,7 @@ object TrackOptionFactory {
             .map {
                 TrackOption(
                     qn = it.id,
-                    label = BiliApi.qnLabel(it.id),
+                    label = info.qualityLabelFor(it.id),
                     detail = BiliApi.trackDetail(it),
                     codecid = it.codecid,
                 )
@@ -35,7 +35,7 @@ object TrackOptionFactory {
         return info.videos.map {
             TrackOption(
                 qn = it.id,
-                label = BiliApi.qnLabel(it.id),
+                label = info.qualityLabelFor(it.id),
                 detail = BiliApi.trackDetail(it),
                 codecid = it.codecid,
             )

@@ -36,7 +36,7 @@ import java.util.Collections
 import android.util.Base64
 
 /**
- * Dolby Vision 与 Widevine 内容使用的 Media3 播放器。
+ * HDR、Dolby Vision 与 Widevine 内容使用的 Media3 播放器。
  *
  * Media3 将 DASH/fMP4 的编码、色彩与 DRM 信息交给 Android MediaCodec/CDM，
  * 并通过 SurfaceView 输出视频。
@@ -98,6 +98,7 @@ class Media3PlayerEngine(
         )
             .setDrmSessionManagerProvider(drmProvider),
     ).build().also { instance ->
+        // 布局通过 app:surface_type="surface_view" 固定直出；TextureView 会把 HDR 转为 SDR。
         playerView.player = instance
         instance.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -149,14 +150,16 @@ class Media3PlayerEngine(
         instance.addAnalyticsListener(Media3AnalyticsLogger())
     }
 
-    /** 打开当前轨道；受保护内容通过 Widevine CDM 在内存中完成 challenge/license 交换。 */
+    /** 打开当前轨道；HDR 直接交给 Android 的硬解码和 SurfaceFlinger 输出。 */
     fun open(info: BiliApi.PlayInfo, seekToMs: Long) {
-        require(info.video.isDolbyVision || info.isDrm) {
-            "Media3 engine requires Dolby Vision or DRM media"
+        require(info.video.isHdr || info.video.isDolbyVision || info.isDrm) {
+            "Media3 engine requires HDR, Dolby Vision, or DRM media"
         }
         activeDrm = info.isDrm
         var dashItem: MediaItem? = null
         val mediaSource = if (info.isDrm) {
+            // Widevine 内容需要携带 PSSH 的 DASH 清单，让 Media3 在 CDM 回调中完成
+            // challenge/license 交换。
             val pssh = listOf(info.video.psshBase64, info.audio?.psshBase64.orEmpty())
                 .firstOrNull(String::isNotBlank)
                 ?: throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine PSSH 缺失")
@@ -171,20 +174,18 @@ class Media3PlayerEngine(
                 .setDrmConfiguration(drm)
                 .build()
             null
-        } else if (info.video.initializationRange.isNotBlank() && info.video.indexRange.isNotBlank()) {
-            val manifest = PgcDashManifest.buildDataUri(info, psshBase64 = "")
-            dashItem = MediaItem.Builder()
-                .setUri(Uri.parse(manifest))
-                .setMimeType("application/dash+xml")
-                .build()
-            null
         } else {
+            // HDR 与杜比视界（非 DRM）直接渐进播放 fMP4；Media3 从容器读取色彩/DV
+            // 元数据并通过 SurfaceView 直出。与 BiliPai 的 legacy 播放路径一致，避免
+            // 为点播内容构造内存 DASH 清单带来的解析失败。
             val video = progressiveSource(info.video)
             info.audio?.takeIf { it.url.isNotBlank() }
                 ?.let { MergingMediaSource(video, progressiveSource(it)) }
                 ?: video
         }
-        PlaybackDiagnostics.ensureSession(if (info.isDrm) "widevine-open" else "dolby-vision-open")
+        PlaybackDiagnostics.ensureSession(
+            if (info.isDrm) "widevine-open" else if (info.video.isDolbyVision) "dolby-vision-open" else "hdr-open",
+        )
         PlaybackDiagnostics.state("opening")
         PlaybackDiagnostics.attribute("player.backend", "media3")
         PlaybackDiagnostics.attribute("stream.dynamicRange", if (info.video.isDolbyVision) "dolbyVision" else if (info.video.isHdr) "hdr" else "sdr")
@@ -193,9 +194,10 @@ class Media3PlayerEngine(
         PlaybackDiagnostics.attribute("stream.mimeType", info.video.mimeType)
         PlaybackDiagnostics.attribute("stream.audioCodecString", info.audio?.codecs.orEmpty())
         PlaybackDiagnostics.attribute("decoder.video.policy", "hardware-only")
+        PlaybackDiagnostics.attribute("renderer.video.surface", "surfaceView")
         LogHub.i(
             TAG,
-            "open media3 qn=${info.video.id} drm=${info.isDrm} dv=${info.video.isDolbyVision} mime=${info.video.mimeType} " +
+            "open media3 qn=${info.video.id} drm=${info.isDrm} hdr=${info.video.isHdr} dv=${info.video.isDolbyVision} mime=${info.video.mimeType} " +
                 "codecs=${info.video.codecs} ${info.video.width}x${info.video.height} " +
                 "video=${LogRedaction.url(info.video.url)} audio=${LogRedaction.url(info.audio?.url)} " +
                 "audioMime=${info.audio?.mimeType.orEmpty()} audioCodecs=${info.audio?.codecs.orEmpty()} " +
@@ -210,8 +212,8 @@ class Media3PlayerEngine(
             val reason = safeErrorReason(error)
             LogHub.e(TAG, "open failed: $reason")
             PlaybackDiagnostics.fail(
-                code = if (info.isDrm) "WIDEVINE_OPEN_FAILED" else "DOLBY_VISION_OPEN_FAILED",
-                message = if (info.isDrm) "受保护媒体播放器打开失败" else "杜比视界播放器打开失败",
+                code = if (info.isDrm) "WIDEVINE_OPEN_FAILED" else if (info.video.isDolbyVision) "DOLBY_VISION_OPEN_FAILED" else "HDR_OPEN_FAILED",
+                message = if (info.isDrm) "受保护媒体播放器打开失败" else if (info.video.isDolbyVision) "杜比视界播放器打开失败" else "HDR 播放器打开失败",
                 detail = reason,
             )
             throw error
@@ -368,8 +370,8 @@ class Media3PlayerEngine(
             } else {
                 LogHub.e(TAG, "HARDWARE_DECODER_POLICY_VIOLATION $message")
                 PlaybackDiagnostics.fail(
-                    code = "DOLBY_VISION_SOFTWARE_DECODER_SELECTED",
-                    message = "杜比视界未使用硬件视频解码器",
+                    code = "HDR_SOFTWARE_DECODER_SELECTED",
+                    message = "高动态范围视频未使用硬件视频解码器",
                     detail = message,
                 )
             }
@@ -389,6 +391,14 @@ class Media3PlayerEngine(
                     "decoder=${decoderReuseEvaluation?.decoderName.orEmpty()}",
             )
             PlaybackDiagnostics.attribute("decoder.video.inputFormat", summary)
+            val transfer = format.colorInfo?.colorTransfer ?: C.COLOR_TRANSFER_SDR
+            val actualRange = when (transfer) {
+                C.COLOR_TRANSFER_ST2084 -> "hdr10-pq"
+                C.COLOR_TRANSFER_HLG -> "hlg"
+                else -> "sdr-or-unknown"
+            }
+            PlaybackDiagnostics.attribute("stream.dynamicRange.actual", actualRange)
+            LogHub.i(TAG, "HDR output inputTransfer=$transfer actualRange=$actualRange surface=surfaceView")
         }
 
         override fun onAudioDecoderInitialized(

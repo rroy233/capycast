@@ -76,4 +76,21 @@ class CdnCandidateSelectorTest {
         assertEquals("1024-2047", track.indexRange)
         assertTrue(track.url.contains("upos.example.com"))
     }
+
+    @Test
+    fun `uses server quality descriptions for newly named quality tiers`() {
+        val play = JsonParser.parseString(
+            """{
+                "support_formats":[
+                  {"quality":120,"new_description":"大视界4K","description":"4K 超清"},
+                  {"quality":125,"display_desc":"大视界4K HDR10","description":"HDR 真彩"}
+                ]
+            }""",
+        ).asJsonObject
+
+        val labels = BiliApi.qualityLabelsFrom(play)
+
+        assertEquals("大视界4K", labels[120])
+        assertEquals("大视界4K HDR10", labels[125])
+    }
 }
