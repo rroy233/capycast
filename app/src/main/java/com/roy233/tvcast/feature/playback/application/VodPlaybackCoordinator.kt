@@ -71,9 +71,8 @@ class VodPlaybackCoordinator(
     }
 
     /** 记录一次播放器打开动作。 */
-    fun onOpening(positionMs: Long) {
+    fun onOpening(positionMs: Long): Long? =
         activeSession?.recovery?.onOpening(positionMs, SystemClock.elapsedRealtime())
-    }
 
     /** 结束当前点播会话并取消后台任务。 */
     fun clear() {

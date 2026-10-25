@@ -55,6 +55,8 @@ import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.LivePlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.LivePlaybackHost
+import com.roy233.tvcast.feature.playback.application.CastSessionCoordinator
+import com.roy233.tvcast.feature.playback.application.CastSessionHost
 import com.roy233.tvcast.feature.playback.application.PlaybackTicker
 import com.roy233.tvcast.feature.playback.application.PlaybackTickerHost
 import com.roy233.tvcast.feature.playback.application.VodPlaybackHost
@@ -102,7 +104,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost {
+class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost {
 
     /** VLC 播放引擎。 */
     private lateinit var playerEngine: VlcPlayerEngine
@@ -178,6 +180,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private val liveCoordinator by lazy { LivePlaybackCoordinator(this) }
     /** 播放轮询协调器。 */
     private val playbackTicker by lazy { PlaybackTicker(this) }
+    /** 投屏会话协调器。 */
+    private val castCoordinator by lazy { CastSessionCoordinator(this) }
 
     /** 电视界面根状态持有者。 */
     private val stateHolder = TvStateHolder()
@@ -480,6 +484,180 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 当前设备局域网地址。 */
     override fun localIp(): String = LogHub.localIp()
+
+    /** 供投屏解析使用的协程作用域。 */
+    override fun coroutineScope(): CoroutineScope = scope
+
+    /** 当前是否正在解析投屏内容。 */
+    override fun isResolving(): Boolean = resolving
+
+    /** 记录解析状态。 */
+    override fun setResolving(resolving: Boolean) {
+        this.resolving = resolving
+    }
+
+    /** 取消当前解析任务。 */
+    override fun cancelResolve() {
+        resolveJob?.cancel()
+    }
+
+    /** 记录当前解析任务。 */
+    override fun setResolveJob(job: Job) {
+        resolveJob = job
+    }
+
+    /** 清除或替换当前播放信息。 */
+    override fun setCurrentForCast(info: BiliApi.PlayInfo?) {
+        current = info
+    }
+
+    /** 记录是否存在活动投屏。 */
+    override fun setCastActive(active: Boolean) {
+        castActive = active
+    }
+
+    /** 记录最近一次解析的 nva 内容。 */
+    override fun setLastNva(nva: NvaExtDecoder.NvaExtContent?) {
+        lastNva = nva
+    }
+
+    /** 记录最近一次投屏标题。 */
+    override fun setLastTitle(title: String) {
+        lastTitle = title
+    }
+
+    /** 将播放信息写入最近投屏记录。 */
+    override fun addRecentRecord(info: BiliApi.PlayInfo) {
+        val list = recentCastStore.add(ui.recents, info)
+        ui = ui.copy(recents = list)
+    }
+
+    /** 开始一次新的观看历史会话。 */
+    override fun newHistorySession() = playbackHistoryCoordinator.onNewCast()
+
+    /** 结束直播会话与直播专属任务。 */
+    override fun endLiveSession(reason: String) = clearLiveSession(reason)
+
+    /** 标记本次投屏失败。 */
+    override fun markCastFailed(code: String) = dlna.markCastFailed(code)
+
+    /** 使用已解析的直播信息开始播放。 */
+    override fun startLiveSession(
+        info: LivePlayInfo,
+        routes: List<RankedLiveSource>,
+        title: String,
+    ) = startLivePlayback(info, routes, title)
+
+    /** 停止当前投屏的播放后端。 */
+    override fun stopPlaybackForCast(reason: String) = stopActivePlayback(reason)
+
+    /** 点播会话协调器。 */
+    override fun vodSessionCoordinator(): VodPlaybackCoordinator = vodCoordinator
+
+    /** 直播会话协调器。 */
+    override fun liveSessionCoordinator(): LivePlaybackCoordinator = liveCoordinator
+
+    /** 直播开播后更新上报使用的媒体地址。 */
+    override fun updateLiveUrl(url: String) = playbackHistoryCoordinator.updateLiveUrl(url)
+
+    /** 记录待应用的播放起始位置。 */
+    override fun setPendingSeekMs(positionMs: Long) {
+        pendingSeekMs = positionMs
+    }
+
+    /** 生成用于播放入口日志的内容摘要。 */
+    override fun describeContent(info: BiliApi.PlayInfo): String = describe(info)
+
+    /** 按内容能力选择播放后端并打开媒体。 */
+    override fun startPlaybackBackend(info: BiliApi.PlayInfo, seekToMs: Long): Boolean {
+        val requiresMedia3 = info.video.isHdr || info.video.isDolbyVision || info.isDrm
+        return if (requiresMedia3) {
+            // 先切换状态再停止 VLC，忽略旧播放器随后送达的 Stopped 事件。
+            playbackBackend = PlaybackBackend.MEDIA3
+            setHdrWindowEnabled(info.video.isHdr || info.video.isDolbyVision)
+            playerEngine.stopPlayback(
+                when {
+                    info.isDrm -> "switch-to-media3-widevine"
+                    info.video.isDolbyVision -> "switch-to-media3-dolby-vision"
+                    else -> "switch-to-media3-hdr"
+                },
+            )
+            videoLayout.visibility = View.GONE
+            media3PlayerView.visibility = View.VISIBLE
+            runCatching {
+                media3Engine().open(info, seekToMs)
+                true
+            }.onFailure { error ->
+                LogHub.e(
+                    TAG,
+                    "open Media3 failed drm=${info.isDrm} hdr=${info.video.isHdr} dolbyVision=${info.video.isDolbyVision} " +
+                        "error=${if (info.isDrm) error.javaClass.simpleName else LogRedaction.reason(error)}",
+                )
+            }.getOrDefault(false)
+        } else {
+            // Media3 的 Surface 必须先隐藏，避免两个视频输出竞争同一窗口合成层。
+            media3Player?.stop()
+            setHdrWindowEnabled(false)
+            playbackBackend = PlaybackBackend.VLC
+            media3PlayerView.visibility = View.GONE
+            videoLayout.visibility = View.VISIBLE
+            playerEngine.open(info, seekToMs)
+        }
+    }
+
+    /** 暂停点播弹幕渲染。 */
+    override fun onDanmakuClose() {
+        if (::danmakuController.isInitialized) danmakuController.close()
+    }
+
+    /** 暂停直播弹幕会话。 */
+    override fun onLiveDanmakuClose() {
+        if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
+    }
+
+    /** 打开直播弹幕会话。 */
+    override fun onLiveDanmakuOpen(roomId: Long) = openLiveDanmaku(roomId)
+
+    /** 打开点播弹幕会话。 */
+    override fun onVodDanmakuOpen(aid: Long, cid: Long, durationMs: Long, seekToMs: Long) {
+        if (::danmakuController.isInitialized) {
+            danmakuController.open(aid, cid, durationMs, seekToMs)
+        }
+    }
+
+    /** 同步弹幕速度。 */
+    override fun onDanmakuPlaybackRate(rate: Float) {
+        if (::danmakuController.isInitialized) danmakuController.onPlaybackRateChanged(rate)
+    }
+
+    /** 应用当前弹幕设置。 */
+    override fun onDanmakuSettings() {
+        if (::danmakuController.isInitialized) danmakuController.applySettings(danmakuSettings)
+    }
+
+    /** 重新计算弹幕布局。 */
+    override fun onDanmakuLayout() {
+        if (::danmakuController.isInitialized) layoutDanmaku()
+    }
+
+    /** 恢复各内容类型对应的播放速度。 */
+    override fun applyPlaybackRate(info: BiliApi.PlayInfo) {
+        if (info.isLive) {
+            setPlayerPlaybackRate(1f, "live-normal-rate")
+            ui = ui.copy(playbackSpeed = 1f)
+        } else {
+            setPlayerPlaybackRate(ui.playbackSpeed, "play-restore-rate")
+        }
+    }
+
+    /** 应用起播前的暂停请求。 */
+    override fun applyPendingPause() {
+        if (pendingPause) {
+            pendingPause = false
+            setPlayerPaused(true, "pending-pause")
+            ui = ui.copy(isPlaying = false)
+        }
+    }
 
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
     private val dlnaListener = object : DlnaRenderer.Listener {
@@ -1034,79 +1212,10 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 将当前播放信息加入最近投屏记录。 */
-    private fun addRecent(info: BiliApi.PlayInfo) {
-        if (!ui.rememberPlaybackContent) return
-        val list = recentCastStore.add(ui.recents, info)
-        ui = ui.copy(recents = list)
-    }
+    private fun addRecent(info: BiliApi.PlayInfo) = castCoordinator.recordRecent(info)
 
     /** 根据最近投屏记录重新解析并开始播放。 */
-    private fun recast(recent: RecentCast) {
-        if (resolving) {
-            LogHub.w(TAG, "recast ignored: another resolve is running")
-            return
-        }
-        playbackHistoryCoordinator.onNewCast()
-        lastNva = null
-        PlaybackDiagnostics.beginSession("recast")
-        PlaybackDiagnostics.attribute("cast.source", "recent")
-        PlaybackDiagnostics.attribute("recent.aid", recent.aid.toString())
-        PlaybackDiagnostics.attribute("recent.cid", recent.cid.toString())
-        PlaybackDiagnostics.attribute("recent.title", recent.title)
-        LogHub.i(
-            TAG,
-            "recast begin aid=${recent.aid} cid=${recent.cid} pgc=${recent.isPgc} " +
-                "epId=${recent.epId} seasonId=${recent.seasonId} title=${recent.title.take(40)}",
-        )
-        scope.launch {
-            resolving = true
-            ui = ui.copy(
-                mode = TvMode.LOADING,
-                castTitle = recent.title,
-                destination = TvDestination.HOME,
-                sidebarVisible = false,
-                helpVisible = false,
-                hudVisible = false,
-            )
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    if (recent.isPgc && (recent.epId > 0L || recent.seasonId > 0L)) {
-                        PgcPlaybackResolver().resolve(
-                            epId = recent.epId,
-                            seasonId = recent.seasonId,
-                            cid = recent.cid,
-                            aid = recent.aid,
-                            bvid = "",
-                            titleFallback = recent.title,
-                        )
-                    } else {
-                        BiliApi.resolveByAidCid(recent.aid, recent.cid, recent.title)
-                    }
-                }
-            }
-            resolving = false
-            result.onSuccess { play(it, 0L) }.onFailure {
-                LogHub.e(
-                    TAG,
-                    "recast resolve failed: ${LogRedaction.reason(it)}",
-                    it,
-                    stack = true,
-                )
-                PlaybackDiagnostics.fail(
-                    code = "RECAST_FAILED",
-                    message = it.message ?: "视频信息已失效",
-                    detail = "aid=${recent.aid} cid=${recent.cid} " +
-                        "reason=${LogRedaction.reason(it)}",
-                )
-                showError(
-                    title = "无法继续投屏",
-                    message = it.message ?: "视频信息已失效，请从手机重新投屏。",
-                    code = "RECAST_FAILED",
-                    canRetry = false,
-                )
-            }
-        }
-    }
+    private fun recast(recent: RecentCast) = castCoordinator.recast(recent)
 
     // ------------------------------------------------------------------ //
     // login
@@ -1135,252 +1244,12 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     // cast + resolve + play
     // ------------------------------------------------------------------ //
     /** 处理 DLNA 投屏请求并解析其媒体身份。 */
-    private fun handleCast(uri: String, title: String, longDescription: String) {
-        // 新的 SetAVTransportURI 具有更高优先级，旧播放器事件不应污染新会话。
-        resolveJob?.cancel()
-        clearLiveSession("new-cast")
-        current = null
-        if (::playerEngine.isInitialized) stopActivePlayback("new-cast")
-        playbackHistoryCoordinator.onNewCast()
-        PlaybackDiagnostics.beginSession("cast")
-        PlaybackDiagnostics.attribute("cast.source", "dlna")
-        PlaybackDiagnostics.attribute("cast.uri", LogRedaction.url(uri))
-        PlaybackDiagnostics.attribute("cast.title", title)
-        PlaybackDiagnostics.attribute(
-            "cast.longDescriptionBytes",
-            longDescription.length.toString(),
-        )
-        LogHub.i(
-            TAG,
-            "cast received title=${title.take(80)} uri=${LogRedaction.url(uri)} " +
-                "longDescription=${longDescription.length}B",
-        )
-        castActive = true
-        lastTitle = title
-        pendingPause = false
-        lastNva = null
-        lastErrorRetry = null
-        LogHub.setCast(title)
-        ui = ui.copy(
-            mode = TvMode.LOADING,
-            showContinue = ui.rememberPlaybackContent,
-            castTitle = title.ifBlank { "正在投屏" },
-            qualityLabel = "",
-            qualityDetail = "",
-            qualitySource = "",
-            audioLabel = "",
-            aid = 0L,
-            cid = 0L,
-            isPlaying = false,
-            isBuffering = false,
-            isLive = false,
-            liveFormat = "",
-            liveCdn = "",
-            liveBackupCount = 0,
-            positionMs = 0,
-            durationMs = 0,
-            hudVisible = true,
-            panel = null,
-            stopCastConfirm = false,
-            error = null,
-            loginQr = null,
-            loginStatus = "",
-            tracks = emptyList(),
-            audios = emptyList(),
-        )
-
-        val nva = NvaExtDecoder.decode(longDescription)
-        if (nva == null) {
-            LogHub.e(TAG, "cast rejected: nva_ext decode failed")
-            PlaybackDiagnostics.fail(
-                code = "NVA_DECODE_FAILED",
-                message = "无法识别这次投屏",
-                detail = "longDescriptionBytes=${longDescription.length} " +
-                    "metadataUri=${LogRedaction.url(uri)}",
-            )
-            dlna.markCastFailed("nva-decode-failed")
-            castActive = false
-            showError(
-                title = "无法识别这次投屏",
-                message = "请更新手机 B 站 App 后重新投屏。",
-                code = "NVA_DECODE_FAILED",
-                canRetry = false,
-            )
-            return
-        }
-        lastNva = nva
-        val desiredSpeed = nva.userDesireSpeed
-            ?.toFloatOrNull()
-            ?.let(PlaybackSpeed::normalize)
-            ?: 1f
-        LogHub.i(
-            TAG,
-            "cast nva aid=${nva.aid} cid=${nva.cid} bvid=${nva.bvid} " +
-                "eid=${nva.eid} sid=${nva.sid} room=${nva.roomId} " +
-                "qn=${nva.qn} desireQn=${nva.userDesireQn} speed=$desiredSpeed " +
-                "ct=${nva.ct} tp=${nva.tp}",
-        )
-        PlaybackDiagnostics.attribute("cast.aid", nva.aid.toString())
-        PlaybackDiagnostics.attribute("cast.cid", nva.cid.toString())
-        PlaybackDiagnostics.attribute("cast.bvid", nva.bvid.orEmpty())
-        PlaybackDiagnostics.attribute("cast.eid", nva.eid.toString())
-        PlaybackDiagnostics.attribute("cast.sid", nva.sid.toString())
-        PlaybackDiagnostics.attribute("cast.roomId", nva.roomId.toString())
-        PlaybackDiagnostics.attribute("cast.requestQn", nva.qn.toString())
-        PlaybackDiagnostics.attribute("cast.desireQn", nva.userDesireQn.toString())
-        PlaybackDiagnostics.attribute("cast.desireSpeed", desiredSpeed.toString())
-        ui = ui.copy(playbackSpeed = desiredSpeed)
-        resolveNvaAndPlay(nva, title)
-    }
+    private fun handleCast(uri: String, title: String, longDescription: String) =
+        castCoordinator.handleCast(uri, title, longDescription)
 
     /** 根据 nva 内容解析播放地址并开始播放。 */
-    private fun resolveNvaAndPlay(nva: NvaExtDecoder.NvaExtContent, title: String) {
-        resolveJob?.cancel()
-        clearLiveSession("resolve-new-cast")
-        resolving = true
-        lastNva = nva
-        lastTitle = title
-        val branch = when {
-            nva.hasLive -> "live"
-            nva.hasPgc && nva.eid > 0 -> "pgc"
-            nva.hasPgc -> "pgc-without-epId"
-            nva.hasUgc -> "ugc"
-            else -> "none"
-        }
-        LogHub.i(
-            TAG,
-            "resolve begin branch=$branch aid=${nva.aid} cid=${nva.cid} " +
-                "bvid=${nva.bvid} eid=${nva.eid} room=${nva.roomId}",
-        )
-        PlaybackDiagnostics.attribute("resolve.branch", branch)
-        ui = ui.copy(
-            mode = TvMode.LOADING,
-            showContinue = ui.rememberPlaybackContent,
-            castTitle = title.ifBlank { "正在投屏" },
-            error = null,
-            hudVisible = true,
-        )
-
-        resolveJob = scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    when {
-                        nva.hasLive -> {
-                            val token = authTokenStore.load()
-                                ?: error("TV account login is required for live playback")
-                            val liveInfo = LivePlayUrlResolver.resolve(
-                                context = applicationContext,
-                                accessKey = token.accessKey,
-                                roomId = nva.roomId,
-                            )
-                            val routes = liveCoordinator.cdn.rankInitial(liveInfo.qualityCandidates)
-                            if (routes.isEmpty()) error("live response has no eligible CDN routes")
-                            CastResolution.Live(liveInfo, routes)
-                        }
-                        nva.hasPgc -> CastResolution.Vod(
-                            vodCoordinator.cdn.rankPlayback(
-                                PgcPlaybackResolver().resolve(
-                                epId = nva.eid,
-                                seasonId = nva.sid,
-                                cid = nva.cid,
-                                aid = nva.aid,
-                                bvid = nva.bvid.orEmpty(),
-                                titleFallback = title,
-                                ),
-                            ),
-                        )
-                        nva.hasUgc -> CastResolution.Vod(
-                            vodCoordinator.cdn.rankPlayback(
-                                BiliApi.resolveByAidCid(nva.aid, nva.cid, title, nva.bvid ?: ""),
-                            ),
-                        )
-                        else ->
-                            error("no playable identity in nva_ext")
-                    }
-                }
-            }
-            if (!isActive) return@launch
-            resolving = false
-            result.onSuccess { resolved ->
-                when (resolved) {
-                    is CastResolution.Vod -> {
-                        val playback = resolved.playback
-                        val info = playback.info
-                        vodCoordinator.activeSession = VodSession(
-                            info = info,
-                            videoRoutes = playback.videoRoutes,
-                            audioRoutes = playback.audioRoutes,
-                            lastPositionMs = 0L,
-                            lastProgressAtMs = SystemClock.elapsedRealtime(),
-                        )
-                        startVodBackupRefresh()
-                        LogHub.i(
-                            TAG,
-                            "resolved qn=${info.video.id} ${info.video.width}x${info.video.height} " +
-                                "codec=${info.video.codecid} audio=${info.audio?.id} " +
-                                "duration=${info.durationSec}s videos=${info.videos.size} " +
-                                "audios=${info.audios.size} progressive=${info.progressiveUrl != null} " +
-                                "videoRoutes=${playback.videoRoutes.size} audioRoutes=${playback.audioRoutes.size}",
-                        )
-                        PlaybackDiagnostics.attribute("resolve.videos", info.videos.size.toString())
-                        PlaybackDiagnostics.attribute("resolve.audios", info.audios.size.toString())
-                        PlaybackDiagnostics.attribute(
-                            "resolve.progressive",
-                            (info.progressiveUrl != null).toString(),
-                        )
-                        dlna.setDurationMs(info.durationSec * 1000)
-                        play(info, 0L)
-                    }
-                    is CastResolution.Live -> startLivePlayback(resolved.info, resolved.routes, title)
-                }
-            }.onFailure { t ->
-                val message = t.message.orEmpty()
-                val live = nva.hasLive
-                val pgcError = t as? PgcPlaybackException
-                val pgc = nva.hasPgc
-                val pgcStatus = pgcError?.let { error ->
-                    "httpStatus=${error.httpStatus ?: "none"} apiCode=${error.apiCode ?: "none"}"
-                }.orEmpty()
-                val code = when {
-                    pgcError != null -> pgcError.errorCode
-                    live -> "LIVE_RESOLVE_FAILED"
-                    else -> "RESOLVE_FAILED"
-                }
-                LogHub.e(
-                    TAG,
-                    "cast resolve failed code=$code $pgcStatus: ${LogRedaction.reason(t)}",
-                )
-                PlaybackDiagnostics.fail(
-                    code = code,
-                    message = pgcError?.userMessage ?: message.ifBlank { "取流失败" },
-                    detail = "branch=$branch aid=${nva.aid} cid=${nva.cid} " +
-                        "$pgcStatus reason=${LogRedaction.reason(t)}",
-                )
-                dlna.markCastFailed(code)
-                lastErrorRetry = { resolveNvaAndPlay(nva, title) }
-                showError(
-                    title = when {
-                        live -> "直播取流失败"
-                        pgcError?.errorCode == "PGC_LOGIN_REQUIRED" -> "B 站登录失效"
-                        pgcError?.errorCode == "PGC_PREVIEW_ONLY" -> "当前仅有预览片段"
-                        pgcError?.errorCode == "PGC_DRM_METADATA_INVALID" -> "受保护内容解析失败"
-                        pgc -> "番剧或影视取流失败"
-                        else -> "取流失败"
-                    },
-                    message = when {
-                        live && message.contains("login", ignoreCase = true) ->
-                            "请先在电视端登录 B 站账号后重试。"
-                        live -> "未能获取当前账号可播放的直播源，请稍后重试。"
-                        pgcError != null -> pgcError.userMessage
-                        pgc -> "请检查电视端 B 站登录状态、网络和内容授权，再重试。"
-                        else -> "请检查网络或账号权益。"
-                    },
-                    code = code,
-                    canRetry = true,
-                )
-            }
-        }
-    }
+    private fun resolveNvaAndPlay(nva: NvaExtDecoder.NvaExtContent, title: String) =
+        castCoordinator.resolve(nva, title)
 
     /** 采用首次线路测速结果启动直播。 */
     private fun startLivePlayback(stream: LivePlayInfo, routes: List<RankedLiveSource>, title: String) =
@@ -1479,168 +1348,9 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private fun liveProbeOrder(): Comparator<RankedLiveSource> = LiveQualityMapper.probeOrder()
 
     /** 使用指定播放信息打开播放器并更新界面状态。 */
-    private fun play(info: BiliApi.PlayInfo, seekToMs: Long): Boolean {
-        if (!::playerEngine.isInitialized) {
-            LogHub.e(
-                TAG,
-                "play ignored: player engine unavailable aid=${info.aid} cid=${info.cid}",
-            )
-            PlaybackDiagnostics.fail(
-                code = "PLAYER_UNAVAILABLE",
-                message = "播放器未初始化",
-                detail = "aid=${info.aid} cid=${info.cid} title=${info.title}",
-            )
-            showError(
-                title = "播放器不可用",
-                message = "应用未能初始化播放器，请重启应用后重试；如仍失败请查看诊断日志。",
-                code = "PLAYER_UNAVAILABLE",
-                canRetry = false,
-            )
-            return false
-        }
-        current = info
-        if (info.isLive) playbackHistoryCoordinator.updateLiveUrl(info.video.url)
-        castActive = true
-        lastTitle = info.title
-        lastErrorRetry = null
-        pendingSeekMs = seekToMs.coerceAtLeast(0L)
-        val vodGeneration = if (!info.isLive) {
-            vodCoordinator.onOpening(pendingSeekMs)
-        } else null
-        LogHub.i(
-            TAG,
-            "play begin qn=${info.video.id} codec=${info.video.codecid} " +
-                "${info.video.width}x${info.video.height} audio=${info.audio?.id} " +
-                "seek=${seekToMs}ms progressive=${info.progressiveUrl != null} vodGeneration=${vodGeneration ?: "none"}",
-        )
-
-        ui = ui.copy(
-            mode = TvMode.PLAYING,
-            showContinue = ui.rememberPlaybackContent,
-            castTitle = info.title,
-            qualityLabel = if (info.isLive) liveQualityLabel(info.video.id) else info.qualityLabel,
-            qualityDetail = if (info.isLive) {
-                info.video.codecs.ifBlank { VlcTrackFormat.codecName(info.video.codecid) }
-            } else {
-                info.qualityDetail
-            },
-            qualitySource = if (info.isLive) "直播" else if (info.video.id >= 80) "已提升" else "",
-            audioLabel = if (info.isLive) "自动音轨" else info.audioLabel,
-            aid = info.aid,
-            cid = info.cid,
-            isPlaying = true,
-            isBuffering = false,
-            isLive = info.isLive,
-            liveFormat = info.liveFormat,
-            liveCdn = info.liveCdn,
-            liveBackupCount = info.liveBackupCount,
-            liveQualities = if (info.isLive) {
-                liveCoordinator.activeSession?.let { liveQualityOptions(it) } ?: emptyList()
-            } else {
-                emptyList()
-            },
-            positionMs = if (info.isLive) 0L else seekToMs.coerceAtLeast(0L),
-            durationMs = if (info.isLive) 0L else info.durationSec * 1000,
-            selectedQn = info.video.id,
-            selectedAudioId = info.audio?.id ?: 0,
-            tracks = TrackOptionMapper.tracks(info),
-            audios = TrackOptionMapper.audios(info),
-            hudVisible = true,
-            panel = null,
-            error = null,
-            stopCastConfirm = false,
-        )
-        if (!info.isLive) addRecent(info)
-
-        val requiresMedia3 = info.video.isHdr || info.video.isDolbyVision || info.isDrm
-        val started = if (requiresMedia3) {
-            // 先切换状态再停止 VLC，忽略旧播放器随后送达的 Stopped 事件。
-            playbackBackend = PlaybackBackend.MEDIA3
-            setHdrWindowEnabled(info.video.isHdr || info.video.isDolbyVision)
-            playerEngine.stopPlayback(
-                when {
-                    info.isDrm -> "switch-to-media3-widevine"
-                    info.video.isDolbyVision -> "switch-to-media3-dolby-vision"
-                    else -> "switch-to-media3-hdr"
-                },
-            )
-            videoLayout.visibility = View.GONE
-            media3PlayerView.visibility = View.VISIBLE
-            runCatching {
-                media3Engine().open(info, seekToMs)
-                true
-            }.onFailure { error ->
-                LogHub.e(
-                    TAG,
-                    "open Media3 failed drm=${info.isDrm} hdr=${info.video.isHdr} dolbyVision=${info.video.isDolbyVision} " +
-                        "error=${if (info.isDrm) error.javaClass.simpleName else LogRedaction.reason(error)}",
-                )
-            }.getOrDefault(false)
-        } else {
-            // Media3 的 Surface 必须先隐藏，避免两个视频输出竞争同一窗口合成层。
-            media3Player?.stop()
-            setHdrWindowEnabled(false)
-            playbackBackend = PlaybackBackend.VLC
-            media3PlayerView.visibility = View.GONE
-            videoLayout.visibility = View.VISIBLE
-            playerEngine.open(info, seekToMs)
-        }
-        if (!started) {
-            if (info.isLive) {
-                LogHub.e(
-                    TAG,
-                    "live player open rejected room=${info.cid} qn=${info.video.id} " +
-                        "format=${info.liveFormat} codec=${info.video.codecid} " +
-                        "host=${LogRedaction.host(info.progressiveUrl)}",
-                )
-                PlaybackDiagnostics.fail(
-                    code = "LIVE_PLAYER_OPEN_FAILED",
-                    message = "直播播放器无法打开当前线路",
-                    detail = "room=${info.cid} qn=${info.video.id} " +
-                        "format=${info.liveFormat} codec=${info.video.codecid} " +
-                        "host=${LogRedaction.host(info.progressiveUrl)}",
-                )
-                return false
-            }
-            lastErrorRetry = { play(info, seekToMs) }
-            showError(
-                title = "播放失败",
-                message = "无法打开该视频。诊断日志已记录具体原因。",
-                code = "PLAYER_OPEN_FAILED",
-                canRetry = true,
-                keepVideo = false,
-            )
-            return false
-        }
-
-        if (::danmakuController.isInitialized) {
-            if (info.isLive) {
-                danmakuController.close()
-                openLiveDanmaku(info.cid)
-            } else {
-                if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
-                danmakuController.open(info.aid, info.cid, info.durationSec * 1000, seekToMs)
-                danmakuController.onPlaybackRateChanged(ui.playbackSpeed)
-                danmakuController.applySettings(danmakuSettings)
-                layoutDanmaku()
-            }
-        }
-        if (info.isLive) {
-            setPlayerPlaybackRate(1f, "live-normal-rate")
-            ui = ui.copy(playbackSpeed = 1f)
-        } else {
-            setPlayerPlaybackRate(ui.playbackSpeed, "play-restore-rate")
-        }
-
-        if (pendingPause) {
-            pendingPause = false
-            setPlayerPaused(true, "pending-pause")
-            ui = ui.copy(isPlaying = false)
-        }
-        LogHub.setPlay(describe(info))
-        LogHub.i(TAG, "play opened qn=${info.video.id} ${info.video.width}x${info.video.height}")
-        return true
-    }
+    /** 使用指定播放信息打开播放器并更新界面状态。 */
+    private fun play(info: BiliApi.PlayInfo, seekToMs: Long): Boolean =
+        castCoordinator.openPlayback(info, seekToMs)
 
     /** 切换当前视频清晰度并从当前位置继续播放。 */
     private fun switchQuality(qn: Int) {
