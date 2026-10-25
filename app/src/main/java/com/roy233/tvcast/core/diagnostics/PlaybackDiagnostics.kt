@@ -509,8 +509,7 @@ object PlaybackDiagnostics {
 
     /** 在会话内存中追加一条带相对时间的事件。 */
     private fun formatEventLocked(name: String, detail: String): String {
-        val safeDetail = LogRedaction.text(detail).take(MAX_EVENT_DETAIL)
-        val line = "+${elapsedLocked()}ms $name" + if (safeDetail.isBlank()) "" else " $safeDetail"
+        val line = PlaybackReportSerializer.formatEvent(elapsedLocked(), name, detail, MAX_EVENT_DETAIL)
         events.addLast(line)
         while (events.size > MAX_EVENTS) events.removeFirst()
         return line
@@ -574,45 +573,18 @@ object PlaybackDiagnostics {
     }
 
     /** 读取文件尾部并生成脱敏的日志行。 */
-    private fun readVlcTail(file: File, startOffset: Long, maxLines: Int): String {
-        if (!file.isFile) return ""
-        return runCatching {
-            val length = file.length()
-            if (length <= 0L) return@runCatching ""
-            val from = maxOf(
-                startOffset.coerceIn(0L, length),
-                length - MAX_VLC_TAIL_BYTES,
-            ).coerceAtLeast(0L)
-            RandomAccessFile(file, "r").use { handle ->
-                handle.seek(from)
-                val size = (length - from).toInt().coerceAtMost(MAX_VLC_TAIL_BYTES.toInt())
-                if (size <= 0) return@runCatching ""
-                val bytes = ByteArray(size)
-                handle.readFully(bytes)
-                var text = String(bytes, Charsets.UTF_8)
-                if (from > 0L) text = text.substringAfter('\n', "")
-                text.lineSequence()
-                    .filter { it.isNotBlank() }
-                    .toList()
-                    .takeLast(maxLines)
-                    .joinToString("\n") { LogRedaction.text(it) }
-            }
-        }.getOrDefault("")
-    }
+    private fun readVlcTail(file: File, startOffset: Long, maxLines: Int): String =
+        DiagnosticsFileStore.readVlcTail(file, startOffset, maxLines, MAX_VLC_TAIL_BYTES)
 
-    /** 读取文件尾部文本。 */
-    private fun readTailText(file: File, maxBytes: Long): String = runCatching {
-        val length = file.length()
-        if (length <= 0L) return@runCatching ""
-        val from = (length - maxBytes).coerceAtLeast(0L)
-        RandomAccessFile(file, "r").use { handle ->
-            handle.seek(from)
-            val size = (length - from).toInt()
-            val bytes = ByteArray(size)
-            handle.readFully(bytes)
-            String(bytes, Charsets.UTF_8)
-        }
-    }.getOrDefault("")
+    /**
+     * 读取文件尾部文本。
+     *
+     * @param file 目标文件。
+     * @param maxBytes 读取的字节上限。
+     * @return 文件文本；不可读时返回空串。
+     */
+    private fun readTailText(file: File, maxBytes: Long): String =
+        DiagnosticsFileStore.readTailText(file, maxBytes)
 
     /** 追加一条脱敏后的持久化记录。 */
     private fun appendHistory(raw: String) {
