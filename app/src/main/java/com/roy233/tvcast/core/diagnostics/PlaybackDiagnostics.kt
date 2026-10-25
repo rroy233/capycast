@@ -592,18 +592,23 @@ object PlaybackDiagnostics {
         val safe = LogRedaction.text(raw).take(MAX_HISTORY_LINE)
         synchronized(fileLock) {
             runCatching {
-                file.parentFile?.mkdirs()
-                rotateHistoryIfNeededLocked(file)
-                file.appendText(safe + "\n")
+                DiagnosticsFileStore.rotateHistoryIfNeeded(
+                    file,
+                    maxBytes = MAX_HISTORY_BYTES,
+                    tailBytes = MAX_HISTORY_TAIL_BYTES,
+                )
+                DiagnosticsFileStore.appendHistory(file, safe)
             }
         }
     }
 
     /** 在文件锁内按大小轮转播放历史。 */
     private fun rotateHistoryIfNeededLocked(file: File) {
-        if (!file.isFile || file.length() <= MAX_HISTORY_BYTES) return
-        val tail = readTailText(file, MAX_HISTORY_TAIL_BYTES)
-        file.writeText("[ROTATED] trimmed playback history\n$tail")
+        DiagnosticsFileStore.rotateHistoryIfNeeded(
+            file,
+            maxBytes = MAX_HISTORY_BYTES,
+            tailBytes = MAX_HISTORY_TAIL_BYTES,
+        )
     }
 
     /** 在安装阶段检查播放历史是否需要轮转。 */
