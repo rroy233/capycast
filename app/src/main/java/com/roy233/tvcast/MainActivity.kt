@@ -52,6 +52,13 @@ import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEngine
 import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
+import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
+import com.roy233.tvcast.feature.playback.model.CastResolution
+import com.roy233.tvcast.feature.playback.model.LiveSession
+import com.roy233.tvcast.feature.playback.model.PendingLiveRouteSwitch
+import com.roy233.tvcast.feature.playback.model.PendingVodRouteSwitch
+import com.roy233.tvcast.feature.playback.model.VodSession
+import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
 import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
@@ -184,51 +191,6 @@ class MainActivity : ComponentActivity(), TvActionHost {
     private var pendingLiveRouteSwitch: PendingLiveRouteSwitch? = null
     /** 等待实际进入播放态后显示点播线路切换提示。 */
     private var pendingVodRouteSwitch: PendingVodRouteSwitch? = null
-    private sealed interface CastResolution {
-        data class Vod(val playback: RankedVodPlayback) : CastResolution
-        data class Live(
-            val info: LivePlayInfo,
-            val routes: List<RankedLiveSource>,
-        ) : CastResolution
-    }
-
-    private data class LiveSession(
-        var stream: LivePlayInfo,
-        var routes: MutableList<RankedLiveSource>,
-        var active: LiveStreamCandidate,
-        val attemptedUrls: MutableSet<String> = mutableSetOf(),
-        val downshiftedQualities: MutableSet<Int> = mutableSetOf(),
-        var avcFallbackAttempted: Boolean = false,
-    )
-
-    private data class PendingLiveRouteSwitch(
-        val reason: String,
-        val from: LiveStreamCandidate?,
-        val target: LiveStreamCandidate,
-        val firstByteMs: Long?,
-        val throughputBytesPerSecond: Long?,
-    )
-
-    private data class VodSession(
-        var info: BiliApi.PlayInfo,
-        var videoRoutes: List<RankedVodRoute>,
-        var audioRoutes: List<RankedVodRoute>,
-        val attemptedUrls: MutableSet<String> = mutableSetOf(),
-        val attemptedAudioUrls: MutableSet<String> = mutableSetOf(),
-        val attemptedRepresentations: MutableSet<String> = mutableSetOf(),
-        var lastPositionMs: Long = 0L,
-        var lastProgressAtMs: Long = 0L,
-        val recovery: VodRecoveryController = VodRecoveryController(),
-    )
-
-    private data class PendingVodRouteSwitch(
-        val reason: String,
-        val fromUrl: String,
-        val target: RankedVodRoute,
-        val quality: Int,
-        val codecId: Int,
-        val positionMs: Long,
-    )
 
     /** 电视界面根状态持有者。 */
     private val stateHolder = TvStateHolder()
@@ -2052,14 +2014,10 @@ class MainActivity : ComponentActivity(), TvActionHost {
     }
 
     private fun representationKey(track: BiliApi.Track): String =
-        "${track.id}:${track.codecid}:${track.codecs}:${track.mimeType}:${track.width}x${track.height}"
+        VodPlaybackRules.representationKey(track)
 
-    private fun videoCodecRank(track: BiliApi.Track): Int = when (track.codecid) {
-        12 -> 3
-        13 -> 2
-        7 -> 1
-        else -> 0
-    }
+    private fun videoCodecRank(track: BiliApi.Track): Int =
+        VodPlaybackRules.videoCodecRank(track)
 
     /** 稳定播放确认后才结束切源事务并提示用户。 */
     private fun completeVodRouteSwitch() {
@@ -2133,19 +2091,12 @@ class MainActivity : ComponentActivity(), TvActionHost {
         }
     }
 
-    private fun recoveryReason(failure: VodRecoveryController.Failure): String = when (failure) {
-        VodRecoveryController.Failure.TWO_SEVERE_REBUFFERS -> "two-severe-rebuffers"
-        VodRecoveryController.Failure.PERSISTENT_BUFFERING -> "persistent-buffering-5s"
-        VodRecoveryController.Failure.OPEN_TIMEOUT -> "player-open-timeout"
-    }
+    private fun recoveryReason(failure: VodRecoveryController.Failure): String =
+        VodPlaybackRules.recoveryReason(failure)
 
     /** 只有播放器错误或已经经过稳定期验证的恢复故障才允许消耗 PCDN 候选。 */
-    private fun isSubstantiveVodFailure(reason: String): Boolean = when (reason) {
-        "player-error", "media3-player-error", "playback-time-stalled-5s",
-        "two-severe-rebuffers", "persistent-buffering-5s", "player-open-timeout",
-        "representation-fallback-open-failed" -> true
-        else -> false
-    }
+    private fun isSubstantiveVodFailure(reason: String): Boolean =
+        VodPlaybackRules.isSubstantiveVodFailure(reason)
 
     /** 每 30 秒刷新备用线路排序，不更改当前播放地址。 */
     private fun startVodBackupRefresh() {
@@ -2180,25 +2131,11 @@ class MainActivity : ComponentActivity(), TvActionHost {
     }
 
     /** 直播 qn 与点播 qn 数值体系不同，使用直播清晰度名称。 */
-    private fun liveQualityLabel(qn: Int): String = when (qn) {
-        10_000 -> "原画"
-        400 -> "蓝光"
-        250 -> "超清"
-        150 -> "高清"
-        80 -> "流畅"
-        else -> "直播 qn=$qn"
-    }
+    private fun liveQualityLabel(qn: Int): String = LiveQualityMapper.label(qn)
 
     /** 直播可选画质档位，取服务端公布的可用档位并映射为友好名称。 */
-    private fun liveQualityOptions(session: LiveSession): List<LiveQualityOption> {
-        val available = (session.stream.acceptedQualities + session.stream.quality)
-            .distinct()
-            .sortedDescending()
-        return available.mapNotNull { qn ->
-            val label = liveQualityLabel(qn)
-            if (label.startsWith("直播 qn=")) null else LiveQualityOption(qn = qn, label = label)
-        }
-    }
+    private fun liveQualityOptions(session: LiveSession): List<LiveQualityOption> =
+        LiveQualityMapper.options(session.stream)
 
     /** 打开直播弹幕会话；复用登录 Cookie 换取进房 token。 */
     private fun openLiveDanmaku(roomId: Long) {
@@ -2213,11 +2150,7 @@ class MainActivity : ComponentActivity(), TvActionHost {
         layoutDanmaku()
     }
 
-    private fun liveProbeOrder(): Comparator<RankedLiveSource> =
-        compareBy<RankedLiveSource> { it.result?.success != true }
-            .thenBy { it.result?.firstByteMs ?: Long.MAX_VALUE }
-            .thenByDescending { it.result?.throughputBytesPerSecond ?: 0L }
-            .thenBy { it.candidate.responseIndex }
+    private fun liveProbeOrder(): Comparator<RankedLiveSource> = LiveQualityMapper.probeOrder()
 
     /** 使用指定播放信息打开播放器并更新界面状态。 */
     private fun play(info: BiliApi.PlayInfo, seekToMs: Long): Boolean {
