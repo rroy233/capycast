@@ -49,6 +49,7 @@ import com.roy233.tvcast.data.bili.PgcPlaybackResolver
 import com.roy233.tvcast.data.bili.RankedVodPlayback
 import com.roy233.tvcast.data.bili.RankedVodRoute
 import com.roy233.tvcast.data.bili.VodCdnCoordinator
+import com.roy233.tvcast.data.bili.VodRecoveryController
 import com.roy233.tvcast.ui.model.LiveQualityOption
 import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
@@ -208,11 +209,9 @@ class MainActivity : ComponentActivity() {
         val attemptedUrls: MutableSet<String> = mutableSetOf(),
         val attemptedAudioUrls: MutableSet<String> = mutableSetOf(),
         val attemptedRepresentations: MutableSet<String> = mutableSetOf(),
-        var buffering: Boolean = false,
-        var rebufferCount: Int = 0,
-        var hasPlayed: Boolean = false,
         var lastPositionMs: Long = 0L,
         var lastProgressAtMs: Long = 0L,
+        val recovery: VodRecoveryController = VodRecoveryController(),
     )
 
     private data class PendingVodRouteSwitch(
@@ -676,8 +675,7 @@ class MainActivity : ComponentActivity() {
     private fun handleDolbyVisionPlaying() {
         if (playbackBackend != PlaybackBackend.MEDIA3) return
         vodSession?.let { session ->
-            session.hasPlayed = true
-            session.buffering = false
+            session.recovery.onPlaying(playerPositionMs(), SystemClock.elapsedRealtime())
             session.lastPositionMs = playerPositionMs()
             session.lastProgressAtMs = SystemClock.elapsedRealtime()
         }
@@ -702,7 +700,6 @@ class MainActivity : ComponentActivity() {
             danmakuController.onPlaying(position)
             if (seek > 0L) danmakuController.onSeek(seek)
         }
-        completeVodRouteSwitch()
     }
 
     private fun handleDolbyVisionPaused() {
@@ -715,7 +712,7 @@ class MainActivity : ComponentActivity() {
     private fun handleDolbyVisionBuffering(buffering: Boolean) {
         if (playbackBackend != PlaybackBackend.MEDIA3) return
         ui = ui.copy(isBuffering = buffering)
-        if (observeVodBuffering(buffering)) handleVodPlaybackFailure("two-consecutive-rebuffers")
+        observeVodBuffering(buffering)
         if (::danmakuController.isInitialized) {
             danmakuController.onBuffering(buffering, playerPositionMs())
         }
@@ -795,11 +792,10 @@ class MainActivity : ComponentActivity() {
             MediaPlayer.Event.Playing -> {
                 val seek = pendingSeekMs
                 pendingSeekMs = 0L
-                LogHub.i(TAG, "ui playing applySeek=${seek}ms")
+                LogHub.i(TAG, "ui playing initialPosition=${seek}ms")
                 runOnUiThread {
                     vodSession?.let { session ->
-                        session.hasPlayed = true
-                        session.buffering = false
+                        session.recovery.onPlaying(playerPositionMs(), SystemClock.elapsedRealtime())
                         session.lastPositionMs = playerPositionMs()
                         session.lastProgressAtMs = SystemClock.elapsedRealtime()
                     }
@@ -809,9 +805,6 @@ class MainActivity : ComponentActivity() {
                         isBuffering = false,
                         positionMs = if (seek > 0) seek else ui.positionMs,
                     )
-                    if (seek > 0) {
-                        playerEngine.seekTo(seek, "playing-apply-seek")
-                    }
                     val duration = playerDurationMs()
                     if (duration > 0) {
                         ui = ui.copy(durationMs = duration)
@@ -831,7 +824,6 @@ class MainActivity : ComponentActivity() {
                         danmakuController.onPlaying(position)
                         if (seek > 0) danmakuController.onSeek(seek)
                     }
-                    if (current?.isLive != true) completeVodRouteSwitch()
                     current?.let { info ->
                         playbackHistoryCoordinator.onPlaying(
                             content = playbackHistoryContent(info),
@@ -937,9 +929,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         handleLivePlaybackFailure("two-consecutive-rebuffers")
                     }
-                    if (current?.isLive != true && observeVodBuffering(buffering)) {
-                        handleVodPlaybackFailure("two-consecutive-rebuffers")
-                    }
+                    if (current?.isLive != true) observeVodBuffering(buffering)
                     if (current?.isLive != true && ::danmakuController.isInitialized) {
                         danmakuController.onBuffering(
                             buffering,
@@ -1073,6 +1063,11 @@ class MainActivity : ComponentActivity() {
     // ------------------------------------------------------------------ //
     /** 处理 DLNA 投屏请求并解析其媒体身份。 */
     private fun handleCast(uri: String, title: String, longDescription: String) {
+        // 新的 SetAVTransportURI 具有更高优先级，旧播放器事件不应污染新会话。
+        resolveJob?.cancel()
+        clearLiveSession("new-cast")
+        current = null
+        if (::playerEngine.isInitialized) stopActivePlayback("new-cast")
         playbackHistoryCoordinator.onNewCast()
         PlaybackDiagnostics.beginSession("cast")
         PlaybackDiagnostics.attribute("cast.source", "dlna")
@@ -1819,6 +1814,7 @@ class MainActivity : ComponentActivity() {
         val oldVodSession = vodSession
         vodSession = null
         vodSwitchInProgress = false
+        pendingVodRouteSwitch = null
         liveSession = null
         liveSwitchInProgress = false
         pendingLiveRouteSwitch = null
@@ -1829,19 +1825,35 @@ class MainActivity : ComponentActivity() {
         if (oldVodSession != null) LogHub.i(TAG, "VOD session cleared reason=$reason")
     }
 
-    /** 统计播放开始后的连续缓冲边沿，第二次重缓冲触发同档线路切换。 */
-    private fun observeVodBuffering(buffering: Boolean): Boolean {
-        val session = vodSession ?: return false
-        if (buffering && !session.buffering && session.hasPlayed) {
-            session.rebufferCount++
-            LogHub.w(
+    /**
+     * 将播放器缓冲事件交给恢复状态机。初始化和定位阶段的缓冲只保留诊断，稳定
+     * 播放后持续达到阈值的两次缓冲才会触发线路恢复。
+     */
+    private fun observeVodBuffering(buffering: Boolean) {
+        val session = vodSession ?: return
+        val update = session.recovery.onBufferingChanged(buffering, SystemClock.elapsedRealtime())
+        val host = LogRedaction.host(session.info.video.url)
+        when {
+            update.failure != null -> {
+                LogHub.w(
+                    TAG,
+                    "VOD rebuffer recovery required failure=${update.failure} count=${session.recovery.rebufferCount} " +
+                        "duration=${update.durationMs}ms qn=${session.info.video.id} host=$host " +
+                        session.recovery.snapshot(),
+                )
+                handleVodPlaybackFailure(recoveryReason(update.failure))
+            }
+            update.countedRebuffer -> LogHub.w(
                 TAG,
-                "VOD rebuffer count=${session.rebufferCount} qn=${session.info.video.id} " +
-                    "host=${LogRedaction.host(session.info.video.url)}",
+                "VOD severe rebuffer count=${session.recovery.rebufferCount} duration=${update.durationMs}ms " +
+                    "qn=${session.info.video.id} host=$host ${session.recovery.snapshot()}",
+            )
+            update.ignored && buffering -> LogHub.d(
+                TAG,
+                "VOD buffering ignored during ${update.phase} qn=${session.info.video.id} host=$host " +
+                    session.recovery.snapshot(),
             )
         }
-        session.buffering = buffering
-        return buffering && session.rebufferCount >= VOD_REBUFFER_SWITCH_THRESHOLD
     }
 
     /** 自动恢复网络/缓冲故障時切到同一画质与表示层的下一条 CDN。 */
@@ -1872,6 +1884,7 @@ class MainActivity : ComponentActivity() {
             ordered = session.videoRoutes,
             activeUrl = fromUrl,
             attemptedUrls = session.attemptedUrls,
+            allowPcdn = isSubstantiveVodFailure(reason),
         ) ?: run {
             LogHub.e(
                 TAG,
@@ -1891,6 +1904,7 @@ class MainActivity : ComponentActivity() {
             activeAudio
         }
         vodSwitchInProgress = true
+        session.recovery.onSwitching()
         val position = playerPositionMs()
         val nextTrack = vodCdnCoordinator.applyRoute(info.video, next, session.videoRoutes)
         val nextInfo = info.copy(video = nextTrack, audio = nextAudio)
@@ -1907,15 +1921,13 @@ class MainActivity : ComponentActivity() {
                 LogHub.e(TAG, "VOD CDN switch open failed reason=$reason", error, stack = true)
             }
             .getOrDefault(false)
-        vodSwitchInProgress = false
         if (!opened) {
+            vodSwitchInProgress = false
             pendingVodRouteSwitch = null
             session.attemptedUrls += next.url
             return false
         }
         session.info = nextInfo
-        session.rebufferCount = 0
-        session.buffering = false
         session.lastPositionMs = position
         session.lastProgressAtMs = SystemClock.elapsedRealtime()
         LogHub.i(
@@ -1936,6 +1948,7 @@ class MainActivity : ComponentActivity() {
         val candidate = nextVodRepresentation(info, session.attemptedRepresentations) ?: return false
         if (vodSwitchInProgress) return false
         vodSwitchInProgress = true
+        session.recovery.onSwitching()
         val position = playerPositionMs()
         LogHub.w(
             TAG,
@@ -1956,8 +1969,6 @@ class MainActivity : ComponentActivity() {
                 session.info = nextInfo
                 session.videoRoutes = routes
                 session.attemptedUrls.clear()
-                session.rebufferCount = 0
-                session.buffering = false
                 session.lastPositionMs = position
                 session.lastProgressAtMs = SystemClock.elapsedRealtime()
                 pendingVodRouteSwitch = null
@@ -1992,7 +2003,9 @@ class MainActivity : ComponentActivity() {
                         "reason=${LogRedaction.reason(failure)}",
                 )
             } finally {
-                vodSwitchInProgress = false
+                if (!opened) {
+                    vodSwitchInProgress = false
+                }
                 if (!opened && vodSession === session && castActive) {
                     handleVodPlaybackFailure("representation-fallback-open-failed")
                 }
@@ -2039,10 +2052,15 @@ class MainActivity : ComponentActivity() {
         else -> 0
     }
 
-    /** 首帧进入播放态后确认切源成功，再提示用户并写诊断事件。 */
+    /** 稳定播放确认后才结束切源事务并提示用户。 */
     private fun completeVodRouteSwitch() {
-        val switched = pendingVodRouteSwitch ?: return
+        val switched = pendingVodRouteSwitch
+        if (switched == null) {
+            vodSwitchInProgress = false
+            return
+        }
         pendingVodRouteSwitch = null
+        vodSwitchInProgress = false
         val host = LogRedaction.host(switched.target.url)
         val probe = switched.target.result
         val detail = "reason=${switched.reason} qn=${switched.quality} codec=${switched.codecId} " +
@@ -2055,12 +2073,32 @@ class MainActivity : ComponentActivity() {
         ui = ui.copy(toast = "播放线路已切换：$host")
     }
 
-    /** 检测播放态下 5 秒无进度；暂停与缓冲阶段不触发线路切换。 */
+    /** 检测稳定播放态下的无进度，并处理长期打开/缓冲超时。 */
     private fun observeVodProgress(positionMs: Long, activelyPlaying: Boolean) {
         val session = vodSession ?: return
         val now = SystemClock.elapsedRealtime()
-        if (!session.hasPlayed) return
-        if (!activelyPlaying || session.buffering) {
+        val progress = session.recovery.onProgress(positionMs, activelyPlaying, now)
+        if (progress.becameStable) {
+            LogHub.i(
+                TAG,
+                "VOD playback stabilized qn=${session.info.video.id} " +
+                    "host=${LogRedaction.host(session.info.video.url)} ${session.recovery.snapshot()}",
+            )
+            completeVodRouteSwitch()
+        }
+        if (!activelyPlaying && !ui.isBuffering && !ui.isPlaying) {
+            return
+        }
+        session.recovery.onTick(now)?.let { failure ->
+            LogHub.e(
+                TAG,
+                "VOD recovery timeout failure=$failure qn=${session.info.video.id} " +
+                    "host=${LogRedaction.host(session.info.video.url)} ${session.recovery.snapshot()}",
+            )
+            handleVodPlaybackFailure(recoveryReason(failure))
+            return
+        }
+        if (progress.phase != VodRecoveryController.Phase.STABLE || !activelyPlaying) {
             session.lastPositionMs = positionMs
             session.lastProgressAtMs = now
             return
@@ -2084,6 +2122,20 @@ class MainActivity : ComponentActivity() {
             session.lastProgressAtMs = now
             handleVodPlaybackFailure("playback-time-stalled-5s")
         }
+    }
+
+    private fun recoveryReason(failure: VodRecoveryController.Failure): String = when (failure) {
+        VodRecoveryController.Failure.TWO_SEVERE_REBUFFERS -> "two-severe-rebuffers"
+        VodRecoveryController.Failure.PERSISTENT_BUFFERING -> "persistent-buffering-5s"
+        VodRecoveryController.Failure.OPEN_TIMEOUT -> "player-open-timeout"
+    }
+
+    /** 只有播放器错误或已经经过稳定期验证的恢复故障才允许消耗 PCDN 候选。 */
+    private fun isSubstantiveVodFailure(reason: String): Boolean = when (reason) {
+        "player-error", "media3-player-error", "playback-time-stalled-5s",
+        "two-severe-rebuffers", "persistent-buffering-5s", "player-open-timeout",
+        "representation-fallback-open-failed" -> true
+        else -> false
     }
 
     /** 每 30 秒刷新备用线路排序，不更改当前播放地址。 */
@@ -2184,11 +2236,14 @@ class MainActivity : ComponentActivity() {
         lastTitle = info.title
         lastErrorRetry = null
         pendingSeekMs = seekToMs.coerceAtLeast(0L)
+        val vodGeneration = if (!info.isLive) {
+            vodSession?.recovery?.onOpening(pendingSeekMs, SystemClock.elapsedRealtime())
+        } else null
         LogHub.i(
             TAG,
             "play begin qn=${info.video.id} codec=${info.video.codecid} " +
                 "${info.video.width}x${info.video.height} audio=${info.audio?.id} " +
-                "seek=${seekToMs}ms progressive=${info.progressiveUrl != null}",
+                "seek=${seekToMs}ms progressive=${info.progressiveUrl != null} vodGeneration=${vodGeneration ?: "none"}",
         )
 
         ui = ui.copy(
@@ -2914,9 +2969,14 @@ class MainActivity : ComponentActivity() {
         PlaybackBackend.VLC -> runCatching { player.volume }.getOrDefault(ui.volume)
     }
 
-    private fun seekPlayer(positionMs: Long, reason: String): Long = when (playbackBackend) {
-        PlaybackBackend.MEDIA3 -> media3Player?.seekTo(positionMs) ?: positionMs
-        PlaybackBackend.VLC -> playerEngine.seekTo(positionMs, reason)
+    private fun seekPlayer(positionMs: Long, reason: String): Long {
+        if (current?.isLive != true) {
+            vodSession?.recovery?.onSeek(positionMs, SystemClock.elapsedRealtime())
+        }
+        return when (playbackBackend) {
+            PlaybackBackend.MEDIA3 -> media3Player?.seekTo(positionMs) ?: positionMs
+            PlaybackBackend.VLC -> playerEngine.seekTo(positionMs, reason)
+        }
     }
 
     private fun setPlayerPaused(paused: Boolean, reason: String) {
@@ -3166,8 +3226,6 @@ class MainActivity : ComponentActivity() {
         private const val LIVE_STALL_TIMEOUT_MS = 5_000L
         /** 点播播放位置无前进时触发故障切源的时间阈值。 */
         private const val VOD_STALL_TIMEOUT_MS = 5_000L
-        /** 连续重缓冲达到该次数后切换点播 CDN。 */
-        private const val VOD_REBUFFER_SWITCH_THRESHOLD = 2
         /** B 站 TV 历史接口的业务类型：普通稿件。 */
         private const val HISTORY_TYPE_UGC = 3
         /** B 站 TV 历史接口的业务类型：番剧等 PGC。 */

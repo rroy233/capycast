@@ -68,11 +68,42 @@ class VodCdnCoordinatorTest {
         val track = track(primary, listOf(fallback)).copy(initializationRange = "0-1023")
 
         val routes = coordinator.rankTrack(track)
-        val next = coordinator.nextSameRepresentation(routes, primary, setOf(primary))
+        val next = coordinator.nextSameRepresentation(
+            ordered = routes,
+            activeUrl = primary,
+            attemptedUrls = setOf(primary),
+            allowPcdn = false,
+        )
 
         assertTrue(ranges.all { it.endsWith("bytes=0-1023") })
         assertEquals(fallback, next?.url)
         assertFalse(next?.result?.success == false)
+    }
+
+    @Test
+    fun `does not switch to the same endpoint or PCDN while an official route remains`() {
+        val coordinator = VodCdnCoordinator()
+        val primary = "https://upos-a.bilivideo.com/video.m4s?token=one"
+        val sameHost = "https://upos-a.bilivideo.com/video.m4s?token=two"
+        val official = "https://upos-b.bilivideo.com/video.m4s"
+        val pcdn = "https://peer.szbdyd.com/video.m4s"
+        val routes = listOf(primary, sameHost, official, pcdn).map(::RankedVodRoute)
+
+        val next = coordinator.nextSameRepresentation(
+            ordered = routes,
+            activeUrl = primary,
+            attemptedUrls = emptySet(),
+            allowPcdn = false,
+        )
+        val afterOfficialFailures = coordinator.nextSameRepresentation(
+            ordered = routes,
+            activeUrl = primary,
+            attemptedUrls = setOf(primary, official),
+            allowPcdn = true,
+        )
+
+        assertEquals(official, next?.url)
+        assertEquals(pcdn, afterOfficialFailures?.url)
     }
 
     private fun track(url: String, backup: List<String>) = BiliApi.Track(

@@ -198,4 +198,7 @@ object CdnCandidateSelector {
         val host = cdnHostOf(raw)
         return host.endsWith(".bilivideo.com") || host.endsWith(".akamaized.net")
     }
+
+    /** 同一表示层中用于线路切换的网络端点标识。 */
+    fun routeIdentity(raw: String): String = cdnHostOf(raw).ifBlank { raw }
 }

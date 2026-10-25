@@ -49,7 +49,7 @@ class VodCdnCoordinator(
     }
 
     suspend fun rankTrack(track: BiliApi.Track): List<RankedVodRoute> {
-        val candidates = CdnCandidateSelector.order(listOf(track.url) + track.backup)
+        val candidates = distinctEndpoints(CdnCandidateSelector.order(listOf(track.url) + track.backup))
         if (candidates.isEmpty()) return emptyList()
         val official = candidates.filterNot(CdnCandidateSelector::isPcdn)
         val pcdn = candidates.filter(CdnCandidateSelector::isPcdn)
@@ -76,8 +76,11 @@ class VodCdnCoordinator(
         activeUrl: String,
         excludedUrls: Set<String>,
     ): List<RankedVodRoute> {
-        val candidates = CdnCandidateSelector.order(listOf(track.url) + track.backup)
-            .filterNot { it == activeUrl || it in excludedUrls }
+        val excludedEndpoints = (excludedUrls + activeUrl).mapTo(mutableSetOf()) {
+            CdnCandidateSelector.routeIdentity(it)
+        }
+        val candidates = distinctEndpoints(CdnCandidateSelector.order(listOf(track.url) + track.backup))
+            .filterNot { CdnCandidateSelector.routeIdentity(it) in excludedEndpoints }
         if (candidates.isEmpty()) return emptyList()
         val official = candidates.filterNot(CdnCandidateSelector::isPcdn)
         val pcdn = candidates.filter(CdnCandidateSelector::isPcdn)
@@ -100,7 +103,17 @@ class VodCdnCoordinator(
         ordered: List<RankedVodRoute>,
         activeUrl: String,
         attemptedUrls: Set<String>,
-    ): RankedVodRoute? = ordered.firstOrNull { it.url != activeUrl && it.url !in attemptedUrls }
+        allowPcdn: Boolean,
+    ): RankedVodRoute? {
+        val attemptedEndpoints = (attemptedUrls + activeUrl).mapTo(mutableSetOf()) {
+            CdnCandidateSelector.routeIdentity(it)
+        }
+        val remaining = ordered.filter { route ->
+            CdnCandidateSelector.routeIdentity(route.url) !in attemptedEndpoints
+        }
+        return remaining.firstOrNull { !CdnCandidateSelector.isPcdn(it.url) }
+            ?: remaining.firstOrNull { allowPcdn && CdnCandidateSelector.isPcdn(it.url) }
+    }
 
     fun applyRoute(
         track: BiliApi.Track,
@@ -146,6 +159,9 @@ class VodCdnCoordinator(
             },
         )
     }
+
+    private fun distinctEndpoints(urls: List<String>): List<String> =
+        urls.distinctBy(CdnCandidateSelector::routeIdentity)
 
     private companion object {
         const val TAG = "VodCdn"
