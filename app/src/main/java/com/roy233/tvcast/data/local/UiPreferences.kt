@@ -27,10 +27,19 @@ class UiPreferences(context: Context) {
             prefs.edit().putBoolean(KEY_REMEMBER_PLAYBACK_CONTENT, value).apply()
         }
 
+    /** 是否将投屏历史与进度同步到 B 站账号，默认开启。 */
+    var syncPlaybackHistory: Boolean
+        get() = prefs.getBoolean(KEY_SYNC_PLAYBACK_HISTORY, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SYNC_PLAYBACK_HISTORY, value).apply()
+        }
+
     private companion object {
         /** 偏好文件名。 */
         const val PREFS = "ui_prefs"
         /** 是否记忆投屏内容的偏好键。 */
         const val KEY_REMEMBER_PLAYBACK_CONTENT = "remember_playback_content"
+        /** 是否将投屏播放记录同步到 B 站的偏好键。 */
+        const val KEY_SYNC_PLAYBACK_HISTORY = "sync_playback_history"
     }
 }

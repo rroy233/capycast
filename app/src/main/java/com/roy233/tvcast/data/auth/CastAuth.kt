@@ -14,8 +14,8 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
- * Bilibili TV QR login, reimplemented from the reference client's Passport
- * service (`/x/passport-tv-login/qrcode/auth_code` + `/poll`).
+ * Bilibili TV QR login through the Passport service
+ * (`/x/passport-tv-login/qrcode/auth_code` + `/poll`).
  *
  * Why TV login instead of web cookie login: it returns an `access_token`
  * (access_key) which the Moss broadcast channel requires, plus the cookie set
@@ -35,6 +35,9 @@ object CastAuth {
     private const val CHANNEL = "yst"
     /** 请求使用的客户端版本号。 */
     private const val BUILD = "108700"
+    /** 官方 TV 客户端版本号，直播心跳的 build 字段也使用该值。 */
+    val tvBuildNumber: Int
+        get() = BUILD.toInt()
     /** Passport 服务根地址。 */
     private const val PASSPORT = "https://passport.bilibili.com"
     /** 认证请求使用的 User-Agent。 */

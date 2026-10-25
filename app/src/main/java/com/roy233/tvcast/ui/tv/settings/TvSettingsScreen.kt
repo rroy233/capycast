@@ -217,6 +217,13 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                         checked = state.rememberPlaybackContent,
                         onCheckedChange = actions.onSetRememberPlaybackContent,
                     )
+                    SettingsRowDivider()
+                    SettingsToggleRow(
+                        title = "同步播放记录到 B 站",
+                        checked = state.syncPlaybackHistory,
+                        onCheckedChange = actions.onSetSyncPlaybackHistory,
+                    )
+                    SettingsInfoRow("同步内容", "投屏视频历史、播放进度与直播记录")
                 }
                 Spacer(Modifier.height(18.dp))
             }

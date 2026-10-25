@@ -12,15 +12,12 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * The phone's DLNA SetAVTransportURI carries the real video identity inside
- * `<upnp:longDescription>` as an encrypted `_nva_ext_` blob.  The official
- * TV projection plugin decrypts it like this (decompiled from
- * `projection/classes.dex`, class `projection.e1` + `projection.b`):
+ * `<upnp:longDescription>` as an encrypted `_nva_ext_` blob. Its payload
+ * uses the following encoding sequence:
  *
  *   base64url -> AES/CBC/PKCS7 -> raw deflate -> UTF-8 JSON
  *
- * Key and IV are the plugin's default `nva.ext.aes_key`
- * (`1pzhA828t4i.6Oq@`); the value can be overridden by Bilibili's remote
- * config, but every shipped build so far uses this default.
+ * Key and IV use the default `nva.ext.aes_key` value (`1pzhA828t4i.6Oq@`).
  */
 object NvaExtDecoder {
 
