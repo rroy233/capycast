@@ -1,7 +1,6 @@
 package com.roy233.tvcast.platform.dlna
 
 import android.content.Context
-import android.net.wifi.WifiManager
 import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
@@ -9,21 +8,11 @@ import com.roy233.tvcast.R
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
-import java.net.DatagramPacket
-import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.MulticastSocket
-import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.SocketAddress
-import java.net.SocketTimeoutException
-import java.text.SimpleDateFormat
-import java.util.Collections
-import java.util.Date
 import java.util.Locale
-import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.Executors
 import kotlin.concurrent.thread
@@ -81,6 +70,9 @@ class DlnaRenderer(
     /** 保存 DLNA 传输状态和媒体元数据。 */
     /** 线程安全的 DLNA 传输状态。 */
     private val state = DlnaTransportState()
+
+    /** SOAP 动作分发器。 */
+    private val soapDispatcher by lazy { SoapActionDispatcher(state, listener) }
     /** 设备对外使用的 IPv4 地址。 */
     private val ip: String = LogHub.localIp()
     /** HTTP 描述和控制服务端口。 */
@@ -100,7 +92,7 @@ class DlnaRenderer(
     /** HTTP 服务实例。 */
     private var http: HttpServer? = null
     /** SSDP 服务实例。 */
-    private var ssdp: SsdpServer? = null
+    private var ssdp: SsdpDiscoveryService? = null
     /** SSDP 保活线程。 */
     private var keepAlive: Thread? = null
 
@@ -120,7 +112,7 @@ class DlnaRenderer(
             return
         }
         try {
-            ssdp = SsdpServer().also { it.start() }
+            ssdp = SsdpDiscoveryService(context, udn, ip, descriptionUrl).also { it.start() }
         } catch (t: Throwable) {
             LogHub.e(TAG, "ssdp start failed: ${t.message}", t)
         }
@@ -393,7 +385,7 @@ class DlnaRenderer(
                 append("name: ").append(deviceName).append('\n')
                 append("udn: uuid:").append(udn).append('\n')
                 append("description: ").append(descriptionUrl).append('\n')
-                append("transport: ").append(transportState()).append('\n')
+                append("transport: ").append(state.transport).append('\n')
                 append("title: ").append(state.title).append('\n')
                 append("</pre></body></html>")
             }
@@ -413,7 +405,7 @@ class DlnaRenderer(
             return response(200, "OK", "text/plain", ByteArray(0))
         }
         val req = try {
-            SoapRequestParser.parse(body, headers["soapaction"], ::serviceFor)
+            SoapRequestParser.parse(body, headers["soapaction"], soapDispatcher::serviceFor)
         } catch (t: Throwable) {
             LogHub.e(TAG, "SOAP parse failed: ${t.message}", t)
             return response(400, "Bad Request", "text/plain", "bad soap")
@@ -422,244 +414,14 @@ class DlnaRenderer(
             dispatch(req)
         } catch (t: Throwable) {
             LogHub.e(TAG, "SOAP dispatch ${req.action} failed: ${t.message}", t)
-            soapFault(req.service, 501, "Action Failed")
+            soapDispatcher.fault(req.service, 501, "Action Failed")
         }
         return response(200, "OK", "text/xml; charset=\"utf-8\"", result)
     }
 
-    // ------------------------------------------------------------------ //
-    // SOAP
-    // ------------------------------------------------------------------ //
-    /** 分发 SOAP 动作并构造对应响应。 */
-    private fun dispatch(req: SoapRequest): ByteArray {
-        val s = state
-        return when (req.action) {
-            "SetAVTransportURI" -> {
-                val uri = req.args["CurrentURI"].orEmpty()
-                val meta = req.args["CurrentURIMetaData"].orEmpty()
-                val title = DlnaXml.extractTitle(meta)
-                val longDesc = DlnaXml.extractLongDescription(meta)
-                s.uri = uri
-                s.metadata = meta
-                s.title = title
-                s.durationMs = DlnaTime.parseDidlDuration(meta)
-                s.transport = "TRANSITIONING"
-                LogHub.i(
-                    TAG,
-                    "SetAVTransportURI title=${title.take(80)} " +
-                        "uri=${LogRedaction.url(uri)} metadata=${meta.length}B " +
-                        "longDescription=${longDesc.length}B duration=${s.durationMs}ms",
-                )
-                if (longDesc.isBlank()) {
-                    LogHub.w(TAG, "SetAVTransportURI has no longDescription; cast identity missing")
-                }
-                runCatching { listener.onCast(uri, meta, title, longDesc) }
-                    .onFailure { LogHub.e(TAG, "onCast failed", it, stack = true) }
-                soapOk(req.service, req.action)
-            }
-            "Play" -> {
-                s.transport = "PLAYING"
-                LogHub.i(TAG, "Play command transport=${s.transport} title=${s.title.take(60)}")
-                runCatching { listener.onPlay() }
-                    .onFailure { LogHub.e(TAG, "onPlay failed", it, stack = true) }
-                soapOk(req.service, req.action)
-            }
-            "Pause" -> {
-                s.transport = "PAUSED_PLAYBACK"
-                LogHub.i(TAG, "Pause command transport=${s.transport}")
-                runCatching { listener.onPause() }
-                    .onFailure { LogHub.e(TAG, "onPause failed", it, stack = true) }
-                soapOk(req.service, req.action)
-            }
-            "Stop" -> {
-                s.transport = "STOPPED"
-                LogHub.i(TAG, "Stop command transport=${s.transport}")
-                runCatching { listener.onStop() }
-                    .onFailure { LogHub.e(TAG, "onStop failed", it, stack = true) }
-                soapOk(req.service, req.action)
-            }
-            "Seek" -> {
-                if (!runCatching { listener.isSeekable() }.getOrDefault(false)) {
-                    LogHub.w(TAG, "Seek rejected: current media is not seekable")
-                    return soapFault(req.service, 710, "Seek mode is not supported")
-                }
-                val target = req.args["Target"].orEmpty()
-                val ms = DlnaTime.parse(target)
-                LogHub.i(TAG, "Seek $target -> ${ms}ms")
-                runCatching { listener.onSeek(ms) }
-                    .onFailure { LogHub.e(TAG, "onSeek failed", it, stack = true) }
-                soapOk(req.service, req.action)
-            }
-            "GetTransportInfo" -> soapOk(
-                req.service, req.action,
-                listOf(
-                    "CurrentTransportState" to transportState(),
-                    "CurrentTransportStatus" to "OK",
-                    "CurrentSpeed" to "1",
-                )
-            )
-            "GetPositionInfo" -> {
-                val pos = positionMs()
-                val dur = durationMs()
-                soapOk(
-                    req.service, req.action,
-                    listOf(
-                        "Track" to "1",
-                        "TrackDuration" to DlnaTime.format(dur),
-                        "TrackMetaData" to s.metadata,
-                        "TrackURI" to s.uri,
-                        "RelTime" to DlnaTime.format(pos),
-                        "AbsTime" to DlnaTime.format(pos),
-                        "RelCount" to "2147483647",
-                        "AbsCount" to "2147483647",
-                    )
-                )
-            }
-            "GetMediaInfo" -> soapOk(
-                req.service, req.action,
-                listOf(
-                    "NrTracks" to if (s.uri.isEmpty()) "0" else "1",
-                    "MediaDuration" to DlnaTime.format(durationMs()),
-                    "CurrentURI" to s.uri,
-                    "CurrentURIMetaData" to s.metadata,
-                    "NextURI" to "",
-                    "NextURIMetaData" to "",
-                    "PlayMedium" to "NETWORK",
-                    "RecordMedium" to "NOT_IMPLEMENTED",
-                    "WriteStatus" to "NOT_IMPLEMENTED",
-                )
-            )
-            "GetTransportSettings" -> soapOk(
-                req.service, req.action,
-                listOf("PlayMode" to "NORMAL", "RecQualityMode" to "NOT_IMPLEMENTED")
-            )
-            "GetDeviceCapabilities" -> soapOk(
-                req.service, req.action,
-                listOf(
-                    "PlayMedia" to "NETWORK",
-                    "RecMedia" to "NOT_IMPLEMENTED",
-                    "RecQualityModes" to "NOT_IMPLEMENTED",
-                )
-            )
-            "GetCurrentTransportActions" -> soapOk(
-                req.service,
-                req.action,
-                listOf(
-                    "Actions" to if (runCatching { listener.isSeekable() }.getOrDefault(false)) {
-                        "Play,Pause,Stop,Seek"
-                    } else {
-                        "Play,Pause,Stop"
-                    },
-                ),
-            )
-            "SetPlayMode", "Next", "Previous" -> soapOk(req.service, req.action)
-            "GetVolume" -> soapOk(
-                req.service, req.action,
-                listOf("CurrentVolume" to volume().toString())
-            )
-            "SetVolume" -> {
-                val v = req.args["DesiredVolume"]?.toIntOrNull()?.coerceIn(0, 100) ?: 50
-                s.volume = v
-                LogHub.i(TAG, "SetVolume command value=$v")
-                runCatching { listener.onSetVolume(v) }
-                    .onFailure { LogHub.e(TAG, "onSetVolume failed", it, stack = true) }
-                soapOk(req.service, req.action)
-            }
-            "GetMute" -> soapOk(
-                req.service, req.action,
-                listOf("CurrentMute" to if (s.mute) "1" else "0")
-            )
-            "SetMute" -> {
-                s.mute = req.args["DesiredMute"] in listOf("1", "true", "True")
-                soapOk(req.service, req.action)
-            }
-            "GetVolumeDB" -> soapOk(req.service, req.action, listOf("CurrentVolume" to "0"))
-            "GetVolumeDBRange" -> soapOk(
-                req.service, req.action,
-                listOf("MinValue" to "-32767", "MaxValue" to "32767")
-            )
-            "ListPresets" -> soapOk(
-                req.service, req.action,
-                listOf("CurrentPresetNameList" to "FactoryDefaults")
-            )
-            "SelectPreset" -> soapOk(req.service, req.action)
-            "GetProtocolInfo" -> soapOk(
-                req.service, req.action,
-                listOf(
-                    "Source" to "",
-                    "Sink" to "http-get:*:video/mp4:*,http-get:*:video/x-matroska:*," +
-                        "http-get:*:application/vnd.apple.mpegurl:*," +
-                        "http-get:*:application/dash+xml:*," +
-                        "http-get:*:audio/mp4:*,http-get:*:audio/mpeg:*",
-                )
-            )
-            "GetCurrentConnectionIDs" -> soapOk(
-                req.service, req.action, listOf("ConnectionIDs" to "0")
-            )
-            "GetCurrentConnectionInfo" -> soapOk(
-                req.service, req.action,
-                listOf(
-                    "RcsID" to "0",
-                    "AVTransportID" to "0",
-                    "ProtocolInfo" to "",
-                    "PeerConnectionManager" to "",
-                    "PeerConnectionID" to "-1",
-                    "Direction" to "Input",
-                    "Status" to "OK",
-                )
-            )
-            else -> {
-                LogHub.i(TAG, "unhandled SOAP action=${req.action}; replying empty")
-                soapOk(req.service, req.action)
-            }
-        }
-    }
+    /** 分发 SOAP 动作并构造响应。 */
+    private fun dispatch(req: SoapRequest): ByteArray = soapDispatcher.dispatch(req)
 
-    /** 根据 SOAP 动作选择对应的 UPnP 服务。 */
-    private fun serviceFor(action: String): String = when (action) {
-        "GetVolume", "SetVolume", "GetMute", "SetMute", "GetVolumeDB",
-        "GetVolumeDBRange", "ListPresets", "SelectPreset" -> RCS
-        "GetProtocolInfo", "GetCurrentConnectionIDs", "GetCurrentConnectionInfo" -> CMS
-        else -> AVT
-    }
-
-    /** 构造成功的 SOAP 动作响应。 */
-    private fun soapOk(
-        service: String,
-        action: String,
-        args: List<Pair<String, String>> = emptyList(),
-    ): ByteArray {
-        val body = args.joinToString("") { (k, v) ->
-            "<$k>${DlnaXml.escape(v)}</$k>"
-        }
-        val inner = "<u:${action}Response xmlns:u=\"${DlnaXml.escape(service)}\">$body</u:${action}Response>"
-        return soapEnvelope(inner)
-    }
-
-    /** 构造 SOAP 错误响应。 */
-    private fun soapFault(service: String, code: Int, description: String): ByteArray {
-        val inner = "<s:Fault><faultcode>s:Client</faultcode>" +
-            "<faultstring>UPnPError</faultstring><detail>" +
-            "<UPnPError xmlns=\"urn:schemas-upnp-org:control-1-0\">" +
-            "<errorCode>$code</errorCode>" +
-            "<errorDescription>${DlnaXml.escape(description)}</errorDescription>" +
-            "</UPnPError></detail></s:Fault>"
-        return soapEnvelope(inner)
-    }
-
-    /** 将 SOAP 内容包装为完整 SOAP 信封。 */
-    private fun soapEnvelope(inner: String): ByteArray {
-        val xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
-            "<s:Envelope xmlns:s=\"$SOAP_ENV\" " +
-            "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">" +
-            "<s:Body>$inner</s:Body></s:Envelope>"
-        return xml.toByteArray(Charsets.UTF_8)
-    }
-
-    // ------------------------------------------------------------------ //
-    // description / helpers
-    // ------------------------------------------------------------------ //
-    /** 生成设备描述 XML 文档。 */
     private fun descriptionXml(): ByteArray {
         val svc = listOf(
             Triple(AVT, "urn:upnp-org:serviceId:AVTransport", "avt"),
@@ -734,201 +496,6 @@ $svc
         val v = UUID.randomUUID().toString()
         sp.edit().putString("udn", v).apply()
         return v
-    }
-
-    // ------------------------------------------------------------------ //
-    // SSDP
-    // ------------------------------------------------------------------ //
-    /** 负责 SSDP 组播发现和设备广播的内部服务。 */
-    private inner class SsdpServer {
-        /** SSDP 组播套接字。 */
-        private val socket = MulticastSocket(null as SocketAddress?).apply {
-            reuseAddress = true
-            bind(InetSocketAddress(SSDP_PORT))
-            timeToLive = 2
-        }
-        /** 用于加入组播的网络接口。 */
-        private val iface: NetworkInterface? = findInterface()
-        /** Android Wi-Fi 组播锁。 */
-        private val multicastLock: WifiManager.MulticastLock? = acquireMulticastLock()
-        /** SSDP 服务是否继续运行。 */
-        @Volatile
-        private var alive = true
-        /** SSDP 接收线程。 */
-        private var thread: Thread? = null
-
-        /** 加入组播组并启动 SSDP 接收线程。 */
-        fun start() {
-            try {
-                if (iface != null) {
-                    socket.joinGroup(InetSocketAddress(SSDP_GROUP, SSDP_PORT), iface)
-                    socket.networkInterface = iface
-                } else {
-                    socket.joinGroup(SSDP_GROUP)
-                }
-            } catch (t: Throwable) {
-                LogHub.e(TAG, "ssdp join failed: ${t.message}", t)
-            }
-            socket.soTimeout = 1000
-            thread = thread(name = "dlna-ssdp", isDaemon = true) { loop() }
-            notify("ssdp:alive")
-        }
-
-        /** 停止 SSDP 服务并释放组播资源。 */
-        fun stop() {
-            alive = false
-            runCatching { socket.close() }
-            runCatching { multicastLock?.release() }
-        }
-
-        /** 循环接收并处理 SSDP 数据报。 */
-        private fun loop() {
-            val buf = ByteArray(8192)
-            while (alive) {
-                val packet = DatagramPacket(buf, buf.size)
-                try {
-                    socket.receive(packet)
-                } catch (_: SocketTimeoutException) {
-                    continue
-                } catch (t: Throwable) {
-                    if (alive) LogHub.e(TAG, "ssdp receive failed: ${t.message}", t)
-                    break
-                }
-                val text = String(packet.data, 0, packet.length, Charsets.UTF_8)
-                if (text.startsWith("M-SEARCH", ignoreCase = true)) {
-                    runCatching { handleMSearch(text, packet) }
-                        .onFailure { LogHub.e(TAG, "ssdp m-search failed: ${it.message}", it) }
-                }
-            }
-        }
-
-        /** 响应一个 SSDP M-SEARCH 请求。 */
-        private fun handleMSearch(text: String, packet: DatagramPacket) {
-            val headers = parseHeaders(text)
-            val st = headers["st"] ?: "ssdp:all"
-            LogHub.i(TAG, "M-SEARCH from ${packet.address?.hostAddress} ST=$st")
-            val targets = when {
-                st == "ssdp:all" -> listOf(
-                    "upnp:rootdevice",
-                    "uuid:$udn",
-                    MEDIA_RENDERER,
-                    AVT,
-                    RCS,
-                    CMS,
-                    DLNA_DEVICE,
-                )
-                st == "upnp:rootdevice" -> listOf("upnp:rootdevice")
-                st == "uuid:$udn" -> listOf("uuid:$udn")
-                st.startsWith("uuid:", ignoreCase = true) -> emptyList()
-                else -> listOf(st)
-            }
-            for (target in targets) {
-                val usn = if (target == "uuid:$udn") target else "uuid:$udn::$target"
-                val resp = "HTTP/1.1 200 OK\r\n" +
-                    "CACHE-CONTROL: max-age=1800\r\n" +
-                    "DATE: ${httpDate()}\r\n" +
-                    "EXT:\r\n" +
-                    "LOCATION: $descriptionUrl\r\n" +
-                    "SERVER: $SERVER\r\n" +
-                    "ST: $target\r\n" +
-                    "USN: $usn\r\n" +
-                    "BOOTID.UPNP.ORG: 1\r\n" +
-                    "CONFIGID.UPNP.ORG: 1\r\n" +
-                    "\r\n"
-                val bytes = resp.toByteArray(Charsets.UTF_8)
-                runCatching {
-                    socket.send(
-                        DatagramPacket(bytes, bytes.size, packet.address, packet.port)
-                    )
-                }
-            }
-        }
-
-        /** 向 SSDP 组播地址发送设备状态通知。 */
-        fun notify(nts: String) {
-            val targets = listOf(
-                "upnp:rootdevice" to "uuid:$udn::upnp:rootdevice",
-                "uuid:$udn" to "uuid:$udn",
-                MEDIA_RENDERER to "uuid:$udn::$MEDIA_RENDERER",
-                AVT to "uuid:$udn::$AVT",
-                RCS to "uuid:$udn::$RCS",
-                CMS to "uuid:$udn::$CMS",
-                DLNA_DEVICE to "uuid:$udn::$DLNA_DEVICE",
-            )
-            for ((nt, usn) in targets) {
-                val msg = "NOTIFY * HTTP/1.1\r\n" +
-                    "HOST: $SSDP_ADDR:$SSDP_PORT\r\n" +
-                    "CACHE-CONTROL: max-age=1800\r\n" +
-                    "LOCATION: $descriptionUrl\r\n" +
-                    "NT: $nt\r\n" +
-                    "NTS: $nts\r\n" +
-                    "SERVER: $SERVER\r\n" +
-                    "USN: $usn\r\n" +
-                    "BOOTID.UPNP.ORG: 1\r\n" +
-                    "CONFIGID.UPNP.ORG: 1\r\n" +
-                    "\r\n"
-                val bytes = msg.toByteArray(Charsets.UTF_8)
-                runCatching {
-                    socket.send(
-                        DatagramPacket(bytes, bytes.size, SSDP_GROUP, SSDP_PORT)
-                    )
-                }
-            }
-        }
-
-        /** 解析 SSDP 文本头。 */
-        private fun parseHeaders(text: String): Map<String, String> {
-            val map = mutableMapOf<String, String>()
-            for (line in text.split("\r\n").drop(1)) {
-                val idx = line.indexOf(':')
-                if (idx > 0) {
-                    map[line.substring(0, idx).trim().lowercase(Locale.US)] =
-                        line.substring(idx + 1).trim()
-                }
-            }
-            return map
-        }
-
-        /** 生成 GMT 格式的 HTTP 日期。 */
-        private fun httpDate(): String {
-            val fmt = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US)
-            fmt.timeZone = TimeZone.getTimeZone("GMT")
-            return fmt.format(Date())
-        }
-
-        /** 查找用于 SSDP 通信的网络接口。 */
-        private fun findInterface(): NetworkInterface? = try {
-            val addr = InetAddress.getByName(ip)
-            NetworkInterface.getByInetAddress(addr) ?: run {
-                var found: NetworkInterface? = null
-                for (n in Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                    if (!n.isUp || n.isLoopback) continue
-                    for (a in Collections.list(n.inetAddresses)) {
-                        if (a is Inet4Address && !a.isLoopbackAddress) {
-                            found = n
-                            break
-                        }
-                    }
-                    if (found != null) break
-                }
-                found
-            }
-        } catch (_: Throwable) {
-            null
-        }
-
-        /** 获取 Wi-Fi 组播锁。 */
-        private fun acquireMulticastLock(): WifiManager.MulticastLock? = try {
-            val wifi = context.applicationContext
-                .getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            wifi?.createMulticastLock("simplebilicast-dlna")?.apply {
-                setReferenceCounted(false)
-                acquire()
-            }
-        } catch (t: Throwable) {
-            LogHub.e(TAG, "multicast lock failed: ${t.message}", t)
-            null
-        }
     }
 
     private companion object {
