@@ -362,46 +362,6 @@ img { max-width: 100%; }
   justify-content: flex-end;
   height: 0;
 }
-.faq-list [data-radix-accordion-item] {
-  border-bottom: 1px solid var(--line);
-}
-.faq-list .faq-header {
-  margin: 0;
-  font: inherit;
-}
-.faq-list .faq-trigger {
-  position: relative;
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 19px 2px;
-  border: 0;
-  color: #34425f;
-  background: transparent;
-  text-align: left;
-  font-size: 13px;
-  font-weight: 650;
-  cursor: pointer;
-}
-.faq-list .faq-trigger > span:first-child { flex: 1; }
-.faq-list .faq-trigger:focus-visible { outline: 3px solid rgba(78, 141, 255, .45); outline-offset: 2px; }
-.faq-list .faq-answer { overflow: hidden; }
-.faq-list .faq-answer > div { min-width: 0; }
-.faq-list .faq-answer p {
-  max-width: 650px;
-  margin: -2px 34px 19px 2px;
-  color: #8491a8;
-  font-size: 12px;
-  line-height: 1.9;
-}
-.faq-list [data-state="open"] .faq-plus::after {
-  transform: translate(-50%,-50%) rotate(0deg);
-}
-.faq-list [data-state="closed"] .faq-plus::after {
-  transform: translate(-50%,-50%) rotate(90deg);
-}
 
 /* Available for future small tab groups; unused on the current landing page. */
 .ui-tabs-list {
@@ -431,7 +391,6 @@ img { max-width: 100%; }
 }
 .ui-tabs-content:focus-visible { outline: 3px solid rgba(78, 141, 255, .45); outline-offset: 3px; }
 @media (max-width: 560px) {
-  .faq-list .faq-trigger { font-size: 12px; }
 }
 /* Download dialog: opened from the download buttons so the user picks a source in place. */.badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; font-size: 10px; font-weight: 650; line-height: 1; white-space: nowrap; }
 .badge-default { color: #3979ec; background: rgba(78, 141, 255, .13); }

@@ -7,6 +7,9 @@ const DEFAULT_TRAVEL_DISTANCE = 960;
 const CARD_DURATIONS = [18, 21, 20, 23, 19];
 const CARD_DELAYS = [-2, -7, -11, -15, -18];
 const VERTICAL_JITTER_PX = 8;
+/** 首帧使用固定的垂直偏移：预渲染的 HTML 与首次客户端渲染必须一致，
+ *  之后每次动画循环仍会重新随机。 */
+const INITIAL_JITTER_PX = [-3, 5, -6, 4, -2];
 
 function randomJitter() {
   return Math.round((Math.random() * 2 - 1) * VERTICAL_JITTER_PX);
@@ -22,7 +25,7 @@ interface SellingPointCardProps {
 function SellingPointCard({ item, index, travelDistance, isCoveredByPhone }: SellingPointCardProps) {
   const cardRef = useRef<HTMLElement>(null);
   const isPausedRef = useRef(false);
-  const [verticalJitter, setVerticalJitter] = useState(randomJitter);
+  const [verticalJitter, setVerticalJitter] = useState(() => INITIAL_JITTER_PX[index] ?? 0);
 
   const setPaused = (paused: boolean) => {
     if (isPausedRef.current === paused) return;
