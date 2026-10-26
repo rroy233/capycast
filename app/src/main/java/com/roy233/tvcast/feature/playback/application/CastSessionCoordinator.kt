@@ -12,6 +12,7 @@ import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.data.bili.PgcPlaybackException
 import com.roy233.tvcast.data.bili.PgcPlaybackResolver
 import com.roy233.tvcast.data.bili.RankedLiveSource
+import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
 import com.roy233.tvcast.feature.playback.model.CastResolution
 import com.roy233.tvcast.feature.playback.model.VodSession
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
@@ -498,8 +499,8 @@ class CastSessionCoordinator(
                 durationMs = if (info.isLive) 0L else info.durationSec * 1000,
                 selectedQn = info.video.id,
                 selectedAudioId = info.audio?.id ?: 0,
-                tracks = TrackOptionMapper.tracks(info),
-                audios = TrackOptionMapper.audios(info),
+                tracks = TrackOptionMapper.tracks(BiliPlaybackMapper.map(info)),
+                audios = TrackOptionMapper.audios(BiliPlaybackMapper.map(info)),
                 hudVisible = true,
                 panel = null,
                 error = null,

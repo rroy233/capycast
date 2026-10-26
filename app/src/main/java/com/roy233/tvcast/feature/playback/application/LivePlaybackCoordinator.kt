@@ -9,14 +9,14 @@ import com.roy233.tvcast.data.auth.CastAuth
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.LiveCdnCoordinator
 import com.roy233.tvcast.data.bili.LivePlayInfo
-import com.roy233.tvcast.data.bili.LivePlaybackHealth
-import com.roy233.tvcast.data.bili.LivePlaybackStallWatchdog
 import com.roy233.tvcast.data.bili.LivePlayUrlResolver
 import com.roy233.tvcast.data.bili.LiveStreamCandidate
 import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.data.bili.RankedLiveSource
 import com.roy233.tvcast.feature.playback.model.LiveSession
 import com.roy233.tvcast.feature.playback.model.PendingLiveRouteSwitch
+import com.roy233.tvcast.feature.playback.domain.LivePlaybackHealth
+import com.roy233.tvcast.feature.playback.domain.LivePlaybackStallWatchdog
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
 import com.roy233.tvcast.ui.model.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
