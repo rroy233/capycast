@@ -37,24 +37,39 @@ jobs:
         working-directory: web
         run: bun install --frozen-lockfile
 
-      - name: Resolve deployment base path
-        id: base
+      - name: Resolve deployment URLs
+        id: site
         env:
           REPOSITORY_NAME: ${{ github.event.repository.name }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
+          SITE_URL_OVERRIDE: ${{ vars.SITE_URL }}
         run: |
           set -euo pipefail
           # 用户站点 <owner>.github.io 部署在根路径，其余项目站点部署在 /<仓库名>/ 下。
           if [ "$REPOSITORY_NAME" = "$REPOSITORY_OWNER.github.io" ]; then
-            echo "path=/" >> "$GITHUB_OUTPUT"
+            base_path="/"
           else
-            echo "path=/$REPOSITORY_NAME/" >> "$GITHUB_OUTPUT"
+            base_path="/$REPOSITORY_NAME/"
           fi
+          # 绑定自有域名时，把 SITE_URL 变量设为 https://example.com，无需改本文件。
+          if [ -n "$SITE_URL_OVERRIDE" ]; then
+            site_url="$SITE_URL_OVERRIDE"
+          else
+            site_url="https://$REPOSITORY_OWNER.github.io$base_path"
+          fi
+          case "$site_url" in
+            */) ;;
+            *) site_url="$site_url/" ;;
+          esac
+          echo "base_path=$base_path" >> "$GITHUB_OUTPUT"
+          echo "site_url=$site_url" >> "$GITHUB_OUTPUT"
+          echo "base=$base_path site=$site_url"
 
       - name: Build website
         working-directory: web
         env:
-          VITE_BASE_PATH: ${{ steps.base.outputs.path }}
+          VITE_BASE_PATH: ${{ steps.site.outputs.base_path }}
+          VITE_SITE_URL: ${{ steps.site.outputs.site_url }}
         run: bun run build
 
       - name: Upload Pages artifact
