@@ -6,6 +6,52 @@ export const siteLinks = {
   issues: "https://github.com/rroy233/capycast/issues/new/choose",
 } as const;
 
+/**
+ * 最新版本信息的来源，与 App 内更新器使用同一个版本服务。
+ *
+ * 一次请求返回对应通道的 GitHub Release 数据（标签、附件地址、Markdown 更新日志）。
+ * 该服务已开启跨域，境内网络无需访问 api.github.com。
+ */
+export const releaseService = {
+  baseUrl: "https://api.roy233.com",
+  appId: "capycast",
+} as const;
+
+/**
+ * 下载弹窗中展示的下载源，数组顺序即展示顺序。
+ *
+ * 网络检测完成后只会标记推荐项，不会重排列表，避免弹窗内容跳动。
+ * `proxyPrefix` 为 null 表示直连 GitHub，其余下载源在附件地址前拼接代理前缀。
+ */
+export const downloadSourceItems = [
+  {
+    id: "official",
+    title: "GitHub 官方发布",
+    description: "直连 github.com，海外网络通常最快",
+    icon: "github",
+    iconClass: "icon-blue",
+    proxyPrefix: null,
+  },
+  {
+    id: "gh-proxy",
+    title: "加速镜像 gh-proxy",
+    description: "经 v4.gh-proxy.org 转发，境内网络更稳定",
+    icon: "bolt",
+    iconClass: "icon-violet",
+    proxyPrefix: "https://v4.gh-proxy.org/",
+  },
+  {
+    id: "ghfast",
+    title: "加速镜像 ghfast",
+    description: "经 ghfast.top 转发，作为备用线路",
+    icon: "globe",
+    iconClass: "icon-teal",
+    proxyPrefix: "https://ghfast.top/",
+  },
+] as const;
+
+export type DownloadSource = (typeof downloadSourceItems)[number];
+
 export const navigationItems = [
   { label: "首页", href: "#top", sectionId: "top" },
   { label: "功能", href: "#features", sectionId: "features" },
@@ -118,13 +164,6 @@ export const setupSteps = [
     title: "在 B站 App 点击投屏",
     description: "打开视频，点击「投屏」，选择电视画面上显示的设备名称。",
   },
-] as const;
-
-export const supportedPlatforms = [
-  "Android TV",
-  "Google TV",
-  "Android 电视盒子",
-  "Android 5.0+",
 ] as const;
 
 export const faqItems = [

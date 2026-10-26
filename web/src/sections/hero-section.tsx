@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { DownloadIcon, GithubIcon } from "@/components/icons";
+import { DownloadButton } from "@/components/download-button";
+import { GithubIcon } from "@/components/icons";
 import { HeroSellingPoints } from "@/components/hero-selling-points";
 import { siteLinks } from "@/data/site-data";
 
@@ -18,13 +19,7 @@ export function HeroSection() {
           在共用电视上使用自己的大会员，也能保护账号隐私。支持账号权益内的高画质和音轨，自动优选官方 CDN，减少播放卡顿。
         </p>
         <div className="hero-actions">
-          <Button asChild variant="primary">
-            <a href={siteLinks.latestRelease} target="_blank" rel="noreferrer">
-              <DownloadIcon />
-              下载正式版
-              <span className="button-arrow" aria-hidden="true">↗</span>
-            </a>
-          </Button>
+          <DownloadButton />
           <Button asChild variant="quiet">
             <a href={siteLinks.repository} target="_blank" rel="noreferrer">
               <GithubIcon className="github-icon" />

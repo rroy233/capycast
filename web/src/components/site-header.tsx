@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { GithubIcon } from "@/components/icons";
 import { ProductImage } from "@/components/product-image";
 import { navigationItems, siteLinks } from "@/data/site-data";
@@ -61,11 +60,6 @@ export function SiteHeader({ activeSection }: SiteHeaderProps) {
             <GithubIcon />
             <span>GitHub</span>
           </a>
-          <Button asChild variant="primary" size="small">
-            <a href="#download">
-              下载 <span aria-hidden="true">↓</span>
-            </a>
-          </Button>
         </div>
 
         <button

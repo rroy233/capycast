@@ -25,9 +25,10 @@ const DialogContent = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
+    {/* 具体尺寸与外观由调用方通过 className 提供：截图灯箱传 `lightbox`，下载弹窗传 `download-dialog`。 */}
     <DialogPrimitive.Content
       ref={ref}
-      className={cn("lightbox", className)}
+      className={cn(className)}
       {...props}
     >
       {children}
