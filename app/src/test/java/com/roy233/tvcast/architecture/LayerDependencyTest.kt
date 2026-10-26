@@ -10,11 +10,21 @@ class LayerDependencyTest {
     private val root = File("src/main/java/com/roy233/tvcast")
 
     @Test
-    fun `data layer does not depend on ui or feature packages`() {
-        assertNoImports(
-            packageDir = "data",
-            forbidden = listOf("com.roy233.tvcast.ui", "com.roy233.tvcast.feature"),
-        )
+    fun `data layer depends only on routing contracts and playback models`() {
+        val offenders = File(root, "data").walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .flatMap { file ->
+                file.readLines()
+                    .filter { it.startsWith("import ") && it.contains("com.roy233.tvcast.feature") }
+                    .filterNot { line ->
+                        line.contains("com.roy233.tvcast.feature.playback.model") ||
+                            line.contains("com.roy233.tvcast.feature.playback.routing")
+                    }
+                    .map { "${file.relativeTo(root).path}: $it" }
+            }
+            .toList()
+        assertTrue("unexpected data-to-feature imports: $offenders", offenders.isEmpty())
+        assertNoImports(packageDir = "data", forbidden = listOf("com.roy233.tvcast.ui"))
     }
 
     @Test

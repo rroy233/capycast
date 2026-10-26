@@ -3,9 +3,10 @@ package com.roy233.tvcast.feature.playback.application
 import android.content.Context
 import com.roy233.tvcast.data.auth.CastAuth
 import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.bili.LivePlayInfo
 import com.roy233.tvcast.data.bili.NvaExtDecoder
-import com.roy233.tvcast.data.bili.RankedLiveSource
+import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.feature.playback.model.LivePlayInfo
+import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.ui.model.PlaybackUiState
 import com.roy233.tvcast.ui.model.TvMode
 import kotlinx.coroutines.CoroutineScope
@@ -88,10 +89,10 @@ class CastSessionCoordinatorTest {
 
         override fun setResolveJob(job: Job) = Unit
 
-        override fun currentInfo(): BiliApi.PlayInfo? = null
+        override fun currentRequest(): PlaybackRequest? = null
 
-        override fun setCurrentForCast(info: BiliApi.PlayInfo?) {
-            if (info == null) events += "clear-current"
+        override fun setCurrentForCast(request: PlaybackRequest?) {
+            if (request == null) events += "clear-current"
         }
 
         override fun setCastActive(active: Boolean) {
@@ -121,7 +122,7 @@ class CastSessionCoordinatorTest {
             error = ErrorReport(title, message, code, canRetry, keepVideo)
         }
 
-        override fun addRecentRecord(info: BiliApi.PlayInfo) = Unit
+        override fun addRecentRecord(request: PlaybackRequest) = Unit
 
         override fun newHistorySession() {
             events += "new-history"
@@ -153,9 +154,9 @@ class CastSessionCoordinatorTest {
 
         override fun setPendingSeekMs(positionMs: Long) = Unit
 
-        override fun describeContent(info: BiliApi.PlayInfo): String = ""
+        override fun describeContent(request: PlaybackRequest): String = ""
 
-        override fun startPlaybackBackend(info: BiliApi.PlayInfo, seekToMs: Long): Boolean = false
+        override fun startPlaybackBackend(request: PlaybackRequest, seekToMs: Long): Boolean = false
 
         override fun onDanmakuClose() = Unit
 
@@ -171,7 +172,19 @@ class CastSessionCoordinatorTest {
 
         override fun onDanmakuLayout() = Unit
 
-        override fun applyPlaybackRate(info: BiliApi.PlayInfo) = Unit
+        override fun applyPlaybackRate(request: PlaybackRequest) = Unit
+
+        override suspend fun resolveLivePlayback(accessKey: String, roomId: Long): LivePlayInfo =
+            error("unused in this test")
+
+        override suspend fun resolveVodPlayback(
+            aid: Long,
+            cid: Long,
+            bvid: String,
+            title: String,
+            epId: Long,
+            seasonId: Long,
+        ): PlaybackRequest = error("unused in this test")
 
         override fun applyPendingPause() = Unit
 

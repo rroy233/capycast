@@ -2,6 +2,11 @@ package com.roy233.tvcast.data.bili
 
 import com.roy233.tvcast.feature.playback.domain.LivePlaybackHealth
 import com.roy233.tvcast.feature.playback.domain.LivePlaybackStallWatchdog
+import com.roy233.tvcast.feature.playback.model.LiveProbeResult
+import com.roy233.tvcast.feature.playback.model.LiveStreamCandidate
+import com.roy233.tvcast.feature.playback.model.RankedLiveSource
+import com.roy233.tvcast.feature.playback.routing.LiveCdnCoordinator
+import com.roy233.tvcast.feature.playback.routing.LiveRouteProbe
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -23,7 +28,7 @@ class LiveCdnCoordinatorTest {
             candidate("https://official-3.bilivideo.com/live.m3u8", "fmp4", 12, 3),
         )
 
-        val preferred = LiveCdnCoordinator { LiveProbeResult(true, 10L, 100L, 100) }
+        val preferred = LiveCdnCoordinator(LiveRouteProbe { LiveProbeResult(true, 10L, 100L, 100) })
             .prefer(routes)
 
         assertEquals("https://official-3.bilivideo.com/live.m3u8", preferred[0].url)
@@ -36,7 +41,7 @@ class LiveCdnCoordinatorTest {
         val active = AtomicInteger(0)
         val maxActive = AtomicInteger(0)
         val probed = mutableListOf<String>()
-        val coordinator = LiveCdnCoordinator { url ->
+        val coordinator = LiveCdnCoordinator(LiveRouteProbe { url ->
             val nowActive = active.incrementAndGet()
             maxActive.updateAndGet { previous -> maxOf(previous, nowActive) }
             synchronized(probed) { probed += url }
@@ -48,7 +53,7 @@ class LiveCdnCoordinatorTest {
                 else -> 30L
             }
             LiveProbeResult(true, latency, 20_000L, 4096)
-        }
+        })
         val routes = (1..4).map { index ->
             candidate("https://cdn-$index.bilivideo.com/live.m3u8", "fmp4", 12, index - 1)
         } + candidate("https://p2.szbdyd.com/live.flv", "flv", 7, 4, pcdn = true)
@@ -70,13 +75,13 @@ class LiveCdnCoordinatorTest {
             candidate("https://avc.bilivideo.com/live.m3u8", "fmp4", 7, 0),
             candidate("https://hevc.bilivideo.com/live.m3u8", "fmp4", 12, 1),
         )
-        val coordinator = LiveCdnCoordinator { url ->
+        val coordinator = LiveCdnCoordinator(LiveRouteProbe { url ->
             if (url.contains("avc")) {
                 LiveProbeResult(true, 10L, 8_000_000L, 4096)
             } else {
                 LiveProbeResult(true, 30L, 2_000_000L, 4096)
             }
-        }
+        })
 
         val ranked = coordinator.rankInitial(routes)
 
@@ -87,10 +92,10 @@ class LiveCdnCoordinatorTest {
     @Test
     fun `PCDN is measured only when there is no official route`() = runBlocking {
         val probed = mutableListOf<String>()
-        val coordinator = LiveCdnCoordinator { url ->
+        val coordinator = LiveCdnCoordinator(LiveRouteProbe { url ->
             synchronized(probed) { probed += url }
             LiveProbeResult(true, 5L, 500L, 100)
-        }
+        })
         val pcNodes = listOf(
             candidate("https://p1.szbdyd.com/live.flv", "flv", 7, 0, pcdn = true),
             candidate("https://p2.szbdyd.com/live.flv", "flv", 7, 1, pcdn = true),
@@ -104,13 +109,13 @@ class LiveCdnCoordinatorTest {
 
     @Test
     fun `PCDN is moved ahead of official routes already proven unavailable`() = runBlocking {
-        val coordinator = LiveCdnCoordinator { url ->
+        val coordinator = LiveCdnCoordinator(LiveRouteProbe { url ->
             if (url.contains("bilivideo.com")) {
                 LiveProbeResult(false, Long.MAX_VALUE, 0L, 0, "HTTP 503")
             } else {
                 LiveProbeResult(true, 10L, 500L, 100)
             }
-        }
+        })
         val routes = listOf(
             candidate("https://official-1.bilivideo.com/live.m3u8", "fmp4", 12, 0),
             candidate("https://official-2.bilivideo.com/live.m3u8", "fmp4", 12, 1),
@@ -126,7 +131,7 @@ class LiveCdnCoordinatorTest {
 
     @Test
     fun `empty source list produces no fallback candidate`() = runBlocking {
-        val coordinator = LiveCdnCoordinator { LiveProbeResult(true, 1L, 1L, 1) }
+        val coordinator = LiveCdnCoordinator(LiveRouteProbe { LiveProbeResult(true, 1L, 1L, 1) })
 
         assertTrue(coordinator.rankInitial(emptyList()).isEmpty())
         assertNull(
@@ -140,7 +145,7 @@ class LiveCdnCoordinatorTest {
 
     @Test
     fun `next source skips attempted URLs and preserves same quality constraint`() {
-        val coordinator = LiveCdnCoordinator { LiveProbeResult(true, 1L, 1L, 1) }
+        val coordinator = LiveCdnCoordinator(LiveRouteProbe { LiveProbeResult(true, 1L, 1L, 1) })
         val first = candidate("https://first.bilivideo.com/live.m3u8", "fmp4", 12, 0)
         val second = candidate("https://second.bilivideo.com/live.m3u8", "fmp4", 12, 1)
         val differentQuality = candidate("https://other.bilivideo.com/live.m3u8", "fmp4", 12, 2)

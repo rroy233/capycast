@@ -1,7 +1,7 @@
 package com.roy233.tvcast.feature.playback.presentation
 
-import com.roy233.tvcast.data.bili.LivePlayInfo
-import com.roy233.tvcast.data.bili.RankedLiveSource
+import com.roy233.tvcast.feature.playback.model.LivePlayInfo
+import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.ui.model.LiveQualityOption
 
 /**

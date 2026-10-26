@@ -5,19 +5,21 @@ import android.os.SystemClock
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
+import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
+import com.roy233.tvcast.core.playback.MediaTrack
+import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.data.auth.CastAuth
-import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.bili.LiveCdnCoordinator
-import com.roy233.tvcast.data.bili.LivePlayInfo
-import com.roy233.tvcast.data.bili.LivePlayUrlResolver
-import com.roy233.tvcast.data.bili.LiveStreamCandidate
 import com.roy233.tvcast.data.bili.NvaExtDecoder
-import com.roy233.tvcast.data.bili.RankedLiveSource
+import com.roy233.tvcast.feature.playback.model.LivePlayInfo
+import com.roy233.tvcast.feature.playback.model.LiveStreamCandidate
+import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.feature.playback.model.LiveSession
 import com.roy233.tvcast.feature.playback.model.PendingLiveRouteSwitch
 import com.roy233.tvcast.feature.playback.domain.LivePlaybackHealth
 import com.roy233.tvcast.feature.playback.domain.LivePlaybackStallWatchdog
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
+import com.roy233.tvcast.feature.playback.routing.LiveCdnCoordinator
+import com.roy233.tvcast.feature.playback.routing.LiveRouteProbe
 import com.roy233.tvcast.ui.model.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,11 +33,11 @@ import kotlinx.coroutines.withContext
 interface LivePlaybackHost {
     fun state(): PlaybackUiState
     fun setState(state: PlaybackUiState)
-    fun currentInfo(): BiliApi.PlayInfo?
-    fun setCurrent(info: BiliApi.PlayInfo)
+    fun currentRequest(): PlaybackRequest?
+    fun setCurrent(request: PlaybackRequest)
     fun isCastActive(): Boolean
     fun isPlaying(): Boolean
-    fun openPlayback(info: BiliApi.PlayInfo, seekToMs: Long): Boolean
+    fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean
     val coroutineScope: CoroutineScope
     fun stateSnapshot(): String
     fun setPendingPause(paused: Boolean)
@@ -48,6 +50,7 @@ interface LivePlaybackHost {
     fun setCastDurationMs(durationMs: Long)
     fun authToken(): CastAuth.Token?
     fun appContext(): Context
+    suspend fun resolveLivePlayback(accessKey: String, roomId: Long, quality: Int, forceAvc: Boolean): LivePlayInfo
 }
 
 /**
@@ -57,6 +60,7 @@ interface LivePlaybackHost {
  */
 class LivePlaybackCoordinator(
     private val playback: LivePlaybackHost,
+    routeProbe: LiveRouteProbe,
 ) {
 
     /** 当前直播会话；为空表示没有进行中的直播。 */
@@ -69,7 +73,7 @@ class LivePlaybackCoordinator(
     var pendingSwitch: PendingLiveRouteSwitch? = null
 
     /** 直播线路测速与排序器。 */
-    val cdn = LiveCdnCoordinator()
+    val cdn = LiveCdnCoordinator(routeProbe)
 
     /** 直播缓冲阈值统计。 */
     val health = LivePlaybackHealth()
@@ -174,26 +178,26 @@ class LivePlaybackCoordinator(
         session: LiveSession,
         candidate: LiveStreamCandidate,
         title: String,
-    ): BiliApi.PlayInfo {
+    ): PlaybackRequest {
         val backups = session.routes.asSequence()
             .map { it.candidate }
             .filter { it.url != candidate.url && it.quality == candidate.quality }
             .map { it.url }
             .distinct()
             .toList()
-        val track = BiliApi.Track(
+        val track = MediaTrack(
             id = candidate.quality,
-            codecid = candidate.codecid,
+            codecId = candidate.codecid,
             width = candidate.width,
             height = candidate.height,
             bandwidth = candidate.bandwidth,
             url = candidate.url,
-            backup = backups,
-            pcdn = candidate.pcdn,
+            backupUrls = backups,
+            isPcdn = candidate.pcdn,
             mimeType = if (candidate.format == "flv") "video/x-flv" else "video/mp4",
             codecs = candidate.codecName,
         )
-        return BiliApi.PlayInfo(
+        return PlaybackRequest(
             title = title.ifBlank { "直播间 ${session.stream.roomId}" },
             bvid = "",
             aid = 0L,
@@ -204,10 +208,21 @@ class LivePlaybackCoordinator(
             progressiveUrl = candidate.url,
             videos = listOf(track),
             audios = emptyList(),
+            cover = "",
             isLive = true,
             liveFormat = candidate.format,
             liveCdn = candidate.cdnLabel,
             liveBackupCount = backups.size,
+            isPgc = false,
+            epId = 0L,
+            seasonId = 0L,
+            hasPaid = false,
+            isDrm = false,
+            isPreview = false,
+            actualQuality = candidate.quality,
+            acceptedQualities = session.stream.acceptedQualities,
+            qualityLabels = emptyMap(),
+            userAgent = DEFAULT_PLAYBACK_USER_AGENT,
         )
     }
 
@@ -249,7 +264,7 @@ class LivePlaybackCoordinator(
                     ).toMutableList()
                 session.routes.add(0, RankedLiveSource(session.active))
                 playback.setCurrent(livePlayInfo(session, session.active, playback.lastTitle()))
-                playback.setState(playback.state().copy(liveBackupCount = playback.currentInfo()?.liveBackupCount ?: 0))
+                playback.setState(playback.state().copy(liveBackupCount = playback.currentRequest()?.liveBackupCount ?: 0))
                 PlaybackDiagnostics.attribute(
                     "live.backupCount",
                     (session.routes.size - 1).coerceAtLeast(0).toString(),
@@ -435,7 +450,7 @@ class LivePlaybackCoordinator(
             resolveFallback(session, session.stream.quality, forceAvc = true, reason = "hevc-fallback:$reason")
             return
         }
-        val lowerQuality = LivePlayUrlResolver.fallbackQualities(
+        val lowerQuality = fallbackQualities(
             currentQuality = session.stream.quality,
             acceptedQualities = session.stream.acceptedQualities,
         ).firstOrNull { it !in session.downshiftedQualities }
@@ -459,20 +474,14 @@ class LivePlaybackCoordinator(
     ) {
         val token = playback.authToken() ?: error("TV login expired during live route fallback")
         val resolved = withContext(Dispatchers.IO) {
-            val live = LivePlayUrlResolver.resolve(
-                context = playback.appContext(),
-                accessKey = token.accessKey,
-                roomId = session.stream.roomId,
-                quality = quality,
-                forceAvc = forceAvc,
-            )
+            val live = playback.resolveLivePlayback(token.accessKey, session.stream.roomId, quality, forceAvc)
             live to cdn.rankInitial(live.qualityCandidates)
         }
         if (activeSession !== session || !playback.isCastActive()) return
         if (resolved.second.isEmpty()) error("live fallback returned no routes")
         val actual = resolved.first
         if (quality < session.stream.quality && actual.quality >= session.stream.quality) {
-            val nextQuality = LivePlayUrlResolver.fallbackQualities(
+            val nextQuality = fallbackQualities(
                 currentQuality = session.stream.quality,
                 acceptedQualities = session.stream.acceptedQualities,
             ).firstOrNull { it !in session.downshiftedQualities }
@@ -596,5 +605,10 @@ class LivePlaybackCoordinator(
         private const val LIVE_STALL_TIMEOUT_MS = 5_000L
         /** 日志标签。 */
         const val TAG = "SimpleBili"
+
+        fun fallbackQualities(currentQuality: Int, acceptedQualities: List<Int>): List<Int> =
+            acceptedQualities.filter { it in 1 until currentQuality }.distinct().sortedDescending().ifEmpty {
+                listOf(10000, 400, 250, 150).filter { it < currentQuality }
+            }
     }
 }

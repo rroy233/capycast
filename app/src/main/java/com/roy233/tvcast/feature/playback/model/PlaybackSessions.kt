@@ -1,11 +1,6 @@
 package com.roy233.tvcast.feature.playback.model
 
-import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.bili.LivePlayInfo
-import com.roy233.tvcast.data.bili.LiveStreamCandidate
-import com.roy233.tvcast.data.bili.RankedLiveSource
-import com.roy233.tvcast.data.bili.RankedVodPlayback
-import com.roy233.tvcast.data.bili.RankedVodRoute
+import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.feature.playback.domain.VodRecoveryController
 
 /** 一次投屏请求解析后的内容类型与播放输入。 */
@@ -38,7 +33,7 @@ data class PendingLiveRouteSwitch(
 
 /** 当前点播线路、测速结果与失败切换状态。 */
 data class VodSession(
-    var info: BiliApi.PlayInfo,
+    var request: PlaybackRequest,
     var videoRoutes: List<RankedVodRoute>,
     var audioRoutes: List<RankedVodRoute>,
     val attemptedUrls: MutableSet<String> = mutableSetOf(),

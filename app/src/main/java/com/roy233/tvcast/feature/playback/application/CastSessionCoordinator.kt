@@ -4,15 +4,12 @@ import android.content.Context
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
+import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.data.auth.CastAuth
-import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.bili.LivePlayInfo
-import com.roy233.tvcast.data.bili.LivePlayUrlResolver
 import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.data.bili.PgcPlaybackException
-import com.roy233.tvcast.data.bili.PgcPlaybackResolver
-import com.roy233.tvcast.data.bili.RankedLiveSource
-import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
+import com.roy233.tvcast.feature.playback.model.LivePlayInfo
+import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.feature.playback.model.CastResolution
 import com.roy233.tvcast.feature.playback.model.VodSession
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
@@ -39,8 +36,8 @@ interface CastSessionHost {
     fun setResolving(resolving: Boolean)
     fun cancelResolve()
     fun setResolveJob(job: Job)
-    fun currentInfo(): BiliApi.PlayInfo?
-    fun setCurrentForCast(info: BiliApi.PlayInfo?)
+    fun currentRequest(): PlaybackRequest?
+    fun setCurrentForCast(request: PlaybackRequest?)
     fun setCastActive(active: Boolean)
     fun lastNva(): NvaExtDecoder.NvaExtContent?
     fun setLastNva(nva: NvaExtDecoder.NvaExtContent?)
@@ -49,7 +46,7 @@ interface CastSessionHost {
     fun clearLoginUi()
     fun setPendingPause(paused: Boolean)
     fun reportError(title: String, message: String, code: String, canRetry: Boolean, keepVideo: Boolean)
-    fun addRecentRecord(info: BiliApi.PlayInfo)
+    fun addRecentRecord(request: PlaybackRequest)
     fun newHistorySession()
     fun endLiveSession(reason: String)
     fun stopPlaybackForCast(reason: String)
@@ -61,8 +58,8 @@ interface CastSessionHost {
     fun isEngineInitialized(): Boolean
     fun updateLiveUrl(url: String)
     fun setPendingSeekMs(positionMs: Long)
-    fun describeContent(info: BiliApi.PlayInfo): String
-    fun startPlaybackBackend(info: BiliApi.PlayInfo, seekToMs: Long): Boolean
+    fun describeContent(request: PlaybackRequest): String
+    fun startPlaybackBackend(request: PlaybackRequest, seekToMs: Long): Boolean
     fun onDanmakuClose()
     fun onLiveDanmakuClose()
     fun onLiveDanmakuOpen(roomId: Long)
@@ -70,7 +67,16 @@ interface CastSessionHost {
     fun onDanmakuPlaybackRate(rate: Float)
     fun onDanmakuSettings()
     fun onDanmakuLayout()
-    fun applyPlaybackRate(info: BiliApi.PlayInfo)
+    fun applyPlaybackRate(request: PlaybackRequest)
+    suspend fun resolveLivePlayback(accessKey: String, roomId: Long): LivePlayInfo
+    suspend fun resolveVodPlayback(
+        aid: Long,
+        cid: Long,
+        bvid: String,
+        title: String,
+        epId: Long = 0L,
+        seasonId: Long = 0L,
+    ): PlaybackRequest
     fun applyPendingPause()
     fun vodSessionCoordinator(): VodPlaybackCoordinator
     fun liveSessionCoordinator(): LivePlaybackCoordinator
@@ -86,9 +92,9 @@ class CastSessionCoordinator(
 ) {
 
     /** 将当前播放信息加入最近投屏记录。 */
-    fun recordRecent(info: BiliApi.PlayInfo) {
+    fun recordRecent(request: PlaybackRequest) {
         if (!playback.state().rememberPlaybackContent) return
-        playback.addRecentRecord(info)
+        playback.addRecentRecord(request)
     }
 
     /** 根据最近投屏记录重新解析并开始播放。 */
@@ -123,18 +129,14 @@ class CastSessionCoordinator(
             )
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    if (recent.isPgc && (recent.epId > 0L || recent.seasonId > 0L)) {
-                        PgcPlaybackResolver().resolve(
-                            epId = recent.epId,
-                            seasonId = recent.seasonId,
-                            cid = recent.cid,
-                            aid = recent.aid,
-                            bvid = "",
-                            titleFallback = recent.title,
-                        )
-                    } else {
-                        BiliApi.resolveByAidCid(recent.aid, recent.cid, recent.title)
-                    }
+                    playback.resolveVodPlayback(
+                        aid = recent.aid,
+                        cid = recent.cid,
+                        bvid = "",
+                        title = recent.title,
+                        epId = recent.epId.takeIf { recent.isPgc } ?: 0L,
+                        seasonId = recent.seasonId.takeIf { recent.isPgc } ?: 0L,
+                    )
                 }
             }
             playback.setResolving(false)
@@ -303,11 +305,7 @@ class CastSessionCoordinator(
                             nva.hasLive -> {
                                 val token = playback.authToken()
                                     ?: error("TV account login is required for live playback")
-                                val liveInfo = LivePlayUrlResolver.resolve(
-                                    context = playback.appContext(),
-                                    accessKey = token.accessKey,
-                                    roomId = nva.roomId,
-                                )
+                                val liveInfo = playback.resolveLivePlayback(token.accessKey, nva.roomId)
                                 val routes = playback.liveSessionCoordinator()
                                     .cdn.rankInitial(liveInfo.qualityCandidates)
                                 if (routes.isEmpty()) {
@@ -317,19 +315,15 @@ class CastSessionCoordinator(
                             }
                             nva.hasPgc -> CastResolution.Vod(
                                 playback.vodSessionCoordinator().cdn.rankPlayback(
-                                    PgcPlaybackResolver().resolve(
-                                        epId = nva.eid,
-                                        seasonId = nva.sid,
-                                        cid = nva.cid,
-                                        aid = nva.aid,
-                                        bvid = nva.bvid.orEmpty(),
-                                        titleFallback = title,
+                                    playback.resolveVodPlayback(
+                                        aid = nva.aid, cid = nva.cid, bvid = nva.bvid.orEmpty(), title = title,
+                                        epId = nva.eid, seasonId = nva.sid,
                                     ),
                                 ),
                             )
                             nva.hasUgc -> CastResolution.Vod(
                                 playback.vodSessionCoordinator().cdn.rankPlayback(
-                                    BiliApi.resolveByAidCid(nva.aid, nva.cid, title, nva.bvid ?: ""),
+                                    playback.resolveVodPlayback(nva.aid, nva.cid, nva.bvid.orEmpty(), title),
                                 ),
                             )
                             else ->
@@ -343,9 +337,9 @@ class CastSessionCoordinator(
                     when (resolved) {
                         is CastResolution.Vod -> {
                             val ranked = resolved.playback
-                            val info = ranked.info
+                            val request = ranked.request
                             playback.vodSessionCoordinator().activeSession = VodSession(
-                                info = info,
+                                request = request,
                                 videoRoutes = ranked.videoRoutes,
                                 audioRoutes = ranked.audioRoutes,
                                 lastPositionMs = 0L,
@@ -354,20 +348,20 @@ class CastSessionCoordinator(
                             playback.vodSessionCoordinator().startBackupRefresh()
                             LogHub.i(
                                 TAG,
-                                "resolved qn=${info.video.id} ${info.video.width}x${info.video.height} " +
-                                    "codec=${info.video.codecid} audio=${info.audio?.id} " +
-                                    "duration=${info.durationSec}s videos=${info.videos.size} " +
-                                    "audios=${info.audios.size} progressive=${info.progressiveUrl != null} " +
+                                "resolved qn=${request.video.id} ${request.video.width}x${request.video.height} " +
+                                    "codec=${request.video.codecId} audio=${request.audio?.id} " +
+                                    "duration=${request.durationSec}s videos=${request.videos.size} " +
+                                    "audios=${request.audios.size} progressive=${request.progressiveUrl != null} " +
                                     "videoRoutes=${ranked.videoRoutes.size} audioRoutes=${ranked.audioRoutes.size}",
                             )
-                            PlaybackDiagnostics.attribute("resolve.videos", info.videos.size.toString())
-                            PlaybackDiagnostics.attribute("resolve.audios", info.audios.size.toString())
+                            PlaybackDiagnostics.attribute("resolve.videos", request.videos.size.toString())
+                            PlaybackDiagnostics.attribute("resolve.audios", request.audios.size.toString())
                             PlaybackDiagnostics.attribute(
                                 "resolve.progressive",
-                                (info.progressiveUrl != null).toString(),
+                                (request.progressiveUrl != null).toString(),
                             )
-                            playback.setCastDurationMs(info.durationSec * 1000)
-                            openPlayback(info, 0L)
+                            playback.setCastDurationMs(request.durationSec * 1000)
+                            openPlayback(request, 0L)
                         }
                         is CastResolution.Live ->
                             playback.startLiveSession(resolved.info, resolved.routes, title)
@@ -424,16 +418,16 @@ class CastSessionCoordinator(
     }
 
     /** 使用指定播放信息打开播放器并更新界面状态。 */
-    fun openPlayback(info: BiliApi.PlayInfo, seekToMs: Long): Boolean {
+    fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean {
         if (!playback.isEngineInitialized()) {
             LogHub.e(
                 TAG,
-                "play ignored: player engine unavailable aid=${info.aid} cid=${info.cid}",
+                "play ignored: player engine unavailable aid=${request.aid} cid=${request.cid}",
             )
             PlaybackDiagnostics.fail(
                 code = "PLAYER_UNAVAILABLE",
                 message = "播放器未初始化",
-                detail = "aid=${info.aid} cid=${info.cid} title=${info.title}",
+                detail = "aid=${request.aid} cid=${request.cid} title=${request.title}",
             )
             playback.reportError(
                 title = "播放器不可用",
@@ -444,20 +438,20 @@ class CastSessionCoordinator(
             )
             return false
         }
-        playback.setCurrentForCast(info)
-        if (info.isLive) playback.updateLiveUrl(info.video.url)
+        playback.setCurrentForCast(request)
+        if (request.isLive) playback.updateLiveUrl(request.video.url)
         playback.setCastActive(true)
-        playback.setLastTitle(info.title)
+        playback.setLastTitle(request.title)
         playback.setRetry(null)
         playback.setPendingSeekMs(seekToMs.coerceAtLeast(0L))
-        val vodGeneration = if (!info.isLive) {
+        val vodGeneration = if (!request.isLive) {
             playback.vodSessionCoordinator().onOpening(seekToMs.coerceAtLeast(0L))
         } else null
         LogHub.i(
             TAG,
-            "play begin qn=${info.video.id} codec=${info.video.codecid} " +
-                "${info.video.width}x${info.video.height} audio=${info.audio?.id} " +
-                "seek=${seekToMs}ms progressive=${info.progressiveUrl != null} vodGeneration=${vodGeneration ?: "none"}",
+            "play begin qn=${request.video.id} codec=${request.video.codecId} " +
+                "${request.video.width}x${request.video.height} audio=${request.audio?.id} " +
+                "seek=${seekToMs}ms progressive=${request.progressiveUrl != null} vodGeneration=${vodGeneration ?: "none"}",
         )
 
         val state = playback.state()
@@ -465,69 +459,69 @@ class CastSessionCoordinator(
             state.copy(
                 mode = TvMode.PLAYING,
                 showContinue = state.rememberPlaybackContent,
-                castTitle = info.title,
-                qualityLabel = if (info.isLive) {
-                    LiveQualityMapper.label(info.video.id)
+                castTitle = request.title,
+                qualityLabel = if (request.isLive) {
+                    LiveQualityMapper.label(request.video.id)
                 } else {
-                    info.qualityLabel
+                    request.qualityLabel
                 },
-                qualityDetail = if (info.isLive) {
-                    info.video.codecs.ifBlank {
-                        com.roy233.tvcast.platform.player.VlcTrackFormat.codecName(info.video.codecid)
+                qualityDetail = if (request.isLive) {
+                    request.video.codecs.ifBlank {
+                        com.roy233.tvcast.platform.player.VlcTrackFormat.codecName(request.video.codecId)
                     }
                 } else {
-                    info.qualityDetail
+                    request.video.codecs
                 },
-                qualitySource = if (info.isLive) "直播" else if (info.video.id >= 80) "已提升" else "",
-                audioLabel = if (info.isLive) "自动音轨" else info.audioLabel,
-                aid = info.aid,
-                cid = info.cid,
+                qualitySource = if (request.isLive) "直播" else if (request.video.id >= 80) "已提升" else "",
+                audioLabel = if (request.isLive) "自动音轨" else request.audioLabel,
+                aid = request.aid,
+                cid = request.cid,
                 isPlaying = true,
                 isBuffering = false,
-                isLive = info.isLive,
-                liveFormat = info.liveFormat,
-                liveCdn = info.liveCdn,
-                liveBackupCount = info.liveBackupCount,
-                liveQualities = if (info.isLive) {
+                isLive = request.isLive,
+                liveFormat = request.liveFormat,
+                liveCdn = request.liveCdn,
+                liveBackupCount = request.liveBackupCount,
+                liveQualities = if (request.isLive) {
                     playback.liveSessionCoordinator().activeSession
                         ?.let { LiveQualityMapper.options(it.stream) }
                         ?: emptyList()
                 } else {
                     emptyList()
                 },
-                positionMs = if (info.isLive) 0L else seekToMs.coerceAtLeast(0L),
-                durationMs = if (info.isLive) 0L else info.durationSec * 1000,
-                selectedQn = info.video.id,
-                selectedAudioId = info.audio?.id ?: 0,
-                tracks = TrackOptionMapper.tracks(BiliPlaybackMapper.map(info)),
-                audios = TrackOptionMapper.audios(BiliPlaybackMapper.map(info)),
+                positionMs = if (request.isLive) 0L else seekToMs.coerceAtLeast(0L),
+                durationMs = if (request.isLive) 0L else request.durationSec * 1000,
+                selectedQn = request.video.id,
+                selectedAudioId = request.audio?.id ?: 0,
+                tracks = TrackOptionMapper.tracks(request),
+                audios = TrackOptionMapper.audios(request),
                 hudVisible = true,
                 panel = null,
                 error = null,
                 stopCastConfirm = false,
             ),
         )
-        if (!info.isLive) recordRecent(info)
+        if (!request.isLive) recordRecent(request)
 
-        val started = playback.startPlaybackBackend(info, seekToMs)
+        val started = playback.startPlaybackBackend(request, seekToMs)
         if (!started) {
-            if (info.isLive) {
+            if (request.isLive) {
                 LogHub.e(
                     TAG,
-                    "live player open rejected room=${info.cid} qn=${info.video.id} " +
-                        "format=${info.liveFormat} codec=${info.video.codecid} " +
-                        "host=${LogRedaction.host(info.progressiveUrl)}",
+                    "live player open rejected room=${request.cid} qn=${request.video.id} " +
+                        "format=${request.liveFormat} codec=${request.video.codecId} " +
+                        "host=${LogRedaction.host(request.progressiveUrl)}",
                 )
                 PlaybackDiagnostics.fail(
                     code = "LIVE_PLAYER_OPEN_FAILED",
                     message = "直播播放器无法打开当前线路",
-                    detail = "room=${info.cid} qn=${info.video.id} " +
-                        "format=${info.liveFormat} codec=${info.video.codecid} " +
-                        "host=${LogRedaction.host(info.progressiveUrl)}",
+                    detail = "room=${request.cid} qn=${request.video.id} " +
+                        "format=${request.liveFormat} codec=${request.video.codecId} " +
+                        "host=${LogRedaction.host(request.progressiveUrl)}",
                 )
                 return false
             }
-            playback.setRetry { openPlayback(info, seekToMs) }
+            playback.setRetry { openPlayback(request, seekToMs) }
             playback.reportError(
                 title = "播放失败",
                 message = "无法打开该视频。诊断日志已记录具体原因。",
@@ -538,21 +532,21 @@ class CastSessionCoordinator(
             return false
         }
 
-        if (info.isLive) {
+        if (request.isLive) {
             playback.onDanmakuClose()
-            playback.onLiveDanmakuOpen(info.cid)
+            playback.onLiveDanmakuOpen(request.cid)
         } else {
             playback.onLiveDanmakuClose()
-            playback.onVodDanmakuOpen(info.aid, info.cid, info.durationSec * 1000, seekToMs)
+            playback.onVodDanmakuOpen(request.aid, request.cid, request.durationSec * 1000, seekToMs)
             playback.onDanmakuPlaybackRate(playback.state().playbackSpeed)
             playback.onDanmakuSettings()
             playback.onDanmakuLayout()
         }
-        playback.applyPlaybackRate(info)
+        playback.applyPlaybackRate(request)
 
         playback.applyPendingPause()
-        LogHub.setPlay(playback.describeContent(info))
-        LogHub.i(TAG, "play opened qn=${info.video.id} ${info.video.width}x${info.video.height}")
+        LogHub.setPlay(playback.describeContent(request))
+        LogHub.i(TAG, "play opened qn=${request.video.id} ${request.video.width}x${request.video.height}")
         return true
     }
 

@@ -39,15 +39,15 @@ import com.roy233.tvcast.ui.tv.HomeBackExitTiming
 import com.roy233.tvcast.ui.tv.TvKeyHandler
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.CdnCandidateSelector
-import com.roy233.tvcast.data.bili.LiveCdnCoordinator
-import com.roy233.tvcast.data.bili.LivePlayInfo
 import com.roy233.tvcast.data.bili.LivePlayUrlResolver
-import com.roy233.tvcast.data.bili.LiveStreamCandidate
-import com.roy233.tvcast.data.bili.RankedLiveSource
+import com.roy233.tvcast.data.bili.routing.OkHttpLiveRouteProbe
+import com.roy233.tvcast.data.bili.routing.OkHttpVodRouteProbe
 import com.roy233.tvcast.data.bili.PgcPlaybackException
 import com.roy233.tvcast.data.bili.PgcPlaybackResolver
-import com.roy233.tvcast.data.bili.RankedVodPlayback
-import com.roy233.tvcast.data.bili.RankedVodRoute
+import com.roy233.tvcast.feature.playback.model.LivePlayInfo
+import com.roy233.tvcast.feature.playback.model.LiveStreamCandidate
+import com.roy233.tvcast.feature.playback.model.RankedLiveSource
+import com.roy233.tvcast.feature.playback.model.RankedVodRoute
 import com.roy233.tvcast.ui.model.LiveQualityOption
 import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.core.playback.PlaybackBackend
@@ -55,6 +55,7 @@ import com.roy233.tvcast.core.playback.PlaybackEngine
 import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
 import com.roy233.tvcast.core.playback.PlaybackSnapshot
+import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
 import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
@@ -68,6 +69,7 @@ import com.roy233.tvcast.feature.playback.application.PlaybackEventConsumer
 import com.roy233.tvcast.feature.playback.application.PlaybackEventRouter
 import com.roy233.tvcast.feature.playback.application.VodPlaybackHost
 import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
+import com.roy233.tvcast.feature.playback.routing.CdnRouteRules
 import com.roy233.tvcast.feature.playback.model.CastResolution
 import com.roy233.tvcast.feature.playback.model.LiveSession
 import com.roy233.tvcast.feature.playback.model.PendingLiveRouteSwitch
@@ -148,6 +150,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 当前播放信息。 */
     private var current: BiliApi.PlayInfo? = null
+    /** 当前播放器使用的稳定播放请求。 */
+    private var currentRequest: PlaybackRequest? = null
     /** 当前是否存在活动投屏。 */
     private var castActive = false
     /** 当前是否正在解析媒体信息。 */
@@ -165,9 +169,9 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 最近一次播放器读取失败告警的单调时刻。 */
     private var lastPlayerReadWarningAt = 0L
     /** 点播会话协调器。 */
-    private val vodCoordinator by lazy { VodPlaybackCoordinator(this) }
+    private val vodCoordinator by lazy { VodPlaybackCoordinator(this, OkHttpVodRouteProbe()) }
     /** 直播会话协调器。 */
-    private val liveCoordinator by lazy { LivePlaybackCoordinator(this) }
+    private val liveCoordinator by lazy { LivePlaybackCoordinator(this, OkHttpLiveRouteProbe()) }
     /** 播放轮询协调器。 */
     private val playbackTicker by lazy { PlaybackTicker(this) }
     /** 投屏会话协调器。 */
@@ -405,12 +409,31 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         ui = ui.withPlaybackUiState(state)
     }
 
-    /** 返回当前播放信息。 */
-    override fun currentInfo(): BiliApi.PlayInfo? = current
-
     /** 记录当前播放信息。 */
-    override fun setCurrent(info: BiliApi.PlayInfo) {
+    fun setCurrent(info: BiliApi.PlayInfo) {
         current = info
+        currentRequest = BiliPlaybackMapper.map(info)
+    }
+
+    /** 返回当前直播会话使用的服务端播放信息。 */
+    fun currentInfo(): BiliApi.PlayInfo? = current
+
+    override fun currentRequest(): PlaybackRequest? = currentRequest
+
+    override fun setCurrent(request: PlaybackRequest) {
+        currentRequest = request
+        current = current?.let { info ->
+            val video = info.video.takeIf { it.id == request.video.id }?.copy(
+                url = request.video.url,
+                backup = request.video.backupUrls,
+                pcdn = request.video.isPcdn,
+            ) ?: info.video
+            val audio = info.audio?.takeIf { it.id == request.audio?.id }?.let { track ->
+                val source = request.audio ?: return@let track
+                track.copy(url = source.url, backup = source.backupUrls, pcdn = source.isPcdn)
+            }
+            info.copy(video = video, audio = audio)
+        }
     }
 
     /** 当前是否存在活动投屏。 */
@@ -420,7 +443,14 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun positionMs(): Long = playerPositionMs()
 
     /** 使用指定播放信息打开播放器。 */
-    override fun openPlayback(info: BiliApi.PlayInfo, seekToMs: Long): Boolean = play(info, seekToMs)
+    fun openPlayback(info: BiliApi.PlayInfo, seekToMs: Long): Boolean = play(info, seekToMs)
+
+    override fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean {
+        currentRequest = request
+        return runCatching { playbackEngineHost.open(request, seekToMs) }
+            .onFailure { error -> LogHub.e(TAG, "open playback backend failed ${LogRedaction.reason(error)}", error) }
+            .getOrDefault(false)
+    }
 
     /** 用于后台线路探测的协程作用域。 */
     override val coroutineScope: CoroutineScope get() = scope
@@ -545,8 +575,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 清除或替换当前播放信息。 */
-    override fun setCurrentForCast(info: BiliApi.PlayInfo?) {
-        current = info
+    override fun setCurrentForCast(request: PlaybackRequest?) {
+        currentRequest = request
     }
 
     /** 记录是否存在活动投屏。 */
@@ -565,8 +595,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 将播放信息写入最近投屏记录。 */
-    override fun addRecentRecord(info: BiliApi.PlayInfo) {
-        val list = recentCastStore.add(ui.recents, info)
+    override fun addRecentRecord(request: PlaybackRequest) {
+        val list = recentCastStore.add(ui.recents, request)
         ui = ui.copy(recents = list)
     }
 
@@ -604,16 +634,17 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 生成用于播放入口日志的内容摘要。 */
-    override fun describeContent(info: BiliApi.PlayInfo): String = describe(info)
+    override fun describeContent(request: PlaybackRequest): String =
+        "aid=${request.aid} cid=${request.cid} qn=${request.video.id} title=${request.title}"
 
     /** 按内容能力选择播放后端并打开媒体。 */
-    override fun startPlaybackBackend(info: BiliApi.PlayInfo, seekToMs: Long): Boolean {
-        return runCatching { playbackEngineHost.open(BiliPlaybackMapper.map(info), seekToMs) }
+    override fun startPlaybackBackend(request: PlaybackRequest, seekToMs: Long): Boolean {
+        return runCatching { playbackEngineHost.open(request, seekToMs) }
             .onFailure { error ->
                 LogHub.e(
                     TAG,
-                    "open playback backend failed drm=${info.isDrm} hdr=${info.video.isHdr} " +
-                        "dolbyVision=${info.video.isDolbyVision} error=${LogRedaction.reason(error)}",
+                    "open playback backend failed drm=${request.isDrm} hdr=${request.video.isHdr} " +
+                        "dolbyVision=${request.video.isDolbyVision} error=${LogRedaction.reason(error)}",
                 )
             }
             .getOrDefault(false)
@@ -655,13 +686,39 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 恢复各内容类型对应的播放速度。 */
-    override fun applyPlaybackRate(info: BiliApi.PlayInfo) {
-        if (info.isLive) {
+    override fun applyPlaybackRate(request: PlaybackRequest) {
+        if (request.isLive) {
             setPlayerPlaybackRate(1f, "live-normal-rate")
             ui = ui.copy(playbackSpeed = 1f)
         } else {
             setPlayerPlaybackRate(ui.playbackSpeed, "play-restore-rate")
         }
+    }
+
+    override suspend fun resolveLivePlayback(accessKey: String, roomId: Long): LivePlayInfo =
+        LivePlayUrlResolver.resolve(this, accessKey, roomId)
+
+    override suspend fun resolveLivePlayback(
+        accessKey: String,
+        roomId: Long,
+        quality: Int,
+        forceAvc: Boolean,
+    ): LivePlayInfo = LivePlayUrlResolver.resolve(this, accessKey, roomId, quality, forceAvc)
+
+    override suspend fun resolveVodPlayback(
+        aid: Long,
+        cid: Long,
+        bvid: String,
+        title: String,
+        epId: Long,
+        seasonId: Long,
+    ): PlaybackRequest {
+        val info = if (epId > 0L || seasonId > 0L) {
+            PgcPlaybackResolver().resolve(epId, seasonId, cid, aid, bvid, title)
+        } else {
+            BiliApi.resolveByAidCid(aid, cid, title, bvid)
+        }
+        return BiliPlaybackMapper.map(info)
     }
 
     /** 应用起播前的暂停请求。 */
@@ -1236,9 +1293,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         }
     }
 
-    /** 将当前播放信息加入最近投屏记录。 */
-    private fun addRecent(info: BiliApi.PlayInfo) = castCoordinator.recordRecent(info)
-
     /** 根据最近投屏记录重新解析并开始播放。 */
     private fun recast(recent: RecentCast) = castCoordinator.recast(recent)
 
@@ -1279,13 +1333,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 采用首次线路测速结果启动直播。 */
     private fun startLivePlayback(stream: LivePlayInfo, routes: List<RankedLiveSource>, title: String) =
         liveCoordinator.start(stream, routes, title)
-
-    /** 将直播线路转换为播放信息，附带同画质备用地址。 */
-    private fun livePlayInfo(
-        session: LiveSession,
-        candidate: LiveStreamCandidate,
-        title: String,
-    ): BiliApi.PlayInfo = liveCoordinator.livePlayInfo(session, candidate, title)
 
     /** 定时刷新直播备用线路排序。 */
     private fun startLiveBackupRefresh(session: LiveSession) = liveCoordinator.startBackupRefresh(session)
@@ -1374,8 +1421,10 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 使用指定播放信息打开播放器并更新界面状态。 */
     /** 使用指定播放信息打开播放器并更新界面状态。 */
-    private fun play(info: BiliApi.PlayInfo, seekToMs: Long): Boolean =
-        castCoordinator.openPlayback(info, seekToMs)
+    private fun play(info: BiliApi.PlayInfo, seekToMs: Long): Boolean {
+        setCurrent(info)
+        return castCoordinator.openPlayback(BiliPlaybackMapper.map(info), seekToMs)
+    }
 
     /** 切换当前视频清晰度并从当前位置继续播放。 */
     private fun switchQuality(qn: Int) {
@@ -1411,15 +1460,19 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         vodCoordinator.switching = true
         scope.launch {
             try {
-                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(track) }
+                val mediaTrack = BiliPlaybackMapper.mapTrack(track)
+                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(mediaTrack) }
                 if (current?.video?.id != info.video.id || !castActive) return@launch
                 val route = routes.firstOrNull() ?: RankedVodRoute(track.url)
                 val orderedRoutes = routes.ifEmpty { listOf(route) }
-                val selected = vodCoordinator.cdn.applyRoute(track, route, orderedRoutes)
-                val nextInfo = info.copy(video = selected)
+                val nextInfo = info.copy(video = track.copy(
+                    url = route.url,
+                    backup = orderedRoutes.filterNot { it.url == route.url }.map { it.url },
+                    pcdn = CdnRouteRules.isPcdn(route.url),
+                ))
                 val oldSession = vodCoordinator.activeSession
                 vodCoordinator.activeSession = VodSession(
-                    info = nextInfo,
+                    request = BiliPlaybackMapper.map(nextInfo),
                     videoRoutes = orderedRoutes,
                     audioRoutes = oldSession?.audioRoutes.orEmpty(),
                     lastPositionMs = position,
@@ -1543,14 +1596,18 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         vodCoordinator.switching = true
         scope.launch {
             try {
-                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(track) }
+                val mediaTrack = BiliPlaybackMapper.mapTrack(track)
+                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(mediaTrack) }
                 if (current?.video?.id != info.video.id || !castActive) return@launch
                 val route = routes.firstOrNull() ?: RankedVodRoute(track.url)
                 val orderedRoutes = routes.ifEmpty { listOf(route) }
-                val selected = vodCoordinator.cdn.applyRoute(track, route, orderedRoutes)
-                val nextInfo = info.copy(audio = selected)
+                val nextInfo = info.copy(audio = track.copy(
+                    url = route.url,
+                    backup = orderedRoutes.filterNot { it.url == route.url }.map { it.url },
+                    pcdn = CdnRouteRules.isPcdn(route.url),
+                ))
                 vodCoordinator.activeSession?.let { session ->
-                    session.info = nextInfo
+                    session.request = BiliPlaybackMapper.map(nextInfo)
                     session.audioRoutes = orderedRoutes
                     session.attemptedAudioUrls.clear()
                 }

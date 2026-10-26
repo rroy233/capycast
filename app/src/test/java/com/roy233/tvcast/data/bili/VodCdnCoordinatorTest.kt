@@ -1,5 +1,11 @@
 package com.roy233.tvcast.data.bili
 
+import com.roy233.tvcast.feature.playback.model.RankedVodRoute
+import com.roy233.tvcast.feature.playback.model.VodProbeResult
+import com.roy233.tvcast.feature.playback.routing.CdnRouteRules
+import com.roy233.tvcast.feature.playback.routing.VodCdnCoordinator
+import com.roy233.tvcast.feature.playback.routing.VodRouteProbe
+import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -22,7 +28,7 @@ class VodCdnCoordinatorTest {
             "https://cdn-d.bilivideo.com/v.m4s",
             "https://pcdn.szbdyd.com/v.m4s",
         )
-        val coordinator = VodCdnCoordinator { url, range ->
+        val coordinator = VodCdnCoordinator(VodRouteProbe { url, range ->
             val now = active.incrementAndGet()
             maxActive.updateAndGet { previous -> maxOf(previous, now) }
             synchronized(probed) { probed += "$url $range" }
@@ -38,7 +44,7 @@ class VodCdnCoordinatorTest {
                 throughputBytesPerSecond = 100_000L,
                 bytesRead = 4096,
             )
-        }
+        })
 
         val routes = coordinator.rankTrack(track(urls.first(), urls.drop(1)))
 
@@ -47,13 +53,13 @@ class VodCdnCoordinatorTest {
         assertTrue(probed.all { it.endsWith("bytes=0-65535") })
         assertTrue(routes.first().url.contains("cdn-b.bilivideo.com"))
         assertTrue(routes[3].url.contains("cdn-d.bilivideo.com"))
-        assertTrue(CdnCandidateSelector.isPcdn(routes.last().url))
+        assertTrue(CdnRouteRules.isPcdn(routes.last().url))
     }
 
     @Test
     fun `uses initialization range for drm media and falls back to a backup route`() = runBlocking {
         val ranges = mutableListOf<String>()
-        val coordinator = VodCdnCoordinator { url, range ->
+        val coordinator = VodCdnCoordinator(VodRouteProbe { url, range ->
             synchronized(ranges) { ranges += "$url $range" }
             VodProbeResult(
                 success = !url.contains("broken"),
@@ -62,7 +68,7 @@ class VodCdnCoordinatorTest {
                 bytesRead = if (url.contains("broken")) 0 else 2048,
                 failure = if (url.contains("broken")) "HTTP_503" else "",
             )
-        }
+        })
         val primary = "https://broken.bilivideo.com/v.m4s"
         val fallback = "https://working.bilivideo.com/v.m4s"
         val track = track(primary, listOf(fallback)).copy(initializationRange = "0-1023")
@@ -82,7 +88,7 @@ class VodCdnCoordinatorTest {
 
     @Test
     fun `does not switch to the same endpoint or PCDN while an official route remains`() {
-        val coordinator = VodCdnCoordinator()
+        val coordinator = VodCdnCoordinator(VodRouteProbe { _, _ -> VodProbeResult(true, 1L, 1L, 1) })
         val primary = "https://upos-a.bilivideo.com/video.m4s?token=one"
         val sameHost = "https://upos-a.bilivideo.com/video.m4s?token=two"
         val official = "https://upos-b.bilivideo.com/video.m4s"
@@ -106,7 +112,7 @@ class VodCdnCoordinatorTest {
         assertEquals(pcdn, afterOfficialFailures?.url)
     }
 
-    private fun track(url: String, backup: List<String>) = BiliApi.Track(
+    private fun track(url: String, backup: List<String>) = BiliPlaybackMapper.mapTrack(BiliApi.Track(
         id = 120,
         codecid = 12,
         width = 3840,
@@ -114,5 +120,5 @@ class VodCdnCoordinatorTest {
         bandwidth = 8_000_000L,
         url = url,
         backup = backup,
-    )
+    ))
 }
