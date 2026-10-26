@@ -4,6 +4,7 @@ import { DownloadButton } from "@/components/download-button";
 import { GithubIcon } from "@/components/icons";
 import { HeroSellingPoints } from "@/components/hero-selling-points";
 import { siteLinks } from "@/data/site-data";
+import { assetPath } from "@/lib/asset";
 
 export function HeroSection() {
   const phoneLayerRef = useRef<HTMLImageElement>(null);
@@ -39,7 +40,7 @@ export function HeroSection() {
         <div className="hero-media">
           <img
             className="hero-media-layer hero-tv-layer"
-            src="/assets/capyCast_hero_tv.webp"
+            src={assetPath("/assets/capyCast_hero_tv.webp")}
             alt=""
             aria-hidden="true"
           />
@@ -47,7 +48,7 @@ export function HeroSection() {
           <img
             ref={phoneLayerRef}
             className="hero-media-layer hero-phone-layer"
-            src="/assets/capyCast_hero_phone.webp"
+            src={assetPath("/assets/capyCast_hero_phone.webp")}
             alt=""
             aria-hidden="true"
           />

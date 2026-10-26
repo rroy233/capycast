@@ -1,16 +1,15 @@
 import { ProductImage } from "@/components/product-image";
 import { siteLinks } from "@/data/site-data";
+import { assetPath } from "@/lib/asset";
+
+const APP_ICON = assetPath("/assets/capycast-app-icon.png");
 
 export function SiteFooter() {
   return (
     <footer className="site-footer section-wrap">
       <a className="brand footer-brand" href="#top">
         <span className="brand-mark" aria-hidden="true">
-          <ProductImage
-            src="/assets/capycast-app-icon.png"
-            fallback="/assets/capycast-app-icon.png"
-            alt=""
-          />
+          <ProductImage src={APP_ICON} fallback={APP_ICON} alt="" />
         </span>
         <span className="brand-name">CapyCast</span>
       </a>

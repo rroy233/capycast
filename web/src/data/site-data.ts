@@ -1,3 +1,5 @@
+import { assetPath } from "@/lib/asset";
+
 export const siteLinks = {
   repository: "https://github.com/rroy233/capycast",
   latestRelease: "https://github.com/rroy233/capycast/releases/latest",
@@ -127,21 +129,21 @@ export const heroSellingPointItems = [
 export const screenshotItems = [
   {
     src: "https://raw.githubusercontent.com/rroy233/capycast/main/docs/images/screenshot-home.webp",
-    fallback: "/assets/screenshot-home.webp",
+    fallback: assetPath("/assets/screenshot-home.webp"),
     alt: "CapyCast 主页界面",
     caption: "投屏首页",
     summary: "不展示个人推荐和订阅",
   },
   {
     src: "https://raw.githubusercontent.com/rroy233/capycast/main/docs/images/screenshot-playing.webp",
-    fallback: "/assets/screenshot-playing.webp",
+    fallback: assetPath("/assets/screenshot-playing.webp"),
     alt: "CapyCast 视频播放界面",
     caption: "播放界面",
     summary: "支持弹幕和遥控器操作",
   },
   {
     src: "https://raw.githubusercontent.com/rroy233/capycast/main/docs/images/screenshot-resolution.webp",
-    fallback: "/assets/screenshot-resolution.webp",
+    fallback: assetPath("/assets/screenshot-resolution.webp"),
     alt: "CapyCast 画质选择界面",
     caption: "画质设置",
     summary: "查看账号可用的画质和音轨",

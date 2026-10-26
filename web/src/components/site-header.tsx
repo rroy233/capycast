@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { GithubIcon } from "@/components/icons";
 import { ProductImage } from "@/components/product-image";
 import { navigationItems, siteLinks } from "@/data/site-data";
+import { assetPath } from "@/lib/asset";
+
+const APP_ICON = assetPath("/assets/capycast-app-icon.png");
 
 interface SiteHeaderProps {
   activeSection: string;
@@ -24,11 +27,7 @@ export function SiteHeader({ activeSection }: SiteHeaderProps) {
       <div className="nav-shell">
         <a className="brand" href="#top" aria-label="CapyCast 首页">
           <span className="brand-mark" aria-hidden="true">
-            <ProductImage
-              src="/assets/capycast-app-icon.png"
-              fallback="/assets/capycast-app-icon.png"
-              alt=""
-            />
+            <ProductImage src={APP_ICON} fallback={APP_ICON} alt="" />
           </span>
           <span className="brand-name">CapyCast</span>
         </a>
