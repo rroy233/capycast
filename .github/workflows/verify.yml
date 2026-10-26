@@ -66,7 +66,7 @@ jobs:
           fi
 
           printf '%s\n' "$changed_files"
-          if printf '%s\n' "$changed_files" | grep -Eqv '^(AGENTS\.md|README\.md|docs/|release-notes/)'; then
+          if printf '%s\n' "$changed_files" | grep -Eqv '^(AGENTS\.md|README\.md|docs/|release-notes/|web/)'; then
             echo "needs_android_build=true" >> "$GITHUB_OUTPUT"
           else
             echo "Documentation-only change; skipping Android verification."
