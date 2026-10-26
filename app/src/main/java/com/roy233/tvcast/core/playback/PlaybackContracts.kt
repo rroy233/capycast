@@ -85,14 +85,6 @@ data class PlaybackRequest(
     }
 }
 
-/** 后端能力快照，供调用方处理后端差异而无需引用具体 SDK。 */
-data class PlaybackCapabilities(
-    val supportsDrm: Boolean,
-    val supportsDolbyVision: Boolean,
-    val supportsLiveStatistics: Boolean,
-    val supportsTrackDiagnostics: Boolean,
-)
-
 /** 统一播放状态快照。未知时长和位置均使用非负值，未知时长为 0。 */
 data class PlaybackSnapshot(
     val positionMs: Long,
@@ -108,10 +100,19 @@ sealed interface PlaybackEvent {
     data object Paused : PlaybackEvent
     data object Stopped : PlaybackEvent
     data object Ended : PlaybackEvent
-    data class Buffering(val percent: Float) : PlaybackEvent
+    data class Buffering(val isBuffering: Boolean, val percent: Float? = null) : PlaybackEvent
     data class Failed(val code: String, val message: String, val cause: Throwable? = null) : PlaybackEvent
     data class VideoSizeChanged(val width: Int, val height: Int) : PlaybackEvent
 }
+
+/** 用于直播停滞检测的中立播放进度样本。 */
+data class LivePlaybackTelemetry(
+    val positionMs: Long,
+    val readBytes: Long,
+    val demuxReadBytes: Long,
+    val decodedVideoFrames: Long,
+    val displayedPictures: Long,
+)
 
 /** 播放器无关的媒体失败信息。 */
 class PlaybackFailure(

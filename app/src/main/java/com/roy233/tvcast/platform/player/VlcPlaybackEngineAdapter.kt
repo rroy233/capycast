@@ -1,7 +1,6 @@
 package com.roy233.tvcast.platform.player
 
 import com.roy233.tvcast.core.playback.PlaybackBackend
-import com.roy233.tvcast.core.playback.PlaybackCapabilities
 import com.roy233.tvcast.core.playback.PlaybackEngine
 import com.roy233.tvcast.core.playback.PlaybackRequest
 
@@ -11,13 +10,6 @@ class VlcPlaybackEngineAdapter(
 ) : PlaybackEngine {
 
     override val backend: PlaybackBackend = PlaybackBackend.VLC
-
-    override val capabilities = PlaybackCapabilities(
-        supportsDrm = false,
-        supportsDolbyVision = false,
-        supportsLiveStatistics = true,
-        supportsTrackDiagnostics = true,
-    )
 
     override fun open(request: PlaybackRequest, seekToMs: Long): Boolean =
         engine.open(request, seekToMs)

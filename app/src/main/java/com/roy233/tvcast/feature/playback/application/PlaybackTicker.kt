@@ -1,9 +1,7 @@
 package com.roy233.tvcast.feature.playback.application
 
-import android.os.SystemClock
-import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
-import com.roy233.tvcast.platform.player.VlcPlayerEngine
+import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
+import com.roy233.tvcast.core.playback.PlaybackSnapshot
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
@@ -18,19 +16,16 @@ interface PlaybackTickerHost {
     fun isEngineInitialized(): Boolean
     fun state(): PlaybackUiState
     fun setState(state: PlaybackUiState)
-    fun positionMs(): Long
-    fun durationMs(): Long
-    fun isPlaying(): Boolean
-    fun volume(): Int
+    fun snapshot(): PlaybackSnapshot
     fun currentAvailable(): Boolean
     fun isLive(): Boolean
     fun liveBackupCount(): Int
-    fun liveProgressSnapshot(): VlcPlayerEngine.LiveProgressSnapshot?
+    fun liveTelemetry(): LivePlaybackTelemetry?
     fun onRefreshVideoSize()
     fun onDanmakuPlayerTime(positionMs: Long)
     fun onVodProgress(positionMs: Long, activelyPlaying: Boolean)
     fun onHistoryPosition(positionMs: Long, durationMs: Long, playing: Boolean)
-    fun onLiveProgress(progress: VlcPlayerEngine.LiveProgressSnapshot, playing: Boolean)
+    fun onLiveProgress(progress: LivePlaybackTelemetry, playing: Boolean)
     fun wifiName(): String
     fun localIp(): String
 }
@@ -59,11 +54,12 @@ class PlaybackTicker(
                 if (host.isEngineInitialized() &&
                     (state.mode == TvMode.PLAYING || state.mode == TvMode.LOADING)
                 ) {
-                    val pos = host.positionMs()
-                    val len = host.durationMs()
-                    val playing = host.isPlaying()
+                    val snapshot = host.snapshot()
+                    val pos = snapshot.positionMs
+                    val len = snapshot.durationMs
+                    val playing = snapshot.isPlaying
                     val activelyPlaying = playing && !state.isBuffering
-                    val volume = host.volume()
+                    val volume = snapshot.volume
                     val live = host.isLive()
                     if (!live) host.onVodProgress(pos, activelyPlaying)
                     if (host.currentAvailable()) {
@@ -74,7 +70,7 @@ class PlaybackTicker(
                         )
                     }
                     if (live) {
-                        host.liveProgressSnapshot()?.let { host.onLiveProgress(it, activelyPlaying) }
+                        host.liveTelemetry()?.let { host.onLiveProgress(it, activelyPlaying) }
                     }
                     host.setState(
                         host.state().copy(

@@ -15,12 +15,14 @@ class PlaybackEventContractTest {
             PlaybackEvent.Paused,
             PlaybackEvent.Stopped,
             PlaybackEvent.Ended,
-            PlaybackEvent.Buffering(42.5f),
+            PlaybackEvent.Buffering(isBuffering = true, percent = 42.5f),
             PlaybackEvent.Failed("DECODE", "无法解码", cause),
             PlaybackEvent.VideoSizeChanged(3840, 2160),
         )
 
-        assertEquals(42.5f, (events[4] as PlaybackEvent.Buffering).percent)
+        val buffering = events[4] as PlaybackEvent.Buffering
+        assertEquals(true, buffering.isBuffering)
+        assertEquals(42.5f, buffering.percent)
         val failure = events[5] as PlaybackEvent.Failed
         assertEquals("DECODE", failure.code)
         assertEquals("无法解码", failure.message)

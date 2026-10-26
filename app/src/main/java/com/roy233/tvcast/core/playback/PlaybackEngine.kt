@@ -20,9 +20,6 @@ interface PlaybackEngine {
     /** 释放后端和它拥有的原生资源。 */
     fun release()
 
-    /** 当前后端能力。 */
-    val capabilities: PlaybackCapabilities
-
     /** 返回当前播放器状态的不可变快照。 */
     fun snapshot(fallbackVolume: Int): PlaybackSnapshot = PlaybackSnapshot(
         positionMs = positionMs(),

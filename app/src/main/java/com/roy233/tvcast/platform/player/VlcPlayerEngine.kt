@@ -10,6 +10,7 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.PlaybackEvent
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -28,12 +29,12 @@ import org.videolan.libvlc.util.VLCVideoLayout
  *
  * @param context 用于创建 VLC 运行时的上下文。
  * @param videoLayout 播放视频所使用的布局。
- * @param onEvent VLC 播放器事件回调。
+ * @param onEvent 播放器状态事件回调。
  */
 class VlcPlayerEngine(
     context: Context,
     private val videoLayout: VLCVideoLayout,
-    private val onEvent: (MediaPlayer.Event) -> Unit,
+    private val onEvent: (PlaybackEvent) -> Unit,
 ) {
 
     /** 直播卡顿检测使用的播放时钟与解码/读取计数。 */
@@ -626,19 +627,31 @@ class VlcPlayerEngine(
         LogHub.i(TAG, "released nativeLogBytes=${PlaybackDiagnostics.vlcLogBytes()}")
     }
 
-    /**
-     * 将播放器事件分发给诊断记录和界面回调。
-     *
-     * @param event libVLC 播放器事件。
-     */
+    /** 将 libVLC 原生事件记录后转换为稳定播放事件。 */
     private fun dispatchEvent(event: MediaPlayer.Event) {
         runCatching { eventRecorder.record(event) }
             .onFailure {
                 LogHub.e(TAG, "record event failed type=${event.type}", it, stack = true)
             }
-        runCatching { onEvent(event) }
+        val mapped = when (event.type) {
+            MediaPlayer.Event.Playing -> PlaybackEvent.Playing
+            MediaPlayer.Event.Paused -> PlaybackEvent.Paused
+            MediaPlayer.Event.Stopped -> PlaybackEvent.Stopped
+            MediaPlayer.Event.EndReached -> PlaybackEvent.Ended
+            MediaPlayer.Event.Buffering -> PlaybackEvent.Buffering(
+                isBuffering = event.buffering < 100f,
+                percent = event.buffering,
+            )
+            MediaPlayer.Event.EncounteredError -> PlaybackEvent.Failed(
+                code = "PLAYBACK_FAILED",
+                message = stateSnapshot(),
+            )
+            else -> null
+        }
+        mapped ?: return
+        runCatching { onEvent(mapped) }
             .onFailure {
-                LogHub.e(TAG, "ui event handler failed type=${event.type}", it, stack = true)
+                LogHub.e(TAG, "playback event handler failed type=${event.type}", it, stack = true)
             }
     }
 

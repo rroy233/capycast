@@ -31,6 +31,7 @@ import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.core.playback.MediaTrack
 import com.roy233.tvcast.core.playback.PlaybackFailure
+import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
 import java.nio.charset.StandardCharsets
 import java.io.IOException
@@ -47,7 +48,7 @@ import android.util.Base64
 class Media3PlayerEngine(
     context: Context,
     playerView: PlayerView,
-    private val events: Events,
+    private val onEvent: (PlaybackEvent) -> Unit,
 ) {
 
     /**
@@ -55,16 +56,6 @@ class Media3PlayerEngine(
      * 因此视频轨只返回硬件 MediaCodec；音频轨保持系统默认选择，兼顾 E-AC-3 兼容性。
      */
     private val hardwareVideoCodecSelector = HardwareVideoCodecSelector()
-
-    /** 向宿主报告播放器状态，保持 Activity 的 UI 与弹幕生命周期统一。 */
-    interface Events {
-        fun onPlaying()
-        fun onPaused()
-        fun onBuffering(buffering: Boolean)
-        fun onEnded()
-        fun onError(error: PlaybackException)
-        fun onVideoSizeChanged(width: Int, height: Int)
-    }
 
     @Volatile
     private var activeDrm = false
@@ -116,12 +107,12 @@ class Media3PlayerEngine(
                         "buffered=${instance.bufferedPosition}ms duration=${instance.duration}",
                 )
                 when (playbackState) {
-                    Player.STATE_BUFFERING -> events.onBuffering(true)
+                    Player.STATE_BUFFERING -> onEvent(PlaybackEvent.Buffering(isBuffering = true))
                     Player.STATE_READY -> {
-                        events.onBuffering(false)
-                        if (instance.playWhenReady) events.onPlaying()
+                        onEvent(PlaybackEvent.Buffering(isBuffering = false))
+                        if (instance.playWhenReady) onEvent(PlaybackEvent.Playing)
                     }
-                    Player.STATE_ENDED -> events.onEnded()
+                    Player.STATE_ENDED -> onEvent(PlaybackEvent.Ended)
                     else -> Unit
                 }
             }
@@ -132,12 +123,18 @@ class Media3PlayerEngine(
                     "isPlaying=$isPlaying state=${stateName(instance.playbackState)} " +
                         "position=${instance.currentPosition}ms",
                 )
-                if (isPlaying) events.onPlaying() else events.onPaused()
+                if (isPlaying) onEvent(PlaybackEvent.Playing) else onEvent(PlaybackEvent.Paused)
             }
 
             override fun onPlayerError(error: PlaybackException) {
                 logPlaybackError("player", error)
-                events.onError(error)
+                onEvent(
+                    PlaybackEvent.Failed(
+                        code = error.errorCodeName,
+                        message = error.message.orEmpty(),
+                        cause = error,
+                    ),
+                )
             }
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -146,7 +143,7 @@ class Media3PlayerEngine(
                     "video size=${videoSize.width}x${videoSize.height} " +
                         "pixelRatio=${videoSize.pixelWidthHeightRatio}",
                 )
-                events.onVideoSizeChanged(videoSize.width, videoSize.height)
+                onEvent(PlaybackEvent.VideoSizeChanged(videoSize.width, videoSize.height))
             }
         })
         instance.addAnalyticsListener(Media3AnalyticsLogger())

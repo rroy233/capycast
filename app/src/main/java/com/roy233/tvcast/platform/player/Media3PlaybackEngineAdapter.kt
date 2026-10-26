@@ -2,7 +2,6 @@ package com.roy233.tvcast.platform.player
 
 import androidx.media3.common.util.UnstableApi
 import com.roy233.tvcast.core.playback.PlaybackBackend
-import com.roy233.tvcast.core.playback.PlaybackCapabilities
 import com.roy233.tvcast.core.playback.PlaybackEngine
 import com.roy233.tvcast.core.playback.PlaybackRequest
 
@@ -17,13 +16,6 @@ class Media3PlaybackEngineAdapter(
 ) : PlaybackEngine {
 
     override val backend: PlaybackBackend = PlaybackBackend.MEDIA3
-
-    override val capabilities = PlaybackCapabilities(
-        supportsDrm = true,
-        supportsDolbyVision = true,
-        supportsLiveStatistics = false,
-        supportsTrackDiagnostics = true,
-    )
 
     override fun open(request: PlaybackRequest, seekToMs: Long): Boolean {
         engine()?.open(request, seekToMs) ?: return false

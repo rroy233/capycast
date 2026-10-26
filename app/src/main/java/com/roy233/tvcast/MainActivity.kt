@@ -15,7 +15,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.ui.model.PanelKind
@@ -31,6 +30,7 @@ import com.roy233.tvcast.ui.model.playbackUiState
 import com.roy233.tvcast.ui.model.withPlaybackUiState
 import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.app.CapyCastContainer
+import com.roy233.tvcast.app.PlaybackEngineHost
 import com.roy233.tvcast.ui.tv.TvActionDispatcher
 import com.roy233.tvcast.ui.tv.TvActionHost
 import com.roy233.tvcast.ui.tv.TvStateHolder
@@ -54,6 +54,9 @@ import com.roy233.tvcast.ui.model.LiveQualityOption
 import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEngine
+import com.roy233.tvcast.core.playback.PlaybackEvent
+import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
+import com.roy233.tvcast.core.playback.PlaybackSnapshot
 import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
 import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
@@ -63,6 +66,8 @@ import com.roy233.tvcast.feature.playback.application.CastSessionCoordinator
 import com.roy233.tvcast.feature.playback.application.CastSessionHost
 import com.roy233.tvcast.feature.playback.application.PlaybackTicker
 import com.roy233.tvcast.feature.playback.application.PlaybackTickerHost
+import com.roy233.tvcast.feature.playback.application.PlaybackEventConsumer
+import com.roy233.tvcast.feature.playback.application.PlaybackEventRouter
 import com.roy233.tvcast.feature.playback.application.VodPlaybackHost
 import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
 import com.roy233.tvcast.feature.playback.model.CastResolution
@@ -96,10 +101,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
-import com.roy233.tvcast.platform.player.Media3PlaybackEngineAdapter
-import com.roy233.tvcast.platform.player.VlcPlaybackEngineAdapter
-import com.roy233.tvcast.platform.player.VlcPlayerEngine
-import com.roy233.tvcast.platform.player.Media3PlayerEngine
 import com.roy233.tvcast.platform.player.VlcTrackFormat
 import master.flame.danmaku.ui.widget.DanmakuView
 
@@ -109,27 +110,13 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost {
+class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost, PlaybackEventConsumer {
 
-    /** VLC 播放引擎。 */
-    private lateinit var playerEngine: VlcPlayerEngine
-    /** VLC 播放器实例。 */
-    private val player: MediaPlayer get() = playerEngine.player
-    /** 当前活跃的播放后端；常规 SDR/HDR 使用 VLC，杜比视界与 Widevine 使用 Media3。 */
-    private var playbackBackend = PlaybackBackend.VLC
-    /** Media3 播放器按需创建，供杜比视界与 Widevine 内容使用。 */
-    private var media3Player: Media3PlayerEngine? = null
+    /** 当前播放后端及其原生资源。 */
+    private lateinit var playbackEngineHost: PlaybackEngineHost
+    /** 统一接收播放后端转换后的事件。 */
+    private val playbackEventRouter = PlaybackEventRouter(this)
 
-    /** VLC 后端统一播放契约适配器。 */
-    private val vlcPlaybackEngine by lazy { VlcPlaybackEngineAdapter(playerEngine) }
-    /** Media3 后端统一播放契约适配器。 */
-    private val media3PlaybackEngine = Media3PlaybackEngineAdapter { media3Player }
-    /** 当前活跃的播放后端适配器。 */
-    private val activePlaybackEngine: PlaybackEngine
-        get() = when (playbackBackend) {
-            PlaybackBackend.VLC -> vlcPlaybackEngine
-            PlaybackBackend.MEDIA3 -> media3PlaybackEngine
-        }
     /** 视频渲染布局。 */
     private lateinit var videoLayout: VLCVideoLayout
     /** Media3 使用的 SurfaceView 容器，仅杜比视界会显示。 */
@@ -282,7 +269,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         PlaybackCoordinator(
             readState = { ui.playbackUiState() },
             writeState = { state -> ui = ui.withPlaybackUiState(state) },
-            isEngineInitialized = { ::playerEngine.isInitialized },
+            isEngineInitialized = { ::playbackEngineHost.isInitialized },
             isLive = { current?.isLive == true },
             positionMs = { playerPositionMs() },
             durationMs = { playerDurationMs() },
@@ -445,7 +432,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** VLC 播放器的失败快照，用于直播故障诊断。 */
     override fun stateSnapshot(): String =
-        if (::playerEngine.isInitialized) playerEngine.stateSnapshot() else ""
+        if (::playbackEngineHost.isInitialized) playbackEngineHost.stateSnapshot() else ""
 
     /** 记录起播后是否保持暂停。 */
     override fun setPendingPause(paused: Boolean) {
@@ -494,13 +481,10 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun appContext(): Context = applicationContext
 
     /** 播放器是否已经初始化。 */
-    override fun isEngineInitialized(): Boolean = ::playerEngine.isInitialized
+    override fun isEngineInitialized(): Boolean = ::playbackEngineHost.isInitialized
 
-    /** 当前媒体时长，单位为毫秒。 */
-    override fun durationMs(): Long = playerDurationMs()
-
-    /** 当前音量。 */
-    override fun volume(): Int = playerVolume()
+    /** 返回当前后端的统一播放状态。 */
+    override fun snapshot(): PlaybackSnapshot = playbackEngineHost.snapshot(ui.volume)
 
     /** 当前内容是否为直播。 */
     override fun isLive(): Boolean = current?.isLive == true
@@ -511,9 +495,9 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 当前直播线路之外的备用源数量。 */
     override fun liveBackupCount(): Int = current?.liveBackupCount ?: 0
 
-    /** VLC 直播播放进度快照。 */
-    override fun liveProgressSnapshot(): VlcPlayerEngine.LiveProgressSnapshot? =
-        if (::playerEngine.isInitialized) playerEngine.liveProgressSnapshot() else null
+    /** 返回 VLC 提供的直播进度与读取统计。 */
+    override fun liveTelemetry(): LivePlaybackTelemetry? =
+        if (::playbackEngineHost.isInitialized) playbackEngineHost.liveTelemetry() else null
 
     /** 刷新视频尺寸与弹幕布局。 */
     override fun onRefreshVideoSize() = refreshVideoSize()
@@ -532,7 +516,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         playbackHistoryCoordinator.onPosition(positionMs, durationMs, playing)
 
     /** 检测直播时间线是否连续无前进。 */
-    override fun onLiveProgress(progress: VlcPlayerEngine.LiveProgressSnapshot, playing: Boolean) =
+    override fun onLiveProgress(progress: LivePlaybackTelemetry, playing: Boolean) =
         observeLiveProgress(progress, playing)
 
     /** 当前 Wi-Fi 名称。 */
@@ -626,38 +610,15 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 按内容能力选择播放后端并打开媒体。 */
     override fun startPlaybackBackend(info: BiliApi.PlayInfo, seekToMs: Long): Boolean {
-        val requiresMedia3 = info.video.isHdr || info.video.isDolbyVision || info.isDrm
-        return if (requiresMedia3) {
-            // 先切换状态再停止 VLC，忽略旧播放器随后送达的 Stopped 事件。
-            playbackBackend = PlaybackBackend.MEDIA3
-            setHdrWindowEnabled(info.video.isHdr || info.video.isDolbyVision)
-            playerEngine.stopPlayback(
-                when {
-                    info.isDrm -> "switch-to-media3-widevine"
-                    info.video.isDolbyVision -> "switch-to-media3-dolby-vision"
-                    else -> "switch-to-media3-hdr"
-                },
-            )
-            videoLayout.visibility = View.GONE
-            media3PlayerView.visibility = View.VISIBLE
-            runCatching {
-                media3PlaybackEngine.open(BiliPlaybackMapper.map(info), seekToMs)
-            }.onFailure { error ->
+        return runCatching { playbackEngineHost.open(BiliPlaybackMapper.map(info), seekToMs) }
+            .onFailure { error ->
                 LogHub.e(
                     TAG,
-                    "open Media3 failed drm=${info.isDrm} hdr=${info.video.isHdr} dolbyVision=${info.video.isDolbyVision} " +
-                        "error=${if (info.isDrm) error.javaClass.simpleName else LogRedaction.reason(error)}",
+                    "open playback backend failed drm=${info.isDrm} hdr=${info.video.isHdr} " +
+                        "dolbyVision=${info.video.isDolbyVision} error=${LogRedaction.reason(error)}",
                 )
-            }.getOrDefault(false)
-        } else {
-            // Media3 的 Surface 必须先隐藏，避免两个视频输出竞争同一窗口合成层。
-            media3Player?.stop()
-            setHdrWindowEnabled(false)
-            playbackBackend = PlaybackBackend.VLC
-            media3PlayerView.visibility = View.GONE
-            videoLayout.visibility = View.VISIBLE
-            vlcPlaybackEngine.open(BiliPlaybackMapper.map(info), seekToMs)
-        }
+            }
+            .getOrDefault(false)
     }
 
     /** 暂停点播弹幕渲染。 */
@@ -729,7 +690,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         /** 处理远端播放命令。 */
         override fun onPlay() {
             pendingPause = false
-            if (::playerEngine.isInitialized) {
+            if (::playbackEngineHost.isInitialized) {
                 setPlayerPaused(false, "dlna-play")
             } else {
                 LogHub.w(TAG, "dlna play ignored: player engine unavailable")
@@ -740,7 +701,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         /** 处理远端暂停命令。 */
         override fun onPause() {
             pendingPause = true
-            if (::playerEngine.isInitialized) {
+            if (::playbackEngineHost.isInitialized) {
                 setPlayerPaused(true, "dlna-pause")
             } else {
                 LogHub.w(TAG, "dlna pause ignored: player engine unavailable")
@@ -753,7 +714,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             pendingPause = false
             playbackHistoryCoordinator.finish("dlna-stop")
             clearLiveSession("dlna-stop")
-            if (::playerEngine.isInitialized) {
+            if (::playbackEngineHost.isInitialized) {
                 stopActivePlayback("dlna-stop")
             } else {
                 LogHub.w(TAG, "dlna stop ignored: player engine unavailable")
@@ -795,7 +756,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 LogHub.w(TAG, "dlna seek rejected for live room=${current?.cid}")
                 return
             }
-            if (::playerEngine.isInitialized) {
+            if (::playbackEngineHost.isInitialized) {
                 seekPlayer(positionMs, "dlna-seek")
             } else {
                 LogHub.w(TAG, "dlna seek ignored: player engine unavailable")
@@ -813,12 +774,12 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
         /** 直播没有定位能力，其他媒体按 libVLC 能力报告定位状态。 */
         override fun isSeekable(): Boolean = current?.isLive != true &&
-            runCatching { player.isSeekable }.getOrDefault(false)
+            playbackEngineHost.isVlcSeekable()
 
         /** 处理远端音量设置命令。 */
         override fun onSetVolume(volume: Int) {
             val v = volume.coerceIn(0, 100)
-            if (::playerEngine.isInitialized) {
+            if (::playbackEngineHost.isInitialized) {
                 setPlayerVolume(v, "dlna-volume")
             } else {
                 LogHub.w(TAG, "dlna volume ignored: player engine unavailable")
@@ -900,9 +861,15 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         updateCoordinator.initialize()
 
         runCatching {
-            VlcPlayerEngine(this, videoLayout) { event -> handlePlayerEvent(event) }
-        }.onSuccess { engine ->
-            playerEngine = engine
+            PlaybackEngineHost(
+                context = this,
+                vlcView = videoLayout,
+                media3View = media3PlayerView,
+                onEvent = playbackEventRouter::dispatch,
+                onHdrWindowChanged = ::setHdrWindowEnabled,
+            )
+        }.onSuccess { host ->
+            playbackEngineHost = host
             danmakuEngine = DfmDanmakuEngine(danmakuView, danmakuClock)
             danmakuController = DanmakuController(scope, danmakuEngine, danmakuClock)
             liveDanmakuController = LiveDanmakuController(this, scope, danmakuEngine, danmakuClock)
@@ -948,31 +915,36 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         updateCoordinator.checkAutomaticallyOnLaunch()
     }
 
-    /** 按需创建杜比视界播放后端。 */
-    private fun media3Engine(): Media3PlayerEngine =
-        media3Player ?: Media3PlayerEngine(
-            context = this,
-            playerView = media3PlayerView,
-            events = object : Media3PlayerEngine.Events {
-                override fun onPlaying() = handleDolbyVisionPlaying()
-                override fun onPaused() = handleDolbyVisionPaused()
-                override fun onBuffering(buffering: Boolean) = handleDolbyVisionBuffering(buffering)
-                override fun onEnded() = handleDolbyVisionEnded()
-                override fun onError(error: PlaybackException) = handleDolbyVisionError(error)
-                override fun onVideoSizeChanged(width: Int, height: Int) {
-                    if (playbackBackend == PlaybackBackend.MEDIA3) {
-                        videoWidth = width
-                        videoHeight = height
-                        ui = ui.copy(videoWidth = width, videoHeight = height)
-                        layoutDanmaku()
-                    }
-                }
-            },
-        ).also { media3Player = it }
+    /** 根据当前后端将统一事件交给对应的播放状态处理逻辑。 */
+    override fun onPlaybackEvent(backend: PlaybackBackend, event: PlaybackEvent) {
+        when (backend) {
+            PlaybackBackend.VLC -> handleVlcPlaybackEvent(event)
+            PlaybackBackend.MEDIA3 -> handleMedia3PlaybackEvent(event)
+        }
+    }
+
+    /** 处理 Media3 事件并保持 HDR、杜比视界与 DRM 的状态转换。 */
+    private fun handleMedia3PlaybackEvent(event: PlaybackEvent) {
+        if (playbackEngineHost.backend != PlaybackBackend.MEDIA3) return
+        when (event) {
+            PlaybackEvent.Playing -> handleDolbyVisionPlaying()
+            PlaybackEvent.Paused -> handleDolbyVisionPaused()
+            PlaybackEvent.Stopped -> Unit
+            PlaybackEvent.Ended -> handleDolbyVisionEnded()
+            is PlaybackEvent.Buffering -> handleDolbyVisionBuffering(event.isBuffering)
+            is PlaybackEvent.Failed -> handleDolbyVisionError(event)
+            is PlaybackEvent.VideoSizeChanged -> {
+                videoWidth = event.width
+                videoHeight = event.height
+                ui = ui.copy(videoWidth = event.width, videoHeight = event.height)
+                layoutDanmaku()
+            }
+        }
+    }
 
     /** Media3 的状态回调映射为现有 UI 与弹幕状态机。 */
     private fun handleDolbyVisionPlaying() {
-        if (playbackBackend != PlaybackBackend.MEDIA3) return
+        if (playbackEngineHost.backend != PlaybackBackend.MEDIA3) return
         vodCoordinator.onPlaying()
         val seek = pendingSeekMs
         pendingSeekMs = 0L
@@ -998,14 +970,14 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     private fun handleDolbyVisionPaused() {
-        if (playbackBackend != PlaybackBackend.MEDIA3) return
+        if (playbackEngineHost.backend != PlaybackBackend.MEDIA3) return
         ui = ui.copy(isPlaying = false)
         playbackHistoryCoordinator.onPaused(playerPositionMs(), playerDurationMs())
         if (::danmakuController.isInitialized) danmakuController.onPaused(playerPositionMs())
     }
 
     private fun handleDolbyVisionBuffering(buffering: Boolean) {
-        if (playbackBackend != PlaybackBackend.MEDIA3) return
+        if (playbackEngineHost.backend != PlaybackBackend.MEDIA3) return
         ui = ui.copy(isBuffering = buffering)
         observeVodBuffering(buffering)
         if (::danmakuController.isInitialized) {
@@ -1014,7 +986,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     private fun handleDolbyVisionEnded() {
-        if (playbackBackend != PlaybackBackend.MEDIA3) return
+        if (playbackEngineHost.backend != PlaybackBackend.MEDIA3) return
         playbackHistoryCoordinator.finish("media3-ended", ended = true)
         clearLiveSession("media3-ended")
         castActive = false
@@ -1045,17 +1017,17 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         )
     }
 
-    private fun handleDolbyVisionError(error: PlaybackException) {
-        if (playbackBackend != PlaybackBackend.MEDIA3) return
-        val decoderFailure = error.errorCodeName.contains("DECODING", ignoreCase = true) ||
-            error.errorCodeName.contains("RENDERER", ignoreCase = true) ||
-            error.errorCodeName.contains("CODEC", ignoreCase = true)
+    private fun handleDolbyVisionError(error: PlaybackEvent.Failed) {
+        if (playbackEngineHost.backend != PlaybackBackend.MEDIA3) return
+        val decoderFailure = error.code.contains("DECODING", ignoreCase = true) ||
+            error.code.contains("RENDERER", ignoreCase = true) ||
+            error.code.contains("CODEC", ignoreCase = true)
         if (handleVodPlaybackFailure("media3-player-error", preferCodecFallback = decoderFailure)) return
         playbackHistoryCoordinator.finish("media3-error")
         val info = current
         lastErrorRetry = info?.let { currentInfo -> { play(currentInfo, playerPositionMs()) } }
-        val licenseFailure = error.errorCodeName.contains("DRM", ignoreCase = true) ||
-            error.errorCodeName.contains("LICENSE", ignoreCase = true)
+        val licenseFailure = error.code.contains("DRM", ignoreCase = true) ||
+            error.code.contains("LICENSE", ignoreCase = true)
         val code = when {
             info?.isDrm != true -> "DOLBY_VISION_PLAYBACK_FAILED"
             licenseFailure -> "WIDEVINE_LICENSE_FAILED"
@@ -1063,12 +1035,12 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         }
         val title = if (info?.isDrm == true) "受保护内容播放失败" else "杜比视界播放失败"
         val errorSummary = "Media3 playback failed drm=${info?.isDrm == true} " +
-            "code=${error.errorCodeName}(${error.errorCode}) timestamp=${error.timestampMs}"
+            "code=${error.code} message=${error.message}"
         LogHub.e(TAG, errorSummary)
         PlaybackDiagnostics.fail(
             code = code,
             message = title,
-            detail = "error=${error.errorCodeName}(${error.errorCode}) timestamp=${error.timestampMs}",
+            detail = "error=${error.code} message=${error.message}",
         )
         showError(
             title = title,
@@ -1080,11 +1052,11 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         if (::danmakuController.isInitialized) danmakuController.close()
     }
 
-    /** 将 VLC 播放器事件转换为界面状态，并记录关键转换。 */
-    private fun handlePlayerEvent(event: MediaPlayer.Event) {
-        if (playbackBackend != PlaybackBackend.VLC) return
-        when (event.type) {
-            MediaPlayer.Event.Playing -> {
+    /** 处理 VLC 后端转换后的播放事件。 */
+    private fun handleVlcPlaybackEvent(event: PlaybackEvent) {
+        if (playbackEngineHost.backend != PlaybackBackend.VLC) return
+        when (event) {
+            PlaybackEvent.Playing -> {
                 val seek = pendingSeekMs
                 pendingSeekMs = 0L
                 LogHub.i(TAG, "ui playing initialPosition=${seek}ms")
@@ -1125,7 +1097,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 }
             }
 
-            MediaPlayer.Event.Paused -> {
+            PlaybackEvent.Paused -> {
                 LogHub.d(TAG, "ui paused")
                 runOnUiThread {
                     ui = ui.copy(isPlaying = false)
@@ -1140,7 +1112,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 }
             }
 
-            MediaPlayer.Event.Stopped -> {
+            PlaybackEvent.Stopped -> {
                 LogHub.d(TAG, "ui stopped")
                 runOnUiThread {
                     ui = ui.copy(isPlaying = false, isBuffering = false)
@@ -1149,7 +1121,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 }
             }
 
-            MediaPlayer.Event.EndReached -> {
+            PlaybackEvent.Ended -> {
                 LogHub.i(TAG, "ui end reached")
                 playbackHistoryCoordinator.finish("vlc-ended", ended = true)
                 clearLiveSession("vlc-end-reached")
@@ -1184,8 +1156,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 }
             }
 
-            MediaPlayer.Event.EncounteredError -> {
-                val snapshot = runCatching { playerEngine.stateSnapshot() }
+            is PlaybackEvent.Failed -> {
+                val snapshot = runCatching { playbackEngineHost.stateSnapshot() }
                     .getOrDefault("(snapshot unavailable)")
                 LogHub.e(TAG, "ui playback failed code=PLAYBACK_FAILED snapshot=$snapshot")
                 playbackHistoryCoordinator.finish("vlc-error")
@@ -1211,8 +1183,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
             }
 
-            MediaPlayer.Event.Buffering -> {
-                val buffering = event.buffering < 100f
+            is PlaybackEvent.Buffering -> {
+                val buffering = event.isBuffering
                 runOnUiThread {
                     ui = ui.copy(isBuffering = buffering)
                     if (current?.isLive == true &&
@@ -1230,7 +1202,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 }
             }
 
-            else -> Unit
+            is PlaybackEvent.VideoSizeChanged -> Unit
         }
     }
 
@@ -1682,9 +1654,9 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 从播放器读取视频尺寸，变化时重新摆放弹幕视图。 */
     private fun refreshVideoSize() {
-        if (playbackBackend == PlaybackBackend.MEDIA3) return
-        if (!::playerEngine.isInitialized) return
-        val size = playerEngine.videoSize() ?: return
+        if (playbackEngineHost.backend == PlaybackBackend.MEDIA3) return
+        if (!::playbackEngineHost.isInitialized) return
+        val size = playbackEngineHost.videoSize() ?: return
         val liveCodec = current?.takeIf { it.isLive }?.video?.codecs
         val detail = if (liveCodec.isNullOrBlank()) {
             ui.qualityDetail
@@ -1742,7 +1714,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         LogHub.i(TAG, "dismiss error; current=${current != null} castActive=$castActive")
         playbackHistoryCoordinator.finish("dismiss-error")
         clearLiveSession("dismiss-error")
-        if (::playerEngine.isInitialized) {
+        if (::playbackEngineHost.isInitialized) {
             stopActivePlayback("dismiss-error")
         } else {
             LogHub.w(TAG, "dismiss error without player engine")
@@ -1787,7 +1759,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         clearLiveSession("user-stop")
         pendingPause = false
         pendingSeekMs = 0L
-        if (::playerEngine.isInitialized) {
+        if (::playbackEngineHost.isInitialized) {
             stopActivePlayback("user-stop")
         } else {
             LogHub.w(TAG, "stopCasting without player engine")
@@ -1840,8 +1812,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         keepVideo: Boolean = false,
     ) {
         playbackHistoryCoordinator.finish("error:$code")
-        val snapshot = if (::playerEngine.isInitialized) {
-            runCatching { playerEngine.stateSnapshot() }.getOrDefault("(unavailable)")
+        val snapshot = if (::playbackEngineHost.isInitialized) {
+            runCatching { playbackEngineHost.stateSnapshot() }.getOrDefault("(unavailable)")
         } else {
             "(player engine unavailable)"
         }
@@ -1857,7 +1829,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         )
         if (!keepVideo) {
             clearLiveSession("show-error:$code")
-            if (::playerEngine.isInitialized) {
+            if (::playbackEngineHost.isInitialized) {
                 stopActivePlayback("show-error:$code")
             } else {
                 LogHub.w(TAG, "showError cannot stop playback: player engine unavailable")
@@ -1896,34 +1868,34 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     // helpers
     // ------------------------------------------------------------------ //
     /** 读取当前后端的统一播放状态，供 DLNA、弹幕和界面轮询使用。 */
-    private fun playerPositionMs(): Long = activePlaybackEngine.positionMs()
+    private fun playerPositionMs(): Long = playbackEngineHost.snapshot(ui.volume).positionMs
 
-    private fun playerDurationMs(): Long = activePlaybackEngine.durationMs()
+    private fun playerDurationMs(): Long = playbackEngineHost.snapshot(ui.volume).durationMs
 
-    private fun playerIsPlaying(): Boolean = activePlaybackEngine.isPlaying()
+    private fun playerIsPlaying(): Boolean = playbackEngineHost.snapshot(ui.volume).isPlaying
 
-    private fun playerVolume(): Int = activePlaybackEngine.volume(ui.volume)
+    private fun playerVolume(): Int = playbackEngineHost.snapshot(ui.volume).volume
 
     private fun seekPlayer(positionMs: Long, reason: String): Long {
         if (current?.isLive != true) {
             vodCoordinator.onSeek(positionMs)
         }
-        return activePlaybackEngine.seekTo(positionMs, reason)
+        return playbackEngineHost.seekTo(positionMs, reason)
     }
 
     private fun setPlayerPaused(paused: Boolean, reason: String) {
-        activePlaybackEngine.setPaused(paused, reason)
+        playbackEngineHost.setPaused(paused, reason)
     }
 
     private fun setPlayerPlaybackRate(rate: Float, reason: String): Float =
-        activePlaybackEngine.setPlaybackRate(rate, reason)
+        playbackEngineHost.setPlaybackRate(rate, reason)
 
     private fun setPlayerVolume(volume: Int, reason: String) {
-        activePlaybackEngine.setVolume(volume, reason)
+        playbackEngineHost.setVolume(volume, reason)
     }
 
     private fun stopActivePlayback(reason: String) {
-        activePlaybackEngine.stop(reason)
+        playbackEngineHost.stop(reason)
         setHdrWindowEnabled(false)
     }
 
@@ -1946,7 +1918,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 检查直播时间线、网络读取或解码画面是否连续五秒没有前进。 */
     private fun observeLiveProgress(
-        progress: VlcPlayerEngine.LiveProgressSnapshot,
+        progress: LivePlaybackTelemetry,
         playing: Boolean,
     ) {
         val now = SystemClock.elapsedRealtime()
@@ -2067,7 +2039,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun onPause() {
         super.onPause()
         LogHub.i(TAG, "activity pause castActive=$castActive mode=${ui.mode}")
-        if (!castActive && ::playerEngine.isInitialized) {
+        if (!castActive && ::playbackEngineHost.isInitialized) {
             if (playerIsPlaying()) {
                 setPlayerPaused(true, "activity-pause")
                 ui = ui.copy(isPlaying = false)
@@ -2097,8 +2069,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         runCatching { if (::danmakuController.isInitialized) danmakuController.release() }
         runCatching { if (::liveDanmakuController.isInitialized) liveDanmakuController.release() }
         scope.cancel()
-        runCatching { media3PlaybackEngine.release() }
-        runCatching { if (::playerEngine.isInitialized) vlcPlaybackEngine.release() }
+        runCatching { if (::playbackEngineHost.isInitialized) playbackEngineHost.release() }
         LogHub.stop()
     }
 
