@@ -36,7 +36,7 @@ import java.util.Collections
 import android.util.Base64
 
 /**
- * HDR、Dolby Vision 与 Widevine 内容使用的 Media3 播放器。
+ * DASH、HDR、Dolby Vision 与 Widevine 内容使用的 Media3 播放器。
  *
  * Media3 将 DASH/fMP4 的编码、色彩与 DRM 信息交给 Android MediaCodec/CDM，
  * 并通过 SurfaceView 输出视频。
@@ -150,10 +150,20 @@ class Media3PlayerEngine(
         instance.addAnalyticsListener(Media3AnalyticsLogger())
     }
 
-    /** 打开当前轨道；HDR 直接交给 Android 的硬解码和 SurfaceFlinger 输出。 */
+    /**
+     * 打开当前轨道。
+     *
+     * DASH 点播的音视频表示层由 [MergingMediaSource] 合并为同一条播放时间线，避免
+     * libVLC `input-slave` 在独立 fMP4 流定位后出现音视频时钟分离。
+     */
     fun open(info: BiliApi.PlayInfo, seekToMs: Long) {
-        require(info.video.isHdr || info.video.isDolbyVision || info.isDrm) {
-            "Media3 engine requires HDR, Dolby Vision, or DRM media"
+        require(
+            info.progressiveUrl == null ||
+                info.video.isHdr ||
+                info.video.isDolbyVision ||
+                info.isDrm,
+        ) {
+            "Media3 engine requires DASH, HDR, Dolby Vision, or DRM media"
         }
         activeDrm = info.isDrm
         var dashItem: MediaItem? = null
@@ -175,16 +185,20 @@ class Media3PlayerEngine(
                 .build()
             null
         } else {
-            // HDR 与杜比视界（非 DRM）直接渐进播放 fMP4；Media3 从容器读取色彩/DV
-            // 元数据并通过 SurfaceView 直出。与 BiliPai 的 legacy 播放路径一致，避免
-            // 为点播内容构造内存 DASH 清单带来的解析失败。
+            // DASH 表示层是独立的 fMP4 文件。Media3 统一维护两个 Progressive source
+            // 的 seek 和缓冲时钟，避免直接将音频作为 libVLC input-slave。
             val video = progressiveSource(info.video)
             info.audio?.takeIf { it.url.isNotBlank() }
                 ?.let { MergingMediaSource(video, progressiveSource(it)) }
                 ?: video
         }
         PlaybackDiagnostics.ensureSession(
-            if (info.isDrm) "widevine-open" else if (info.video.isDolbyVision) "dolby-vision-open" else "hdr-open",
+            when {
+                info.isDrm -> "widevine-open"
+                info.video.isDolbyVision -> "dolby-vision-open"
+                info.video.isHdr -> "hdr-open"
+                else -> "dash-open"
+            },
         )
         PlaybackDiagnostics.state("opening")
         PlaybackDiagnostics.attribute("player.backend", "media3")
@@ -212,8 +226,18 @@ class Media3PlayerEngine(
             val reason = safeErrorReason(error)
             LogHub.e(TAG, "open failed: $reason")
             PlaybackDiagnostics.fail(
-                code = if (info.isDrm) "WIDEVINE_OPEN_FAILED" else if (info.video.isDolbyVision) "DOLBY_VISION_OPEN_FAILED" else "HDR_OPEN_FAILED",
-                message = if (info.isDrm) "受保护媒体播放器打开失败" else if (info.video.isDolbyVision) "杜比视界播放器打开失败" else "HDR 播放器打开失败",
+                code = when {
+                    info.isDrm -> "WIDEVINE_OPEN_FAILED"
+                    info.video.isDolbyVision -> "DOLBY_VISION_OPEN_FAILED"
+                    info.video.isHdr -> "HDR_OPEN_FAILED"
+                    else -> "DASH_OPEN_FAILED"
+                },
+                message = when {
+                    info.isDrm -> "受保护媒体播放器打开失败"
+                    info.video.isDolbyVision -> "杜比视界播放器打开失败"
+                    info.video.isHdr -> "HDR 播放器打开失败"
+                    else -> "DASH 播放器打开失败"
+                },
                 detail = reason,
             )
             throw error

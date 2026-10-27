@@ -87,6 +87,7 @@ import org.videolan.libvlc.util.VLCVideoLayout
 import com.roy233.tvcast.platform.player.VlcPlayerEngine
 import com.roy233.tvcast.platform.player.Media3PlayerEngine
 import com.roy233.tvcast.platform.player.VlcTrackFormat
+import com.roy233.tvcast.platform.player.VodPlaybackBackendPolicy
 import master.flame.danmaku.ui.widget.DanmakuView
 
 /**
@@ -101,13 +102,13 @@ class MainActivity : ComponentActivity() {
     private lateinit var playerEngine: VlcPlayerEngine
     /** VLC 播放器实例。 */
     private val player: MediaPlayer get() = playerEngine.player
-    /** 当前活跃的播放后端；常规 SDR/HDR 使用 VLC，杜比视界与 Widevine 使用 Media3。 */
+    /** 当前活跃的播放后端；直播和渐进式旧片使用 VLC，DASH 点播使用 Media3。 */
     private var playbackBackend = PlaybackBackend.VLC
-    /** Media3 播放器按需创建，供杜比视界与 Widevine 内容使用。 */
+    /** Media3 播放器按需创建，供 DASH、杜比视界与 Widevine 点播使用。 */
     private var media3Player: Media3PlayerEngine? = null
     /** 视频渲染布局。 */
     private lateinit var videoLayout: VLCVideoLayout
-    /** Media3 使用的 SurfaceView 容器，仅杜比视界会显示。 */
+    /** Media3 使用的 SurfaceView 容器，DASH 点播时显示。 */
     private lateinit var media3PlayerView: PlayerView
     /** 弹幕渲染视图。 */
     private lateinit var danmakuView: DanmakuView
@@ -650,7 +651,7 @@ class MainActivity : ComponentActivity() {
         updateCoordinator.checkAutomaticallyOnLaunch()
     }
 
-    /** 按需创建杜比视界播放后端。 */
+    /** 按需创建 DASH 点播播放后端。 */
     private fun media3Engine(): Media3PlayerEngine =
         media3Player ?: Media3PlayerEngine(
             context = this,
@@ -2300,7 +2301,9 @@ class MainActivity : ComponentActivity() {
         )
         if (!info.isLive) addRecent(info)
 
-        val requiresMedia3 = info.video.isHdr || info.video.isDolbyVision || info.isDrm
+        // B 站 DASH 将视频和音频拆为两条 fMP4 表示层。Media3 的 MergingMediaSource
+        // 维护两路的共同 seek/缓冲时间线，避免 libVLC input-slave 的时钟漂移。
+        val requiresMedia3 = VodPlaybackBackendPolicy.usesMedia3(info)
         val started = if (requiresMedia3) {
             // 先切换状态再停止 VLC，忽略旧播放器随后送达的 Stopped 事件。
             playbackBackend = PlaybackBackend.MEDIA3
@@ -2309,7 +2312,7 @@ class MainActivity : ComponentActivity() {
                 when {
                     info.isDrm -> "switch-to-media3-widevine"
                     info.video.isDolbyVision -> "switch-to-media3-dolby-vision"
-                    else -> "switch-to-media3-hdr"
+                    else -> "switch-to-media3-dash"
                 },
             )
             videoLayout.visibility = View.GONE
@@ -2625,10 +2628,10 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 预览性地跳转到新位置。
+     * 更新预览性跳转的位置。
      *
-     * 每次方向键输入都会立即驱动 VLC 跳转，以便画面加载目标位置；待确认状态只用于
-     * 控制进度条显示与自动提交，不会延后播放器的实际定位。
+     * 预览阶段只改变界面位置；确认后才执行一次实际定位。这样长按、触摸滑动和
+     * Compose 的自动确认不会向 DASH 时间线连续发出互相竞争的 seek 请求。
      */
     private fun previewSeekBy(ms: Long) {
         if (current?.isLive == true) return
@@ -2644,10 +2647,6 @@ class MainActivity : ComponentActivity() {
         val basePosition = ui.seekPreviewPositionMs
             ?: playerPositionMs()
         val target = (basePosition + ms).coerceIn(0L, duration)
-        seekPlayer(target, "remote-seek-preview")
-        if (::danmakuController.isInitialized) {
-            danmakuController.onSeek(target)
-        }
         ui = ui.copy(
             positionMs = target,
             durationMs = duration,
@@ -2655,11 +2654,13 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    /** 结束当前预览会话；播放器已在预览期间定位到目标位置。 */
+    /** 提交预览位置，并只向播放器和弹幕时钟发出一次定位。 */
     private fun confirmPreviewSeek() {
-        if (current?.isLive != true && ui.seekPreviewPositionMs != null) {
-            ui = ui.copy(seekPreviewPositionMs = null)
-        }
+        if (current?.isLive == true) return
+        val target = ui.seekPreviewPositionMs ?: return
+        val applied = seekPlayer(target, "remote-seek-confirm")
+        if (::danmakuController.isInitialized) danmakuController.onSeek(applied)
+        ui = ui.copy(positionMs = applied, seekPreviewPositionMs = null)
     }
 
     /** 将 VLC 与弹幕时钟切换到相同的标准播放速度。 */
