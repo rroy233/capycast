@@ -66,10 +66,10 @@ jobs:
           fi
 
           printf '%s\n' "$changed_files"
-          if printf '%s\n' "$changed_files" | grep -Eqv '^(AGENTS\.md|README\.md|docs/|release-notes/|web/)'; then
+          if printf '%s\n' "$changed_files" | grep -Eq '^(app/|gradle/|buildSrc/|build-logic/|gradlew(\.bat)?$|settings\.gradle(\.kts)?$|build\.gradle(\.kts)?$|gradle\.properties$)'; then
             echo "needs_android_build=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Documentation-only change; skipping Android verification."
+            echo "No Android source or Gradle build configuration changed; skipping Android verification."
             echo "needs_android_build=false" >> "$GITHUB_OUTPUT"
           fi
 
