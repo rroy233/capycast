@@ -19,16 +19,38 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 100px; }
+html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  scroll-padding-top: 100px;
+}
 body {
   margin: 0;
-  min-width: 320px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: hidden;
   color: var(--ink);
   background: linear-gradient(180deg, #f8faff 0%, #f7f9ff 48%, #fbfcff 100%);
   font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+#root {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+@supports (overflow: clip) {
+  html,
+  body,
+  #root {
+    overflow-x: clip;
+  }
 }
 body::before {
   position: fixed;
@@ -120,7 +142,7 @@ img { max-width: 100%; }
 .hero-tv-layer { z-index: 1; }
 .hero-phone-layer { z-index: 3; pointer-events: none; }
 .product-image { display: block; width: 100%; height: 100%; object-fit: cover; }
-.selling-points-track { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: auto; }
+.selling-points-track { position: absolute; inset: 0; z-index: 2; overflow: hidden; contain: paint; pointer-events: auto; }
 .selling-point-card { position: absolute; left: calc(100% + 24px); isolation: isolate; display: flex; align-items: center; gap: 11px; width: max-content; max-width: min(290px, calc(100vw - 48px)); padding: 13px 16px 13px 13px; overflow: hidden; border: 1px solid rgba(255,255,255,.82); border-radius: 18px; background: rgba(255,255,255,.66); box-shadow: 0 12px 36px rgba(72, 103, 164, .10), inset 0 1px rgba(255,255,255,.92); pointer-events: auto; cursor: default; backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%); animation: selling-point-travel var(--travel-duration) linear var(--travel-delay) infinite both; animation-play-state: var(--card-play-state, running); }
 .selling-point-card::after { position: absolute; z-index: 2; inset: 0; pointer-events: none; content: ""; background: rgba(247,249,255,.96); backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%); animation: selling-point-wipe var(--travel-duration) linear var(--travel-delay) infinite both; animation-play-state: var(--card-play-state, running); }
 .selling-point-card-0 { top: 7%; }
