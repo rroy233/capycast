@@ -3,6 +3,7 @@ package com.roy233.tvcast.data.bili.danmaku
 import android.content.Context
 import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
 import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClient
@@ -60,11 +61,13 @@ class BiliLiveDanmakuClient(
     /** 开始连接；已连接时调用会先断开旧连接。 */
     override fun start() {
         closed = false
+        LogHub.i(TAG, "start room=$roomId")
         scope.launch { connect() }
     }
 
     /** 关闭连接并停止心跳与重连。 */
     override fun close() {
+        LogHub.i(TAG, "close room=$roomId connected=${webSocket != null}")
         closed = true
         reconnectJob?.cancel()
         reconnectJob = null
@@ -78,7 +81,8 @@ class BiliLiveDanmakuClient(
     /** 立即发送一次心跳；宿主导出给诊断/在线人数查询使用。 */
     override fun heartbeat() {
         webSocket?.let { ws ->
-            ws.send(ByteString.of(*LiveDanmakuProtocol.encodeHeartbeat()))
+            val sent = ws.send(ByteString.of(*LiveDanmakuProtocol.encodeHeartbeat()))
+            LogHub.d(TAG, "heartbeat room=$roomId sent=$sent current=${webSocket === ws}")
         }
     }
 
@@ -104,6 +108,7 @@ class BiliLiveDanmakuClient(
             return
         }
         val host = hosts[hostIndex % hosts.size]
+        LogHub.i(TAG, "connect room=$roomId host=${host.host} index=$hostIndex port=${host.wssPort}")
         val request = Request.Builder()
             .url(host.wssUrl)
             .header("User-Agent", BiliApi.UA)
@@ -117,13 +122,27 @@ class BiliLiveDanmakuClient(
             reconnectAttempt = 0
             onState(LiveDanmakuClient.State.CONNECTED)
             val join = LiveDanmakuProtocol.encodeJoin(roomId, token, uid, buvid)
-            webSocket.send(ByteString.of(*join))
-            LogHub.i(TAG, "live danmaku ws connected room=$roomId")
+            val sent = webSocket.send(ByteString.of(*join))
+            LogHub.i(
+                TAG,
+                "live danmaku ws connected room=$roomId status=${response.code} " +
+                    "joinSent=$sent current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
+            )
         }
 
         override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+            val before = buffer.size
             buffer += bytes.toByteArray()
             splitBuffer()
+            LogHub.d(
+                TAG,
+                "ws frame room=$roomId bytes=${bytes.size} bufferedBefore=$before " +
+                    "bufferedAfter=${buffer.size} current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
+            )
+        }
+
+        override fun onMessage(webSocket: WebSocket, text: String) {
+            LogHub.w(TAG, "unexpected text frame room=$roomId bytes=${text.length}")
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -132,13 +151,22 @@ class BiliLiveDanmakuClient(
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             onState(LiveDanmakuClient.State.DISCONNECTED)
-            LogHub.i(TAG, "live danmaku ws closed room=$roomId code=$code reason=$reason")
+            LogHub.i(
+                TAG,
+                "live danmaku ws closed room=$roomId code=$code " +
+                    "reason=${LogRedaction.text(reason).take(80)} " +
+                    "current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
+            )
             scheduleReconnect()
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             onState(LiveDanmakuClient.State.FAILED)
-            LogHub.e(TAG, "live danmaku ws failed room=$roomId error=${t.javaClass.simpleName}")
+            LogHub.e(
+                TAG,
+                "live danmaku ws failed room=$roomId error=${LogRedaction.reason(t)} " +
+                    "current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
+            )
             scheduleReconnect()
         }
     }
@@ -148,10 +176,14 @@ class BiliLiveDanmakuClient(
         while (buffer.size >= LiveDanmakuProtocol.HEADER_SIZE) {
             val size = readInt32(buffer, 0)
             if (size < LiveDanmakuProtocol.HEADER_SIZE) {
+                LogHub.w(TAG, "invalid packet size room=$roomId size=$size buffered=${buffer.size}")
                 buffer = ByteArray(0)
                 return
             }
-            if (size > buffer.size) return
+            if (size > buffer.size) {
+                LogHub.d(TAG, "partial packet room=$roomId expected=$size buffered=${buffer.size}")
+                return
+            }
             val pack = buffer.copyOfRange(0, size)
             buffer = buffer.copyOfRange(size, buffer.size)
             handlePack(pack)
@@ -161,7 +193,10 @@ class BiliLiveDanmakuClient(
     private fun handlePack(pack: ByteArray) {
         val packets = LiveDanmakuProtocol.decode(pack)
         val items = ArrayList<DanmakuItem>()
+        val operations = mutableMapOf<Int, Int>()
+        val ignoredCommands = mutableMapOf<String, Int>()
         for (packet in packets) {
+            operations[packet.op] = (operations[packet.op] ?: 0) + 1
             when (packet.op) {
                 LiveDanmakuProtocol.OP_JOIN_REPLY -> {
                     val code = runCatching {
@@ -179,12 +214,30 @@ class BiliLiveDanmakuClient(
                         webSocket?.close(1000, "auth-rejected")
                     }
                 }
-                LiveDanmakuProtocol.OP_HEARTBEAT_REPLY -> Unit
+                LiveDanmakuProtocol.OP_HEARTBEAT_REPLY -> {
+                    LogHub.d(TAG, "heartbeat reply room=$roomId bytes=${packet.body.size}")
+                }
                 LiveDanmakuProtocol.OP_MESSAGE -> {
-                    LiveDanmakuProtocol.parseDanmaku(packet.body)?.let { items += it }
+                    val item = LiveDanmakuProtocol.parseDanmaku(packet.body)
+                    if (item != null) items += item
+                    else {
+                        val command = runCatching {
+                            JsonParser.parseString(String(packet.body, Charsets.UTF_8))
+                                .asJsonObject.get("cmd")?.asString.orEmpty()
+                        }.getOrDefault("").take(64)
+                            .takeIf { it.matches(SAFE_COMMAND) }
+                            .orEmpty()
+                            .ifBlank { "(unknown)" }
+                        ignoredCommands[command] = (ignoredCommands[command] ?: 0) + 1
+                    }
                 }
             }
         }
+        LogHub.d(
+            TAG,
+            "packet room=$roomId bytes=${pack.size} decoded=${packets.size} " +
+                "operations=$operations danmaku=${items.size} ignored=$ignoredCommands",
+        )
         if (items.isNotEmpty()) onItems(items)
     }
 
@@ -194,9 +247,7 @@ class BiliLiveDanmakuClient(
         heartbeatJob = scope.launch {
             while (isActive) {
                 delay(HEARTBEAT_INTERVAL_MS)
-                webSocket?.let { ws ->
-                    ws.send(ByteString.of(*LiveDanmakuProtocol.encodeHeartbeat()))
-                }
+                heartbeat()
             }
         }
     }
@@ -207,6 +258,7 @@ class BiliLiveDanmakuClient(
         reconnectJob?.cancel()
         val delayMs = RECONNECT_BASE_MS shl reconnectAttempt.coerceAtMost(5)
         reconnectAttempt++
+        LogHub.w(TAG, "reconnect scheduled room=$roomId attempt=$reconnectAttempt delayMs=$delayMs")
         reconnectJob = scope.launch {
             delay(delayMs)
             if (closed) return@launch
@@ -230,5 +282,6 @@ class BiliLiveDanmakuClient(
         const val TAG = "LiveDanmakuClient"
         const val HEARTBEAT_INTERVAL_MS = 30_000L
         const val RECONNECT_BASE_MS = 1_000L
+        private val SAFE_COMMAND = Regex("[A-Za-z0-9_:]*")
     }
 }

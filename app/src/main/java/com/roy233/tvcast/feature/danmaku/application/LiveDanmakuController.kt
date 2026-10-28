@@ -1,6 +1,7 @@
 package com.roy233.tvcast.feature.danmaku.application
 
 import android.content.Context
+import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
 import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClient
 import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClientFactory
@@ -11,6 +12,7 @@ import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -38,6 +40,8 @@ class LiveDanmakuController(
     private var activeRoomId = -1L
     private val pending = ArrayList<DanmakuItem>()
     private var flushJob: Job? = null
+    private var diagnosticJob: Job? = null
+    private var sessionSerial = 0L
 
     /** 设置视频内容区高度，用于字号换算。 */
     fun setContentHeight(heightPx: Int) {
@@ -58,23 +62,53 @@ class LiveDanmakuController(
      */
     fun open(roomId: Long, cookie: String, uid: Long) {
         // 同房间内切换线路时复用现有连接，避免不必要的重连与 token 重换。
-        if (!closed && activeRoomId == roomId) return
+        if (!closed && activeRoomId == roomId) {
+            LogHub.d(TAG, "reuse session=$sessionSerial room=$roomId " + engine.diagnosticState())
+            return
+        }
+        LogHub.i(
+            TAG,
+            "open room=$roomId previousRoom=$activeRoomId closed=$closed " + engine.diagnosticState(),
+        )
+        sessionSerial++
         activeRoomId = roomId
         closed = false
         paused = false
         pending.clear()
         flushJob?.cancel()
         flushJob = null
-        engine.clear()
+        engine.setLiveTraceRoom(roomId)
         clock.reset()
         clock.rebase(0)
+        engine.resetForSession(0)
+        engine.resume()
+        LogHub.i(TAG, "opened session=$sessionSerial room=$roomId " + engine.diagnosticState())
         client?.close()
-        client = clientFactory.create(scope, context, roomId, cookie, uid, ::onItems, {})
+        val openedSession = sessionSerial
+        client = clientFactory.create(
+            scope, context, roomId, cookie, uid,
+            { items -> onItems(openedSession, items) },
+            {},
+        )
         client?.start()
+        diagnosticJob?.cancel()
+        diagnosticJob = scope.launch {
+            while (isActive && !closed && activeRoomId == roomId) {
+                delay(DIAGNOSTIC_INTERVAL_MS)
+                if (isActive && !closed && activeRoomId == roomId) {
+                    LogHub.d(
+                        TAG,
+                        "status session=$sessionSerial room=$roomId paused=$paused " +
+                            "enabled=${settings.enabled} pending=${pending.size} " + engine.diagnosticState(),
+                    )
+                }
+            }
+        }
     }
 
     /** 关闭会话并清空屏幕。 */
     fun close() {
+        LogHub.i(TAG, "close session=$sessionSerial room=$activeRoomId " + engine.diagnosticState())
         closed = true
         activeRoomId = -1L
         paused = false
@@ -82,32 +116,51 @@ class LiveDanmakuController(
         client = null
         flushJob?.cancel()
         flushJob = null
+        diagnosticJob?.cancel()
+        diagnosticJob = null
         pending.clear()
         engine.clear()
         clock.reset()
+        engine.setLiveTraceRoom(null)
+        LogHub.d(TAG, "closed session=$sessionSerial " + engine.diagnosticState())
     }
 
     /** 播放器恢复播放。 */
     fun onPlaying() {
-        if (closed) return
+        if (closed) {
+            LogHub.d(TAG, "playing ignored: closed session=$sessionSerial")
+            return
+        }
+        LogHub.d(TAG, "playing session=$sessionSerial room=$activeRoomId before " + engine.diagnosticState())
         paused = false
         clock.rebase(clock.nowMs())
         engine.resume()
+        LogHub.d(TAG, "playing session=$sessionSerial after " + engine.diagnosticState())
     }
 
     /** 播放器暂停；暂停期间的增量直接丢弃。 */
     fun onPaused() {
-        if (closed) return
+        if (closed) {
+            LogHub.d(TAG, "paused ignored: closed session=$sessionSerial")
+            return
+        }
+        LogHub.d(TAG, "paused session=$sessionSerial room=$activeRoomId before " + engine.diagnosticState())
         paused = true
         pending.clear()
         clock.pause(clock.nowMs())
         engine.pause()
+        LogHub.d(TAG, "paused session=$sessionSerial after " + engine.diagnosticState())
     }
 
     /** 应用显示设置；直播弹幕无智能云屏蔽，强制按关闭过滤。 */
     fun applySettings(newSettings: DanmakuSettings) {
         settings = newSettings
         engine.applySettings(newSettings)
+        LogHub.d(
+            TAG,
+            "settings session=$sessionSerial room=$activeRoomId enabled=${newSettings.enabled} " +
+                engine.diagnosticState(),
+        )
     }
 
     /** 释放会话；Activity 销毁时调用。 */
@@ -115,12 +168,34 @@ class LiveDanmakuController(
         close()
     }
 
-    private fun onItems(items: List<DanmakuItem>) {
-        if (closed || paused || !settings.enabled) return
+    private fun onItems(sourceSession: Long, items: List<DanmakuItem>) {
+        if (closed || paused || !settings.enabled) {
+            LogHub.d(
+                TAG,
+                "items dropped at callback source=$sourceSession session=$sessionSerial " +
+                    "room=$activeRoomId count=${items.size} " +
+                    "closed=$closed paused=$paused enabled=${settings.enabled}",
+            )
+            return
+        }
         // okhttp 回调线程切到主线程，避免与 flush 竞争 pending。
         scope.launch {
-            if (closed || paused || !settings.enabled) return@launch
+            if (closed || paused || !settings.enabled) {
+                LogHub.d(
+                    TAG,
+                    "items dropped on main source=$sourceSession session=$sessionSerial " +
+                        "room=$activeRoomId count=${items.size} " +
+                        "closed=$closed paused=$paused enabled=${settings.enabled}",
+                )
+                return@launch
+            }
             pending += items
+            LogHub.d(
+                TAG,
+                "items queued source=$sourceSession session=$sessionSerial " +
+                    "room=$activeRoomId count=${items.size} " +
+                    "pending=${pending.size} " + engine.diagnosticState(),
+            )
             if (flushJob?.isActive != true) {
                 flushJob = scope.launch {
                     delay(FLUSH_INTERVAL_MS)
@@ -131,14 +206,28 @@ class LiveDanmakuController(
     }
 
     private fun flush() {
-        if (closed || paused || pending.isEmpty()) return
+        if (closed || paused || pending.isEmpty()) {
+            LogHub.d(
+                TAG,
+                "flush skipped session=$sessionSerial room=$activeRoomId pending=${pending.size} " +
+                    "closed=$closed paused=$paused",
+            )
+            return
+        }
         val now = clock.nowMs().toInt()
         val batch = pending.map { it.copy(progressMs = now) }
         pending.clear()
+        LogHub.d(
+            TAG,
+            "flush session=$sessionSerial room=$activeRoomId count=${batch.size} itemTime=$now " +
+                engine.diagnosticState(),
+        )
         engine.addSegment(batch, AiShieldLevel.OFF)
     }
 
     private companion object {
+        const val TAG = "LiveDanmakuSession"
+        const val DIAGNOSTIC_INTERVAL_MS = 5_000L
         /** 攒批间隔，避免高频弹幕逐条触发 DFM 添加。 */
         const val FLUSH_INTERVAL_MS = 100L
     }

@@ -24,6 +24,7 @@ import master.flame.danmaku.danmaku.model.android.Danmakus
 import master.flame.danmaku.danmaku.parser.BaseDanmakuParser
 import master.flame.danmaku.danmaku.util.DanmakuUtils
 import master.flame.danmaku.ui.widget.DanmakuView
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * DFM 适配层。
@@ -50,6 +51,12 @@ class DfmDanmakuEngine(
     private var dfmReady = false
     private var paused = false
     private val pending = ArrayList<DanmakuItem>()
+    private val drawingFinishedCount = AtomicLong()
+    private val liveSubmittedCount = AtomicLong()
+    private val liveShownCount = AtomicLong()
+    @Volatile private var lastSubmittedTimeMs = -1L
+    @Volatile private var lastShownTimeMs = -1L
+    @Volatile private var liveTraceRoomId: Long? = null
 
     init {
         view.setBackgroundColor(Color.TRANSPARENT)
@@ -76,9 +83,21 @@ class DfmDanmakuEngine(
 
             override fun updateTimer(timer: DanmakuTimer) = Unit
 
-            override fun danmakuShown(danmaku: BaseDanmaku) = Unit
+            override fun danmakuShown(danmaku: BaseDanmaku) {
+                if (liveTraceRoomId != null) {
+                    lastShownTimeMs = danmaku.time
+                    val count = liveShownCount.incrementAndGet()
+                    LogHub.d(TAG, "shown count=$count itemTime=${danmaku.time} " + diagnosticState())
+                }
+            }
 
-            override fun drawingFinished() = Unit
+            override fun drawingFinished() {
+                if (liveTraceRoomId == null) return
+                val count = drawingFinishedCount.incrementAndGet()
+                if (count <= 3 || count % 100L == 0L) {
+                    LogHub.d(TAG, "drawing finished count=$count " + diagnosticState())
+                }
+            }
         })
         danmakuContext.setDanmakuStyle(
             IDisplayer.DANMAKU_STYLE_STROKEN,
@@ -138,7 +157,8 @@ class DfmDanmakuEngine(
         LogHub.d(
             TAG,
             "addSegment items=${items.size} filtered=${filtered.size} " +
-                "level=$level prepared=$prepared",
+                "level=$level times=${filtered.firstOrNull()?.progressMs ?: "none"}.." +
+                "${filtered.lastOrNull()?.progressMs ?: "none"} " + diagnosticState(),
         )
         if (!prepared || !dfmReady) {
             pending += filtered
@@ -207,11 +227,45 @@ class DfmDanmakuEngine(
         }
     }
 
+    /**
+     * 开始新的媒体时间轴。DFM 的 removeAllDanmakus 只清空条目，保留上一会话的
+     * 渲染窗口起点；必须 seek 才能让从零计时的直播弹幕进入绘制窗口。
+     * 调用方在时间轴重置后根据播放状态调用 resume 或 pause。
+     */
+    fun resetForSession(positionMs: Long) {
+        LogHub.d(TAG, "reset session position=$positionMs " + diagnosticState())
+        clear()
+        if (prepared && dfmReady) seekTo(positionMs.coerceAtLeast(0L))
+    }
+
     /** 清空屏幕上的弹幕与等待队列。 */
     fun clear() {
+        LogHub.d(TAG, "clear before " + diagnosticState())
         pending.clear()
         if (prepared) view.removeAllDanmakus(true)
+        LogHub.d(TAG, "clear after " + diagnosticState())
     }
+
+    /** 只在直播会话输出逐条渲染诊断，避免点播分段填满有限的日志缓冲区。 */
+    fun setLiveTraceRoom(roomId: Long?) {
+        liveTraceRoomId = roomId
+        drawingFinishedCount.set(0)
+        liveSubmittedCount.set(0)
+        liveShownCount.set(0)
+        lastSubmittedTimeMs = -1L
+        lastShownTimeMs = -1L
+    }
+
+    /** 只记录时间轴和视图状态，不记录弹幕正文或用户信息。 */
+    fun diagnosticState(): String =
+        "liveRoom=${liveTraceRoomId ?: "none"} clock=${clock.nowMs()} " +
+            "timer=${mediaTimer.currMillisecond} " +
+            "viewTime=${view.currentTime} ready=$dfmReady prepared=$prepared " +
+            "enginePaused=$paused viewPaused=${view.isPaused} " +
+            "visible=${view.visibility} shown=${view.isShown} attached=${view.isAttachedToWindow} " +
+            "alpha=${view.alpha} size=${view.width}x${view.height} pending=${pending.size} " +
+            "submitted=${liveSubmittedCount.get()} shownCount=${liveShownCount.get()} " +
+            "lastSubmitted=$lastSubmittedTimeMs lastShown=$lastShownTimeMs"
 
     /** 释放 DFM 资源。 */
     fun release() {
@@ -230,7 +284,20 @@ class DfmDanmakuEngine(
     }
 
     private fun addToView(item: DanmakuItem) {
-        view.addDanmaku(toDfm(item))
+        val danmaku = toDfm(item)
+        if (liveTraceRoomId != null) {
+            LogHub.d(TAG, "submit itemTime=${item.progressMs} mode=${item.mode} " + diagnosticState())
+        }
+        view.addDanmaku(danmaku)
+        if (liveTraceRoomId != null) {
+            lastSubmittedTimeMs = item.progressMs.toLong()
+            liveSubmittedCount.incrementAndGet()
+            LogHub.d(
+                TAG,
+                "submitted itemTime=${item.progressMs} timedOut=${danmaku.isTimeOut} " +
+                    diagnosticState(),
+            )
+        }
     }
 
     private fun toDfm(item: DanmakuItem): BaseDanmaku {
