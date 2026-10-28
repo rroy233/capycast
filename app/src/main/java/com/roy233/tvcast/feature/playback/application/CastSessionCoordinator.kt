@@ -5,10 +5,9 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.playback.PlaybackRequest
-import com.roy233.tvcast.data.auth.CastAuth
-import com.roy233.tvcast.data.bili.NvaExtDecoder
-import com.roy233.tvcast.data.bili.PgcPlaybackException
+import com.roy233.tvcast.feature.cast.domain.CastContent
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
+import com.roy233.tvcast.feature.playback.model.PgcPlaybackFailure
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.feature.playback.model.CastResolution
 import com.roy233.tvcast.feature.playback.model.VodSession
@@ -39,8 +38,9 @@ interface CastSessionHost {
     fun currentRequest(): PlaybackRequest?
     fun setCurrentForCast(request: PlaybackRequest?)
     fun setCastActive(active: Boolean)
-    fun lastNva(): NvaExtDecoder.NvaExtContent?
-    fun setLastNva(nva: NvaExtDecoder.NvaExtContent?)
+    fun decodeCastContent(longDescription: String): CastContent?
+    fun lastNva(): CastContent?
+    fun setLastNva(nva: CastContent?)
     fun setLastTitle(title: String)
     fun setRetry(action: (() -> Unit)?)
     fun clearLoginUi()
@@ -53,7 +53,7 @@ interface CastSessionHost {
     fun markCastFailed(code: String)
     fun setCastDurationMs(durationMs: Long)
     fun startLiveSession(info: LivePlayInfo, routes: List<RankedLiveSource>, title: String)
-    fun authToken(): CastAuth.Token?
+    fun accessKey(): String?
     fun appContext(): Context
     fun isEngineInitialized(): Boolean
     fun updateLiveUrl(url: String)
@@ -221,7 +221,7 @@ class CastSessionCoordinator(
             ),
         )
 
-        val nva = NvaExtDecoder.decode(longDescription)
+        val nva = playback.decodeCastContent(longDescription)
         if (nva == null) {
             LogHub.e(TAG, "cast rejected: nva_ext decode failed")
             PlaybackDiagnostics.fail(
@@ -249,15 +249,15 @@ class CastSessionCoordinator(
         LogHub.i(
             TAG,
             "cast nva aid=${nva.aid} cid=${nva.cid} bvid=${nva.bvid} " +
-                "eid=${nva.eid} sid=${nva.sid} room=${nva.roomId} " +
+                "epId=${nva.epId} seasonId=${nva.seasonId} room=${nva.roomId} " +
                 "qn=${nva.qn} desireQn=${nva.userDesireQn} speed=$desiredSpeed " +
-                "ct=${nva.ct} tp=${nva.tp}",
+                "ct=${nva.contentType} tp=${nva.transportType}",
         )
         PlaybackDiagnostics.attribute("cast.aid", nva.aid.toString())
         PlaybackDiagnostics.attribute("cast.cid", nva.cid.toString())
         PlaybackDiagnostics.attribute("cast.bvid", nva.bvid.orEmpty())
-        PlaybackDiagnostics.attribute("cast.eid", nva.eid.toString())
-        PlaybackDiagnostics.attribute("cast.sid", nva.sid.toString())
+        PlaybackDiagnostics.attribute("cast.eid", nva.epId.toString())
+        PlaybackDiagnostics.attribute("cast.sid", nva.seasonId.toString())
         PlaybackDiagnostics.attribute("cast.roomId", nva.roomId.toString())
         PlaybackDiagnostics.attribute("cast.requestQn", nva.qn.toString())
         PlaybackDiagnostics.attribute("cast.desireQn", nva.userDesireQn.toString())
@@ -267,7 +267,7 @@ class CastSessionCoordinator(
     }
 
     /** 根据 nva 内容解析播放地址并开始播放。 */
-    fun resolve(nva: NvaExtDecoder.NvaExtContent, title: String) {
+    fun resolve(nva: CastContent, title: String) {
         playback.cancelResolve()
         playback.endLiveSession("resolve-new-cast")
         playback.setResolving(true)
@@ -275,7 +275,7 @@ class CastSessionCoordinator(
         playback.setLastTitle(title)
         val branch = when {
             nva.hasLive -> "live"
-            nva.hasPgc && nva.eid > 0 -> "pgc"
+            nva.hasPgc && nva.epId > 0 -> "pgc"
             nva.hasPgc -> "pgc-without-epId"
             nva.hasUgc -> "ugc"
             else -> "none"
@@ -283,7 +283,7 @@ class CastSessionCoordinator(
         LogHub.i(
             TAG,
             "resolve begin branch=$branch aid=${nva.aid} cid=${nva.cid} " +
-                "bvid=${nva.bvid} eid=${nva.eid} room=${nva.roomId}",
+                "bvid=${nva.bvid} epId=${nva.epId} room=${nva.roomId}",
         )
         PlaybackDiagnostics.attribute("resolve.branch", branch)
         val state = playback.state()
@@ -303,9 +303,9 @@ class CastSessionCoordinator(
                     runCatching {
                         when {
                             nva.hasLive -> {
-                                val token = playback.authToken()
+                                val accessKey = playback.accessKey()
                                     ?: error("TV account login is required for live playback")
-                                val liveInfo = playback.resolveLivePlayback(token.accessKey, nva.roomId)
+                                val liveInfo = playback.resolveLivePlayback(accessKey, nva.roomId)
                                 val routes = playback.liveSessionCoordinator()
                                     .cdn.rankInitial(liveInfo.qualityCandidates)
                                 if (routes.isEmpty()) {
@@ -317,7 +317,7 @@ class CastSessionCoordinator(
                                 playback.vodSessionCoordinator().cdn.rankPlayback(
                                     playback.resolveVodPlayback(
                                         aid = nva.aid, cid = nva.cid, bvid = nva.bvid.orEmpty(), title = title,
-                                        epId = nva.eid, seasonId = nva.sid,
+                                        epId = nva.epId, seasonId = nva.seasonId,
                                     ),
                                 ),
                             )
@@ -369,7 +369,7 @@ class CastSessionCoordinator(
                 }.onFailure { t ->
                     val message = t.message.orEmpty()
                     val live = nva.hasLive
-                    val pgcError = t as? PgcPlaybackException
+                    val pgcError = t as? PgcPlaybackFailure
                     val pgc = nva.hasPgc
                     val pgcStatus = pgcError?.let { error ->
                         "httpStatus=${error.httpStatus ?: "none"} apiCode=${error.apiCode ?: "none"}"

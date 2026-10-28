@@ -19,6 +19,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.PlaybackSpeed
+import com.roy233.tvcast.feature.cast.domain.CastContent
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.TvDestination
@@ -42,7 +43,6 @@ import com.roy233.tvcast.data.bili.CdnCandidateSelector
 import com.roy233.tvcast.data.bili.LivePlayUrlResolver
 import com.roy233.tvcast.data.bili.routing.OkHttpLiveRouteProbe
 import com.roy233.tvcast.data.bili.routing.OkHttpVodRouteProbe
-import com.roy233.tvcast.data.bili.PgcPlaybackException
 import com.roy233.tvcast.data.bili.PgcPlaybackResolver
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
 import com.roy233.tvcast.feature.playback.model.LiveStreamCandidate
@@ -161,7 +161,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 待应用的播放起始位置，单位为毫秒。 */
     private var pendingSeekMs = 0L
     /** 最近一次解析得到的 nva 内容。 */
-    private var lastNva: NvaExtDecoder.NvaExtContent? = null
+    private var lastNva: CastContent? = null
     /** 最近一次投屏标题。 */
     private var lastTitle = ""
     /** 最近一次失败操作的重试回调。 */
@@ -468,7 +468,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 最近一次解析得到的 nva 内容。 */
-    override fun lastNva(): NvaExtDecoder.NvaExtContent? = lastNva
+    override fun lastNva(): CastContent? = lastNva
 
     /** 最近一次投屏标题。 */
     override fun lastTitle(): String = lastTitle
@@ -483,7 +483,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 重新解析并播放指定 nva 内容。 */
-    override fun resolveLast(nva: NvaExtDecoder.NvaExtContent) = resolveNvaAndPlay(nva, lastTitle)
+    override fun resolveLast(nva: CastContent) = resolveNvaAndPlay(nva, lastTitle)
 
     /** 展示错误提示。 */
     override fun reportError(
@@ -503,6 +503,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun setCastDurationMs(durationMs: Long) = dlna.setDurationMs(durationMs)
 
     /** 读取当前电视端登录令牌。 */
+    override fun accessKey(): String? = authTokenStore.load()?.accessKey
+
     override fun authToken(): CastAuth.Token? = authTokenStore.load()
 
     /** 可供解析器使用的应用上下文。 */
@@ -584,8 +586,12 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         castActive = active
     }
 
+    /** 将协议原文转换为投屏领域内容身份。 */
+    override fun decodeCastContent(longDescription: String): CastContent? =
+        NvaExtDecoder.decode(longDescription)
+
     /** 记录最近一次解析的 nva 内容。 */
-    override fun setLastNva(nva: NvaExtDecoder.NvaExtContent?) {
+    override fun setLastNva(nva: CastContent?) {
         lastNva = nva
     }
 
@@ -1327,7 +1333,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         castCoordinator.handleCast(uri, title, longDescription)
 
     /** 根据 nva 内容解析播放地址并开始播放。 */
-    private fun resolveNvaAndPlay(nva: NvaExtDecoder.NvaExtContent, title: String) =
+    private fun resolveNvaAndPlay(nva: CastContent, title: String) =
         castCoordinator.resolve(nva, title)
 
     /** 采用首次线路测速结果启动直播。 */
@@ -2018,8 +2024,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             if (info.isLive) {
                 candidate.roomId > 0L && (info.cid <= 0L || candidate.roomId == info.cid)
             } else if (info.isPgc) {
-                (info.epId <= 0L || candidate.eid <= 0L || candidate.eid == info.epId) &&
-                    (info.seasonId <= 0L || candidate.sid <= 0L || candidate.sid == info.seasonId)
+                (info.epId <= 0L || candidate.epId <= 0L || candidate.epId == info.epId) &&
+                    (info.seasonId <= 0L || candidate.seasonId <= 0L || candidate.seasonId == info.seasonId)
             } else {
                 (info.aid <= 0L || candidate.aid <= 0L || candidate.aid == info.aid) &&
                     (info.cid <= 0L || candidate.cid <= 0L || candidate.cid == info.cid)
@@ -2043,11 +2049,11 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             )
         }
 
-        val isPgc = info.isPgc || (nva != null && (nva.eid > 0L || nva.sid > 0L))
+        val isPgc = info.isPgc || (nva != null && (nva.epId > 0L || nva.seasonId > 0L))
         val aid = info.aid.takeIf { it > 0L } ?: nva?.aid ?: 0L
         val cid = info.cid.takeIf { it > 0L } ?: nva?.cid ?: 0L
-        val sid = if (isPgc) info.seasonId.takeIf { it > 0L } ?: nva?.sid ?: 0L else 0L
-        val epid = if (isPgc) info.epId.takeIf { it > 0L } ?: nva?.eid ?: 0L else 0L
+        val sid = if (isPgc) info.seasonId.takeIf { it > 0L } ?: nva?.seasonId ?: 0L else 0L
+        val epid = if (isPgc) info.epId.takeIf { it > 0L } ?: nva?.epId ?: 0L else 0L
         val type = if (isPgc) HISTORY_TYPE_PGC else HISTORY_TYPE_UGC
         return PlaybackHistoryContent(
             stableKey = if (isPgc) "pgc:$sid:$epid:$cid" else "ugc:$aid:$cid",

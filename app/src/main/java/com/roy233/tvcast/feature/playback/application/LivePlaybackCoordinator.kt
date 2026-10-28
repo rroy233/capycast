@@ -9,7 +9,7 @@ import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
 import com.roy233.tvcast.core.playback.MediaTrack
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.data.auth.CastAuth
-import com.roy233.tvcast.data.bili.NvaExtDecoder
+import com.roy233.tvcast.feature.cast.domain.CastContent
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
 import com.roy233.tvcast.feature.playback.model.LiveStreamCandidate
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
@@ -41,10 +41,10 @@ interface LivePlaybackHost {
     val coroutineScope: CoroutineScope
     fun stateSnapshot(): String
     fun setPendingPause(paused: Boolean)
-    fun lastNva(): NvaExtDecoder.NvaExtContent?
+    fun lastNva(): CastContent?
     fun lastTitle(): String
     fun setRetry(action: (() -> Unit)?)
-    fun resolveLast(nva: NvaExtDecoder.NvaExtContent)
+    fun resolveLast(nva: CastContent)
     fun reportError(title: String, message: String, code: String, canRetry: Boolean, keepVideo: Boolean = false)
     fun clearVodPendingSwitch()
     fun setCastDurationMs(durationMs: Long)

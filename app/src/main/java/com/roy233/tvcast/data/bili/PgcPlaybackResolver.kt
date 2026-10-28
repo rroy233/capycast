@@ -9,6 +9,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.feature.playback.model.PgcPlaybackFailure as PgcPlaybackException
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
@@ -609,14 +610,6 @@ class PgcPlaybackResolver(
 }
 
 /** Structured failure that keeps the UI message separate from network diagnostics. */
-class PgcPlaybackException(
-    val errorCode: String,
-    val userMessage: String,
-    val apiCode: Int? = null,
-    val httpStatus: Int? = null,
-    cause: Throwable? = null,
-) : IOException(userMessage, cause)
-
 /** Minimal ISO-BMFF PSSH reader. Returns the complete Widevine PSSH atom. */
 private fun JsonObject.array(name: String): JsonArray? =
     get(name)?.takeIf { it.isJsonArray }?.asJsonArray

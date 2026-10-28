@@ -3,7 +3,7 @@ package com.roy233.tvcast.feature.playback.application
 import android.content.Context
 import com.roy233.tvcast.data.auth.CastAuth
 import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.bili.NvaExtDecoder
+import com.roy233.tvcast.feature.cast.domain.CastContent
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
@@ -100,9 +100,11 @@ class CastSessionCoordinatorTest {
             playbackState = playbackState.copy(castActive = active)
         }
 
-        override fun lastNva(): NvaExtDecoder.NvaExtContent? = null
+        override fun decodeCastContent(longDescription: String): CastContent? = null
 
-        override fun setLastNva(nva: NvaExtDecoder.NvaExtContent?) = Unit
+        override fun lastNva(): CastContent? = null
+
+        override fun setLastNva(nva: CastContent?) = Unit
 
         override fun setLastTitle(title: String) = Unit
 
@@ -144,7 +146,7 @@ class CastSessionCoordinatorTest {
 
         override fun startLiveSession(info: LivePlayInfo, routes: List<RankedLiveSource>, title: String) = Unit
 
-        override fun authToken(): CastAuth.Token? = null
+        override fun accessKey(): String? = null
 
         override fun appContext(): Context = error("unused in this test")
 
