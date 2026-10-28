@@ -17,6 +17,7 @@ interface PlaybackSessionHost {
     fun finishSessionHistory(reason: String)
     fun clearLiveSession(reason: String)
     fun resetPendingPlayback()
+    fun clearPendingPause()
     fun isEngineInitialized(): Boolean
     fun stopPlaybackForSession(reason: String)
     fun clearSessionIdentity(clearCastMetadata: Boolean, clearResolving: Boolean)
@@ -27,6 +28,9 @@ interface PlaybackSessionHost {
     fun showDismissedState()
     fun showStoppedState()
     fun showErrorState(title: String, message: String, code: String, canRetry: Boolean)
+    fun flushHistoryPosition()
+    fun closeHistory()
+    fun showDlnaStoppedState()
 }
 
 /** 保留错误、重试与用户停止各自的终止顺序。 */
@@ -82,6 +86,26 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
         LogHub.setCast("")
         LogHub.setPlay("")
         host.showStoppedState()
+    }
+
+    fun stopFromDlna() {
+        host.clearPendingPause()
+        host.finishSessionHistory("dlna-stop")
+        host.clearLiveSession("dlna-stop")
+        if (host.isEngineInitialized()) host.stopPlaybackForSession("dlna-stop")
+        else LogHub.w(TAG, "dlna stop ignored: player engine unavailable")
+        host.clearSessionIdentity(clearCastMetadata = false, clearResolving = false)
+        LogHub.setCast("")
+        LogHub.setPlay("")
+        host.runOnMain(host::showDlnaStoppedState)
+    }
+
+    fun destroy() {
+        if (host.hasCurrentRequest()) host.flushHistoryPosition()
+        host.closeHistory()
+        host.clearLiveSession("activity-destroy")
+        PlaybackDiagnostics.closeSession("activity-destroyed")
+        retryAction = null
     }
 
     fun showError(title: String, message: String, code: String, canRetry: Boolean, keepVideo: Boolean) {

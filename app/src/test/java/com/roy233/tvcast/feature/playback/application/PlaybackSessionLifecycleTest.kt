@@ -34,6 +34,28 @@ class PlaybackSessionLifecycleTest {
         )
     }
 
+    @Test
+    fun `DLNA stop clears playback and schedules its own completion UI`() {
+        val calls = mutableListOf<String>()
+        PlaybackSessionLifecycle(host(calls)).stopFromDlna()
+
+        assertEquals(
+            listOf(
+                "clearPendingPause", "finishSessionHistory", "clearLiveSession",
+                "stopPlaybackForSession", "clearSessionIdentity", "runOnMain", "showDlnaStoppedState",
+            ),
+            calls.filter { it in DLNA_CALLS },
+        )
+    }
+
+    @Test
+    fun `Activity destruction closes history before clearing live session`() {
+        val calls = mutableListOf<String>()
+        PlaybackSessionLifecycle(host(calls)).destroy()
+
+        assertEquals(listOf("closeHistory", "clearLiveSession"), calls.filter { it in DESTROY_CALLS })
+    }
+
     private fun host(calls: MutableList<String>): PlaybackSessionHost =
         Proxy.newProxyInstance(
             PlaybackSessionHost::class.java.classLoader,
@@ -64,5 +86,10 @@ class PlaybackSessionLifecycleTest {
             "finishSessionHistory", "clearLiveSession", "stopPlaybackForSession",
             "clearSessionIdentity", "runOnMain", "showErrorState",
         )
+        val DLNA_CALLS = setOf(
+            "clearPendingPause", "finishSessionHistory", "clearLiveSession", "stopPlaybackForSession",
+            "clearSessionIdentity", "runOnMain", "showDlnaStoppedState",
+        )
+        val DESTROY_CALLS = setOf("closeHistory", "clearLiveSession")
     }
 }

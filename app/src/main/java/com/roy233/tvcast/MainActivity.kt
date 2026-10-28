@@ -30,8 +30,9 @@ import com.roy233.tvcast.ui.model.CastPlaybackStateProjector
 import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.app.CapyCastContainer
 import com.roy233.tvcast.app.PlaybackEngineHost
-import com.roy233.tvcast.app.DlnaCastHost
 import com.roy233.tvcast.app.DlnaCastListenerAdapter
+import com.roy233.tvcast.feature.cast.application.DlnaTransportCoordinator
+import com.roy233.tvcast.feature.cast.application.DlnaTransportHost
 import com.roy233.tvcast.ui.tv.TvActionDispatcher
 import com.roy233.tvcast.ui.tv.TvActionHost
 import com.roy233.tvcast.ui.tv.TvStateHolder
@@ -111,7 +112,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost, PlaybackEventHost, PlaybackSelectionHost, PlaybackSessionHost, DlnaCastHost {
+class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost, PlaybackEventHost, PlaybackSelectionHost, PlaybackSessionHost, DlnaTransportHost {
 
     /** 当前播放后端及其原生资源。 */
     private lateinit var playbackEngineHost: PlaybackEngineHost
@@ -782,20 +783,15 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
-    private val dlnaListener by lazy { DlnaCastListenerAdapter(this) }
+    private val dlnaCommands by lazy { DlnaTransportCoordinator(this) }
+    private val dlnaListener by lazy { DlnaCastListenerAdapter(dlnaCommands) }
 
     override fun onCast(uri: String, title: String, longDescription: String) =
         handleCast(uri, title, longDescription)
 
     override fun engineAvailable(): Boolean = ::playbackEngineHost.isInitialized
     override fun setPaused(paused: Boolean, reason: String) = setPlayerPaused(paused, reason)
-    override fun finishHistory(reason: String) = playbackHistoryCoordinator.finish(reason)
-    override fun clearSession(reason: String) = clearLiveSession(reason)
-    override fun stopPlayback(reason: String) = stopActivePlayback(reason)
-    override fun clearCurrentCast() {
-        castActive = false
-        currentRequest = null
-    }
+    override fun stopCastFromDlna() = playbackSessionLifecycle.stopFromDlna()
     override fun currentIsLive(): Boolean = currentRequest?.isLive == true
     override fun currentCid(): Long? = currentRequest?.cid
     override fun seekTo(positionMs: Long, reason: String) { seekPlayer(positionMs, reason) }
@@ -807,7 +803,9 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun durationMs(): Long = playerDurationMs()
     override fun volume(): Int = playerVolume()
     override fun onMainThread(action: () -> Unit) = runOnUiThread(action)
-    override fun updateState(transform: (TvUiState) -> TvUiState) { ui = transform(ui) }
+    override fun showDlnaPlayState(playing: Boolean) { ui = ui.copy(isPlaying = playing, hudVisible = true) }
+    override fun showDlnaSeekState(positionMs: Long) { ui = ui.copy(positionMs = positionMs, hudVisible = true) }
+    override fun showDlnaVolumeState(volume: Int) { ui = ui.copy(volume = volume, hudVisible = true) }
 
     /** 初始化播放器、投屏服务、界面和账号状态。 */
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1335,6 +1333,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         pendingPause = false
         pendingSeekMs = 0L
     }
+    override fun clearPendingPause() { pendingPause = false }
     override fun stopPlaybackForSession(reason: String) = stopActivePlayback(reason)
     override fun clearSessionIdentity(clearCastMetadata: Boolean, clearResolving: Boolean) {
         currentRequest = null
@@ -1417,6 +1416,39 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             liveBackupCount = 0,
             panel = null,
             stopCastConfirm = false,
+        )
+    }
+    override fun flushHistoryPosition() {
+        playbackHistoryCoordinator.onPosition(
+            positionMs = playerPositionMs(),
+            durationMs = playerDurationMs(),
+            playing = playerIsPlaying(),
+        )
+    }
+    override fun closeHistory() { playbackHistoryCoordinator.close() }
+    override fun showDlnaStoppedState() {
+        ui = ui.copy(
+            mode = TvMode.IDLE,
+            destination = TvDestination.HOME,
+            sidebarVisible = true,
+            castTitle = "",
+            qualityLabel = "",
+            qualityDetail = "",
+            qualitySource = "",
+            audioLabel = "",
+            isPlaying = false,
+            isBuffering = false,
+            isLive = false,
+            liveFormat = "",
+            liveCdn = "",
+            liveBackupCount = 0,
+            positionMs = 0,
+            durationMs = 0,
+            hudVisible = false,
+            tracks = emptyList(),
+            audios = emptyList(),
+            toast = "投屏已结束",
+            showContinue = ui.rememberPlaybackContent,
         )
     }
 
@@ -1617,16 +1649,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun onDestroy() {
         super.onDestroy()
         LogHub.i(TAG, "activity destroy")
-        if (currentRequest != null) {
-            playbackHistoryCoordinator.onPosition(
-                positionMs = playerPositionMs(),
-                durationMs = playerDurationMs(),
-                playing = playerIsPlaying(),
-            )
-        }
-        playbackHistoryCoordinator.close()
-        clearLiveSession("activity-destroy")
-        PlaybackDiagnostics.closeSession("activity-destroyed")
+        playbackSessionLifecycle.destroy()
         runCatching { dlna.stop() }
         loginCoordinator.cancel()
         updateCoordinator.cancel()
