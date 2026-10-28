@@ -407,6 +407,10 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         ui = ui.withPlaybackUiState(state)
     }
 
+    override fun showRouteToast(message: String) { ui = ui.copy(toast = message) }
+    override fun isPausedWithoutBuffering(): Boolean = !ui.isBuffering && !ui.isPlaying
+    override fun updateBackupCount(count: Int) { ui = ui.copy(liveBackupCount = count) }
+
     override fun currentRequest(): PlaybackRequest? = currentRequest
 
     override fun setCurrent(request: PlaybackRequest) {

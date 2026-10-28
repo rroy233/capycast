@@ -13,7 +13,6 @@ import com.roy233.tvcast.feature.playback.model.VodSession
 import com.roy233.tvcast.feature.playback.routing.CdnRouteRules
 import com.roy233.tvcast.feature.playback.routing.VodCdnCoordinator
 import com.roy233.tvcast.feature.playback.routing.VodRouteProbe
-import com.roy233.tvcast.ui.model.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,8 +24,8 @@ import android.os.SystemClock
 
 /** 点播会话需要宿主提供的播放能力与界面状态。 */
 interface VodPlaybackHost {
-    fun state(): PlaybackUiState
-    fun setState(state: PlaybackUiState)
+    fun showRouteToast(message: String)
+    fun isPausedWithoutBuffering(): Boolean
     fun currentRequest(): PlaybackRequest?
     fun setCurrent(request: PlaybackRequest)
     fun isCastActive(): Boolean
@@ -326,7 +325,7 @@ class VodPlaybackCoordinator(
             "position=${switched.positionMs}ms"
         LogHub.i(TAG, "VOD CDN switch succeeded $detail")
         PlaybackDiagnostics.event("VodRouteSwitchSuccess", detail)
-        playback.setState(playback.state().copy(toast = "播放线路已切换：$host"))
+        playback.showRouteToast("播放线路已切换：$host")
     }
 
     /** 检测稳定播放态下的无进度，并处理长期打开/缓冲超时。 */
@@ -342,7 +341,7 @@ class VodPlaybackCoordinator(
             )
             completeRouteSwitch()
         }
-        if (!activelyPlaying && !playback.state().isBuffering && !playback.state().isPlaying) {
+        if (!activelyPlaying && playback.isPausedWithoutBuffering()) {
             return
         }
         session.recovery.onTick(now)?.let { failure ->

@@ -20,7 +20,6 @@ import com.roy233.tvcast.feature.playback.domain.LivePlaybackStallWatchdog
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
 import com.roy233.tvcast.feature.playback.routing.LiveCdnCoordinator
 import com.roy233.tvcast.feature.playback.routing.LiveRouteProbe
-import com.roy233.tvcast.ui.model.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,8 +30,9 @@ import kotlinx.coroutines.withContext
 
 /** 直播会话需要宿主提供的播放能力与界面状态。 */
 interface LivePlaybackHost {
-    fun state(): PlaybackUiState
-    fun setState(state: PlaybackUiState)
+    fun updateBackupCount(count: Int)
+    fun isPausedWithoutBuffering(): Boolean
+    fun showRouteToast(message: String)
     fun currentRequest(): PlaybackRequest?
     fun setCurrent(request: PlaybackRequest)
     fun isCastActive(): Boolean
@@ -264,7 +264,7 @@ class LivePlaybackCoordinator(
                     ).toMutableList()
                 session.routes.add(0, RankedLiveSource(session.active))
                 playback.setCurrent(livePlayInfo(session, session.active, playback.lastTitle()))
-                playback.setState(playback.state().copy(liveBackupCount = playback.currentRequest()?.liveBackupCount ?: 0))
+                playback.updateBackupCount(playback.currentRequest()?.liveBackupCount ?: 0)
                 PlaybackDiagnostics.attribute(
                     "live.backupCount",
                     (session.routes.size - 1).coerceAtLeast(0).toString(),
@@ -394,7 +394,7 @@ class LivePlaybackCoordinator(
             firstByteMs = target.result?.firstByteMs,
             throughputBytesPerSecond = target.result?.throughputBytesPerSecond,
         )
-        val stayPaused = !playback.state().isPlaying && !playback.state().isBuffering && !playback.isPlaying()
+        val stayPaused = playback.isPausedWithoutBuffering() && !playback.isPlaying()
         playback.setPendingPause(stayPaused)
         val info = livePlayInfo(session, target.candidate, playback.lastTitle())
         LogHub.i(
@@ -586,15 +586,11 @@ class LivePlaybackCoordinator(
                 "${switched.target.codecName} firstByte=${switched.firstByteMs ?: -1}ms " +
                 "throughput=${switched.throughputBytesPerSecond ?: 0}Bps",
         )
-        playback.setState(
-            playback.state().copy(
-                toast = if (switched.reason.startsWith("user-quality")) {
-                    "已切换至 ${LiveQualityMapper.label(session.stream.quality)}"
-                } else {
-                    "已自动切换至更流畅线路"
-                },
-            ),
-        )
+        playback.showRouteToast(if (switched.reason.startsWith("user-quality")) {
+            "已切换至 ${LiveQualityMapper.label(session.stream.quality)}"
+        } else {
+            "已自动切换至更流畅线路"
+        })
     }
 
 
