@@ -8,7 +8,8 @@ import com.roy233.tvcast.data.bili.BiliLivePlaybackResolver
 import com.roy233.tvcast.data.bili.BiliAccountNavigator
 import com.roy233.tvcast.feature.playback.model.LivePlaybackResolver
 import com.roy233.tvcast.data.local.DanmakuPreferences
-import com.roy233.tvcast.data.local.PlaybackHistoryOutbox
+import com.roy233.tvcast.data.bili.PlaybackHistoryApi
+import com.roy233.tvcast.data.local.PersistentPlaybackHistoryOutbox
 import com.roy233.tvcast.data.local.RecentCastStore
 import com.roy233.tvcast.data.local.UiPreferences
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
@@ -74,7 +75,8 @@ class CapyCastContainer(
         PlaybackHistoryCoordinator(
             scope = scope,
             sessionStore = authTokenStore,
-            outbox = PlaybackHistoryOutbox(context),
+            outbox = PersistentPlaybackHistoryOutbox(context),
+            api = PlaybackHistoryApi(),
             isEnabled = { uiPreferences.syncPlaybackHistory },
             buildNumber = CastAuth.tvBuildNumber,
         )

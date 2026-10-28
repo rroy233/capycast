@@ -5,12 +5,6 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.feature.account.model.AccountSessionStore
 import com.roy233.tvcast.feature.account.model.Token
-import com.roy233.tvcast.data.bili.LiveHeartbeatRequest
-import com.roy233.tvcast.data.bili.LiveHeartbeatResponse
-import com.roy233.tvcast.data.bili.PlaybackHistoryApi
-import com.roy233.tvcast.data.bili.PlaybackHistoryReport
-import com.roy233.tvcast.data.bili.WebHistoryAuth
-import com.roy233.tvcast.data.local.PlaybackHistoryOutbox
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +21,7 @@ class PlaybackHistoryCoordinator(
     private val scope: CoroutineScope,
     private val sessionStore: AccountSessionStore,
     private val outbox: PlaybackHistoryOutbox,
-    private val api: PlaybackHistoryApi = PlaybackHistoryApi(),
+    private val api: PlaybackHistoryRepository,
     private val isEnabled: () -> Boolean,
     private val buildNumber: Int,
 ) {
@@ -224,7 +218,7 @@ class PlaybackHistoryCoordinator(
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
-                    val apiError = error as? com.roy233.tvcast.data.bili.PlaybackHistoryApiException
+                    val apiError = error as? PlaybackHistoryApiException
                     if (apiError != null && apiError.code in AUTH_ERROR_CODES) {
                         authBlockedMid = mid
                     }

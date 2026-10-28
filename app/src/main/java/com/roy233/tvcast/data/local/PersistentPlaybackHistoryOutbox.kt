@@ -4,22 +4,23 @@ import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.data.bili.PlaybackHistoryReport
+import com.roy233.tvcast.feature.history.PlaybackHistoryOutbox
+import com.roy233.tvcast.feature.history.PlaybackHistoryReport
 
 /** 暂存尚未送达 B 站的播放记录快照，记录中不保存账号凭据。 */
-class PlaybackHistoryOutbox(context: Context) {
+class PersistentPlaybackHistoryOutbox(context: Context) : PlaybackHistoryOutbox {
 
     private val gson = Gson()
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val lock = Any()
 
     /** 返回指定账号的待上报快照，按更新时间从旧到新排列。 */
-    fun pendingForAccount(mid: Long): List<PlaybackHistoryReport> = synchronized(lock) {
+    override fun pendingForAccount(mid: Long): List<PlaybackHistoryReport> = synchronized(lock) {
         loadLocked().filter { it.accountMid == mid }.sortedBy { it.updatedAtMs }
     }
 
     /** 保存或更新同一播放会话的最新进度。 */
-    fun upsert(report: PlaybackHistoryReport) = synchronized(lock) {
+    override fun upsert(report: PlaybackHistoryReport) = synchronized(lock) {
         val existing = loadLocked().filterNot { it.sessionId == report.sessionId }
         val updated = (existing + report)
             .sortedByDescending { it.updatedAtMs }
@@ -31,7 +32,7 @@ class PlaybackHistoryOutbox(context: Context) {
     }
 
     /** 仅在服务端确认的是当前快照时删除；更新中的新进度会继续保留。 */
-    fun acknowledge(sessionId: String, updatedAtMs: Long) = synchronized(lock) {
+    override fun acknowledge(sessionId: String, updatedAtMs: Long) = synchronized(lock) {
         val remaining = loadLocked().filterNot {
             it.sessionId == sessionId && it.updatedAtMs == updatedAtMs
         }
@@ -39,7 +40,7 @@ class PlaybackHistoryOutbox(context: Context) {
     }
 
     /** 关闭设备级同步开关时删除所有账号的待发送快照。 */
-    fun clearAll() = synchronized(lock) {
+    override fun clearAll() = synchronized(lock) {
         persistLocked(emptyList())
     }
 

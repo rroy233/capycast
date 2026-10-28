@@ -22,7 +22,8 @@ class LayerDependencyTest {
                             line.contains("com.roy233.tvcast.feature.cast.domain") ||
                             line.contains("com.roy233.tvcast.feature.account.model") ||
                             line.contains("com.roy233.tvcast.feature.update.model") ||
-                            line.contains("com.roy233.tvcast.feature.danmaku.domain")
+                            line.contains("com.roy233.tvcast.feature.danmaku.domain") ||
+                            line.contains("com.roy233.tvcast.feature.history")
                     }
                     .map { "${file.relativeTo(root).path}: $it" }
             }
