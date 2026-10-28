@@ -1,8 +1,13 @@
-package com.roy233.tvcast.core.danmaku
+package com.roy233.tvcast.feature.danmaku.application
 
 import android.content.Context
-import com.roy233.tvcast.data.bili.danmaku.DanmakuItem
-import com.roy233.tvcast.data.bili.danmaku.LiveDanmakuClient
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
+import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClient
+import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClientFactory
+import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
+import com.roy233.tvcast.feature.danmaku.domain.MediaClock
+import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -23,6 +28,7 @@ class LiveDanmakuController(
     private val scope: CoroutineScope,
     private val engine: DfmDanmakuEngine,
     private val clock: MediaClock,
+    private val clientFactory: LiveDanmakuClientFactory,
 ) {
 
     private var client: LiveDanmakuClient? = null
@@ -63,14 +69,7 @@ class LiveDanmakuController(
         clock.reset()
         clock.rebase(0)
         client?.close()
-        client = LiveDanmakuClient(
-            scope = scope,
-            context = context,
-            roomId = roomId,
-            cookie = cookie,
-            uid = uid,
-            onItems = ::onItems,
-        )
+        client = clientFactory.create(scope, context, roomId, cookie, uid, ::onItems, {})
         client?.start()
     }
 

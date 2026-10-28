@@ -1,10 +1,14 @@
-package com.roy233.tvcast.core.danmaku
+package com.roy233.tvcast.feature.danmaku.presentation
 
 import android.content.Context
 import android.graphics.Color
 import android.view.View
 import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.data.bili.danmaku.DanmakuItem
+import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuAiShield
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
+import com.roy233.tvcast.feature.danmaku.domain.MediaClock
 import master.flame.danmaku.controller.DrawHandler
 import master.flame.danmaku.danmaku.model.BaseDanmaku
 import master.flame.danmaku.danmaku.model.Duration

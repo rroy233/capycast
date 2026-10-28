@@ -4,6 +4,9 @@ import android.content.Context
 import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.data.bili.BiliApi
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
+import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClient
+import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClientFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,18 +30,15 @@ import java.util.concurrent.TimeUnit
  *
  * 连接与回调都发生在 [scope] 或 okhttp 回调线程，宿主须自行保证 UI 状态在主线程。
  */
-class LiveDanmakuClient(
+class BiliLiveDanmakuClient(
     private val scope: CoroutineScope,
     private val context: Context,
     private val roomId: Long,
     private val cookie: String,
     private val uid: Long,
     private val onItems: (List<DanmakuItem>) -> Unit,
-    private val onState: (State) -> Unit = {},
-) {
-
-    /** 连接生命周期状态，供宿主记录诊断信息。 */
-    enum class State { CONNECTING, CONNECTED, AUTHENTICATED, DISCONNECTED, FAILED }
+    private val onState: (LiveDanmakuClient.State) -> Unit = {},
+) : LiveDanmakuClient {
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
@@ -58,13 +58,13 @@ class LiveDanmakuClient(
     private var buffer = ByteArray(0)
 
     /** 开始连接；已连接时调用会先断开旧连接。 */
-    fun start() {
+    override fun start() {
         closed = false
         scope.launch { connect() }
     }
 
     /** 关闭连接并停止心跳与重连。 */
-    fun close() {
+    override fun close() {
         closed = true
         reconnectJob?.cancel()
         reconnectJob = null
@@ -76,7 +76,7 @@ class LiveDanmakuClient(
     }
 
     /** 立即发送一次心跳；宿主导出给诊断/在线人数查询使用。 */
-    fun heartbeat() {
+    override fun heartbeat() {
         webSocket?.let { ws ->
             ws.send(ByteString.of(*LiveDanmakuProtocol.encodeHeartbeat()))
         }
@@ -84,12 +84,12 @@ class LiveDanmakuClient(
 
     private suspend fun connect() {
         if (closed) return
-        onState(State.CONNECTING)
+        onState(LiveDanmakuClient.State.CONNECTING)
         val info = try {
             withContext(Dispatchers.IO) { LiveDanmakuApi.fetchDanmuInfo(context, roomId, cookie) }
         } catch (failure: Throwable) {
             LogHub.e(TAG, "getDanmuInfo failed room=$roomId: ${failure.message}")
-            onState(State.FAILED)
+            onState(LiveDanmakuClient.State.FAILED)
             scheduleReconnect()
             return
         }
@@ -99,7 +99,7 @@ class LiveDanmakuClient(
         hosts = info.hosts
         if (hosts.isEmpty()) {
             LogHub.e(TAG, "getDanmuInfo returned no hosts room=$roomId")
-            onState(State.FAILED)
+            onState(LiveDanmakuClient.State.FAILED)
             scheduleReconnect()
             return
         }
@@ -115,7 +115,7 @@ class LiveDanmakuClient(
     private val listener = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             reconnectAttempt = 0
-            onState(State.CONNECTED)
+            onState(LiveDanmakuClient.State.CONNECTED)
             val join = LiveDanmakuProtocol.encodeJoin(roomId, token, uid, buvid)
             webSocket.send(ByteString.of(*join))
             LogHub.i(TAG, "live danmaku ws connected room=$roomId")
@@ -131,13 +131,13 @@ class LiveDanmakuClient(
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            onState(State.DISCONNECTED)
+            onState(LiveDanmakuClient.State.DISCONNECTED)
             LogHub.i(TAG, "live danmaku ws closed room=$roomId code=$code reason=$reason")
             scheduleReconnect()
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            onState(State.FAILED)
+            onState(LiveDanmakuClient.State.FAILED)
             LogHub.e(TAG, "live danmaku ws failed room=$roomId error=${t.javaClass.simpleName}")
             scheduleReconnect()
         }
@@ -170,7 +170,7 @@ class LiveDanmakuClient(
                         ).asJsonObject.get("code")?.asInt ?: -1
                     }.getOrDefault(-1)
                     if (code == 0) {
-                        onState(State.AUTHENTICATED)
+                        onState(LiveDanmakuClient.State.AUTHENTICATED)
                         heartbeat()
                         startHeartbeat()
                         LogHub.i(TAG, "live danmaku authenticated room=$roomId")
@@ -221,7 +221,12 @@ class LiveDanmakuClient(
             ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
             (bytes[offset + 3].toInt() and 0xFF)
 
-    private companion object {
+    companion object {
+        /** 组合根用于注入的直播弹幕客户端工厂。 */
+        val Factory = LiveDanmakuClientFactory { scope, context, roomId, cookie, uid, onItems, onState ->
+            BiliLiveDanmakuClient(scope, context, roomId, cookie, uid, onItems, onState)
+        }
+
         const val TAG = "LiveDanmakuClient"
         const val HEARTBEAT_INTERVAL_MS = 30_000L
         const val RECONNECT_BASE_MS = 1_000L

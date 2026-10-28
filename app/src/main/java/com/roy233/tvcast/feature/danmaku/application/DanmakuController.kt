@@ -1,8 +1,11 @@
-package com.roy233.tvcast.core.danmaku
+package com.roy233.tvcast.feature.danmaku.application
 
 import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.data.bili.danmaku.DanmakuItem
-import com.roy233.tvcast.data.bili.danmaku.DanmakuRepository
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuRepository
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
+import com.roy233.tvcast.feature.danmaku.domain.MediaClock
+import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

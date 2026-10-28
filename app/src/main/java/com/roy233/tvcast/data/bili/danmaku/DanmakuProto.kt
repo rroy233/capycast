@@ -1,5 +1,11 @@
 package com.roy233.tvcast.data.bili.danmaku
 
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuPlayerConfig
+import com.roy233.tvcast.feature.danmaku.domain.DmSegConfig
+import com.roy233.tvcast.feature.danmaku.domain.DmSegment
+import com.roy233.tvcast.feature.danmaku.domain.DmViewInfo
+
 /**
  * 手写的 B 站弹幕 protobuf 解码器。
  *

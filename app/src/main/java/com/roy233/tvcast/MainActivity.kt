@@ -79,14 +79,15 @@ import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
-import com.roy233.tvcast.core.danmaku.AiShieldLevel
-import com.roy233.tvcast.core.danmaku.DanmakuController
-import com.roy233.tvcast.core.danmaku.DanmakuSettings
-import com.roy233.tvcast.core.danmaku.DfmDanmakuEngine
-import com.roy233.tvcast.core.danmaku.LiveDanmakuController
-import com.roy233.tvcast.core.danmaku.MediaClock
+import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
+import com.roy233.tvcast.feature.danmaku.application.DanmakuController
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
+import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
+import com.roy233.tvcast.feature.danmaku.application.LiveDanmakuController
+import com.roy233.tvcast.feature.danmaku.domain.MediaClock
+import com.roy233.tvcast.data.bili.danmaku.BiliDanmakuRepository
+import com.roy233.tvcast.data.bili.danmaku.BiliLiveDanmakuClient
 import com.roy233.tvcast.data.bili.danmaku.DanmakuApi
-import com.roy233.tvcast.data.bili.danmaku.DanmakuRepository
 import com.roy233.tvcast.feature.history.PlaybackHistoryContent
 import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.feature.account.AccountUiState
@@ -874,9 +875,11 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             danmakuEngine = DfmDanmakuEngine(danmakuView, danmakuClock)
             danmakuController = DanmakuController(
                 scope, danmakuEngine, danmakuClock,
-                DanmakuRepository(DanmakuApi(authTokenStore)),
+                BiliDanmakuRepository(DanmakuApi(authTokenStore)),
             )
-            liveDanmakuController = LiveDanmakuController(this, scope, danmakuEngine, danmakuClock)
+            liveDanmakuController = LiveDanmakuController(
+                this, scope, danmakuEngine, danmakuClock, BiliLiveDanmakuClient.Factory,
+            )
             danmakuController.applySettings(danmakuSettings)
             liveDanmakuController.applySettings(danmakuSettings)
             danmakuView.visibility = if (danmakuSettings.enabled) View.VISIBLE else View.GONE

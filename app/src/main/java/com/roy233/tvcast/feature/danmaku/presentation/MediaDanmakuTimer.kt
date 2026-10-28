@@ -1,5 +1,6 @@
-package com.roy233.tvcast.core.danmaku
+package com.roy233.tvcast.feature.danmaku.presentation
 
+import com.roy233.tvcast.feature.danmaku.domain.MediaClock
 import master.flame.danmaku.danmaku.model.DanmakuTimer
 
 /**

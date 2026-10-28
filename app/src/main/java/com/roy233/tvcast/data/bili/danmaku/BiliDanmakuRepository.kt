@@ -1,20 +1,24 @@
 package com.roy233.tvcast.data.bili.danmaku
 
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuRepository
+import com.roy233.tvcast.feature.danmaku.domain.DmSegment
+import com.roy233.tvcast.feature.danmaku.domain.DmViewInfo
+
 /**
  * 弹幕数据缓存。
  *
  * 分段按访问顺序保留最近 4 段；元数据保留最近 4 个 cid。
  * 网络请求在锁外执行，避免预取阻塞当前段读取。
  */
-class DanmakuRepository(
+class BiliDanmakuRepository(
     private val api: DanmakuApi,
-) {
+) : DanmakuRepository {
 
     private val segmentCache = LinkedHashMap<Int, DmSegment>(8, 0.75f, true)
     private val viewCache = LinkedHashMap<Long, DmViewInfo>(8, 0.75f, true)
 
     /** 读取元数据；已缓存则直接返回。 */
-    fun view(cid: Long): DmViewInfo {
+    override fun view(cid: Long): DmViewInfo {
         synchronized(viewCache) {
             viewCache[cid]?.let { return it }
         }
@@ -27,7 +31,7 @@ class DanmakuRepository(
     }
 
     /** 读取分段；已缓存则直接返回。 */
-    fun segment(aid: Long, cid: Long, segmentIndex: Int): DmSegment {
+    override fun segment(aid: Long, cid: Long, segmentIndex: Int): DmSegment {
         synchronized(segmentCache) {
             segmentCache[segmentIndex]?.let { return it }
         }
@@ -40,14 +44,14 @@ class DanmakuRepository(
     }
 
     /** 已缓存的分段；不存在返回 null。 */
-    fun cachedSegment(segmentIndex: Int): DmSegment? {
+    override fun cachedSegment(segmentIndex: Int): DmSegment? {
         synchronized(segmentCache) {
             return segmentCache[segmentIndex]
         }
     }
 
     /** 清空所有缓存。 */
-    fun clear() {
+    override fun clear() {
         synchronized(segmentCache) { segmentCache.clear() }
         synchronized(viewCache) { viewCache.clear() }
     }

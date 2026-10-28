@@ -1,8 +1,8 @@
 package com.roy233.tvcast.data.local
 
 import android.content.Context
-import com.roy233.tvcast.core.danmaku.AiShieldLevel
-import com.roy233.tvcast.core.danmaku.DanmakuSettings
+import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
 
 /**
  * 弹幕显示设置持久化。

@@ -1,6 +1,5 @@
-package com.roy233.tvcast.core.danmaku
+package com.roy233.tvcast.feature.danmaku.domain
 
-import com.roy233.tvcast.data.bili.danmaku.DanmakuItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test

@@ -2,6 +2,7 @@ package com.roy233.tvcast.data.bili.danmaku
 
 import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
 import org.brotli.dec.BrotliInputStream
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream

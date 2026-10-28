@@ -9,7 +9,7 @@ import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.model.AudioOption
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.PlaybackSpeed
-import com.roy233.tvcast.core.danmaku.AiShieldLevel
+import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import kotlin.math.roundToInt
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.TrackOption

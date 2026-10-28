@@ -1,4 +1,4 @@
-package com.roy233.tvcast.data.bili.danmaku
+package com.roy233.tvcast.feature.danmaku.domain
 
 /**
  * 一条视频弹幕。

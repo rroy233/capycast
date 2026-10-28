@@ -1,7 +1,7 @@
 package com.roy233.tvcast.ui.model
 
 import android.graphics.Bitmap
-import com.roy233.tvcast.core.danmaku.AiShieldLevel
+import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.update.UpdateUiState
 

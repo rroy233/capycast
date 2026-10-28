@@ -3,6 +3,8 @@ package com.roy233.tvcast.data.bili.danmaku
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.BiliHttpClient
 import com.roy233.tvcast.data.auth.BiliSessionReader
+import com.roy233.tvcast.feature.danmaku.domain.DmSegment
+import com.roy233.tvcast.feature.danmaku.domain.DmViewInfo
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
