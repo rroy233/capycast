@@ -1,0 +1,95 @@
+name: Deploy website
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy-website.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/deploy-website.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build website
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - name: Install dependencies
+        working-directory: web
+        run: bun install --frozen-lockfile
+
+      - name: Resolve deployment URLs
+        id: site
+        env:
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          SITE_URL_OVERRIDE: ${{ vars.SITE_URL }}
+        run: |
+          set -euo pipefail
+          # 用户站点 <owner>.github.io 部署在根路径，其余项目站点部署在 /<仓库名>/ 下。
+          if [ "$REPOSITORY_NAME" = "$REPOSITORY_OWNER.github.io" ]; then
+            base_path="/"
+          else
+            base_path="/$REPOSITORY_NAME/"
+          fi
+          # 绑定自有域名时，把 SITE_URL 变量设为 https://example.com，无需改本文件。
+          if [ -n "$SITE_URL_OVERRIDE" ]; then
+            site_url="$SITE_URL_OVERRIDE"
+          else
+            site_url="https://$REPOSITORY_OWNER.github.io$base_path"
+          fi
+          case "$site_url" in
+            */) ;;
+            *) site_url="$site_url/" ;;
+          esac
+          echo "base_path=$base_path" >> "$GITHUB_OUTPUT"
+          echo "site_url=$site_url" >> "$GITHUB_OUTPUT"
+          echo "base=$base_path site=$site_url"
+
+      - name: Build website
+        working-directory: web
+        env:
+          VITE_BASE_PATH: ${{ steps.site.outputs.base_path }}
+          VITE_SITE_URL: ${{ steps.site.outputs.site_url }}
+        run: bun run build
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
