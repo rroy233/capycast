@@ -32,10 +32,15 @@ class LayerDependencyTest {
     }
 
     @Test
-    fun `core layer does not depend on ui or feature packages`() {
+    fun `core layer does not depend on data ui feature or platform packages`() {
         assertNoImports(
             packageDir = "core",
-            forbidden = listOf("com.roy233.tvcast.ui", "com.roy233.tvcast.feature"),
+            forbidden = listOf(
+                "com.roy233.tvcast.ui",
+                "com.roy233.tvcast.feature",
+                "com.roy233.tvcast.data",
+                "com.roy233.tvcast.platform",
+            ),
         )
     }
 
