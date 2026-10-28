@@ -1,13 +1,29 @@
 package com.roy233.tvcast.data.bili.danmaku
 
 import com.roy233.tvcast.data.bili.BiliApi
+import com.roy233.tvcast.data.bili.BiliHttpClient
+import com.roy233.tvcast.data.auth.BiliSessionReader
+import com.roy233.tvcast.feature.danmaku.domain.DmSegment
+import com.roy233.tvcast.feature.danmaku.domain.DmViewInfo
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 /**
  * B 站弹幕接口。
  *
  * 只负责发请求和解码，不做缓存/调度；失败时由调用方决定是否重试。
  */
-class DanmakuApi {
+class DanmakuApi(
+    private val sessionReader: BiliSessionReader,
+    client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .build(),
+) {
+    private val http = BiliHttpClient(client, BiliApi.UA)
+    private fun getBytes(url: String, purpose: String): ByteArray =
+        http.getBytes(url, purpose, sessionReader.cookie())
 
     /**
      * 拉取弹幕元数据。
@@ -16,7 +32,7 @@ class DanmakuApi {
      */
     fun fetchView(cid: Long): DmViewInfo {
         val url = "$BASE/x/v2/dm/web/view?type=1&oid=$cid"
-        return DanmakuProto.decodeView(BiliApi.getBytes(url, "danmaku-view"))
+        return DanmakuProto.decodeView(getBytes(url, "danmaku-view"))
     }
 
     /**
@@ -32,11 +48,11 @@ class DanmakuApi {
         val pid = if (aid > 0) "&pid=$aid" else ""
         val web = "$BASE/x/v2/dm/web/seg.so?type=1&oid=$cid$pid&segment_index=$segmentIndex"
         return try {
-            DanmakuProto.decodeSegment(BiliApi.getBytes(web, "danmaku-seg"))
+            DanmakuProto.decodeSegment(getBytes(web, "danmaku-seg"))
         } catch (webFailure: Exception) {
             val app = "$BASE/x/v2/dm/list/seg.so?type=1&oid=$cid$pid&segment_index=$segmentIndex"
             try {
-                DanmakuProto.decodeSegment(BiliApi.getBytes(app, "danmaku-seg-app"))
+                DanmakuProto.decodeSegment(getBytes(app, "danmaku-seg-app"))
             } catch (appFailure: Exception) {
                 appFailure.addSuppressed(webFailure)
                 throw appFailure

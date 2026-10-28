@@ -9,43 +9,13 @@ import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.data.auth.CastAuth
+import com.roy233.tvcast.feature.playback.model.LivePlayInfo
+import com.roy233.tvcast.feature.playback.model.LiveStreamCandidate
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.io.IOException
 import java.util.concurrent.TimeUnit
-
-/** 描述 TV 直播 playurl 响应中的一个可播放线路。 */
-data class LiveStreamCandidate(
-    val url: String,
-    val quality: Int,
-    val format: String,
-    val codecName: String,
-    val codecid: Int,
-    val width: Int,
-    val height: Int,
-    val bandwidth: Long,
-    val pcdn: Boolean,
-    val responseIndex: Int,
-) {
-    /** 用于日志和界面的短线路标签，不包含签名 URL。 */
-    val cdnLabel: String
-        get() = LogRedaction.host(url)
-}
-
-/** 保存 TV 直播解析响应中实际生效的画质和线路。 */
-data class LivePlayInfo(
-    val roomId: Long,
-    val requestedQuality: Int,
-    val quality: Int,
-    val acceptedQualities: List<Int>,
-    val candidates: List<LiveStreamCandidate>,
-) {
-    /** 当前实际画质中按格式、编码和官方线路策略整理的候选列表。 */
-    val qualityCandidates: List<LiveStreamCandidate>
-        get() = candidates.filter { it.quality == quality }
-            .ifEmpty { candidates.filter { it.quality == 0 } }
-}
 
 /** 使用已登录 TV access_key 解析官方直播流。 */
 object LivePlayUrlResolver {

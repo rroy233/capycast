@@ -2,12 +2,12 @@ package com.roy233.tvcast.feature.account
 
 import android.content.Context
 import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.data.auth.AuthTokenStore
-import com.roy233.tvcast.data.auth.CastAuth
-import com.roy233.tvcast.data.bili.BiliApi
+import com.roy233.tvcast.feature.account.model.AccountAuthService
+import com.roy233.tvcast.feature.account.model.AccountNavigator
+import com.roy233.tvcast.feature.account.model.AccountSessionStore
+import com.roy233.tvcast.feature.account.model.Poll
+import com.roy233.tvcast.feature.account.model.Token
 import com.roy233.tvcast.platform.qr.QrCodeGenerator
-import com.roy233.tvcast.ui.model.TvDestination
-import com.roy233.tvcast.ui.model.TvUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -22,18 +22,25 @@ class AccountLoginCoordinator(
     private val context: Context,
     /** 执行登录协程的作用域。 */
     private val scope: CoroutineScope,
-    /** 读取当前界面状态的回调。 */
-    private val readState: () -> TvUiState,
-    /** 写入更新后界面状态的回调。 */
-    private val writeState: (TvUiState) -> Unit,
+    /** 读取账号功能独占的状态切片。 */
+    private val readState: () -> AccountUiState,
+    /** 写入账号功能独占的状态切片。 */
+    private val writeState: (AccountUiState) -> Unit,
     /** 登录令牌存储。 */
-    private val authTokenStore: AuthTokenStore,
+    private val sessionStore: AccountSessionStore,
+    /** 二维码登录服务。 */
+    private val authService: AccountAuthService,
+    private val accountNavigator: AccountNavigator,
     /** 二维码生成器。 */
     private val qrCodeGenerator: QrCodeGenerator,
     /** 登录令牌可用时的回调。 */
-    private val onTokenAvailable: (CastAuth.Token) -> Unit,
+    private val onTokenAvailable: (Token) -> Unit,
     /** 退出登录时的回调。 */
     private val onLogout: () -> Unit,
+    /** 退出登录后的导航和续播状态更新。 */
+    private val onLogoutUi: () -> Unit,
+    /** 显示账号功能提示。 */
+    private val onToast: (String) -> Unit,
 ) {
 
     /** 当前二维码登录任务。 */
@@ -41,7 +48,7 @@ class AccountLoginCoordinator(
 
     /** 读取已有令牌或启动新的二维码登录流程。 */
     fun startOrLogin() {
-        val token = authTokenStore.load()
+        val token = sessionStore.load()
         LogHub.i(TAG, "startOrLogin token=${token != null}")
         if (token != null) {
             onTokenAvailable(token)
@@ -84,7 +91,7 @@ class AccountLoginCoordinator(
         loginJob = scope.launch {
             while (isActive) {
                 val qr = withContext(Dispatchers.IO) {
-                    runCatching { CastAuth.requestQr(context) }
+                    runCatching { authService.requestQr(context) }
                 }
                 if (qr.isFailure) {
                     LogHub.e(TAG, "qr request failed: ${qr.exceptionOrNull()?.message}")
@@ -115,12 +122,12 @@ class AccountLoginCoordinator(
                     delay(2000)
                     age += 2
                     val poll = withContext(Dispatchers.IO) {
-                        runCatching { CastAuth.poll(context, code.authCode, code.sessionId) }
+                        runCatching { authService.poll(context, code.authCode, code.sessionId) }
                     }.getOrNull()
 
                     when (poll) {
-                        is CastAuth.Poll.Success -> {
-                            authTokenStore.save(poll.token)
+                        is Poll.Success -> {
+                            sessionStore.save(poll.token)
                             onTokenAvailable(poll.token)
                             LogHub.setLogin(poll.token.mid)
                             LogHub.setQrPending(false)
@@ -140,7 +147,7 @@ class AccountLoginCoordinator(
                             return@launch
                         }
 
-                        is CastAuth.Poll.Pending -> {
+                        is Poll.Pending -> {
                             if (poll.code != lastPending) {
                                 lastPending = poll.code
                                 LogHub.i(TAG, "qr poll ${poll.code} ${poll.message}")
@@ -191,7 +198,7 @@ class AccountLoginCoordinator(
     fun logout() {
         loginJob?.cancel()
         loginJob = null
-        authTokenStore.clear()
+        sessionStore.clear()
         onLogout()
         LogHub.setLogin(0L)
         LogHub.setQrPending(false)
@@ -202,15 +209,13 @@ class AccountLoginCoordinator(
                 mid = 0L,
                 accountName = "未登录",
                 vip = false,
-                destination = TvDestination.HOME,
-                sidebarVisible = true,
                 loginQr = null,
                 loginStatus = "",
                 loginSkipped = false,
-                showContinue = it.rememberPlaybackContent,
-                toast = "已退出登录",
             )
         }
+        onLogoutUi()
+        onToast("已退出登录")
         startQrLogin()
     }
 
@@ -224,12 +229,12 @@ class AccountLoginCoordinator(
     private fun fetchNav() {
         scope.launch {
             val nav = withContext(Dispatchers.IO) {
-                runCatching { BiliApi.nav() }.getOrNull()
+                runCatching { accountNavigator.currentProfile() }.getOrNull()
             }
             if (nav != null) {
                 update {
                     it.copy(
-                        accountName = nav.uname.ifBlank { "已登录" },
+                        accountName = nav.name.ifBlank { "已登录" },
                         vip = nav.vip,
                         mid = if (nav.mid > 0) nav.mid else it.mid,
                     )
@@ -239,7 +244,7 @@ class AccountLoginCoordinator(
     }
 
     /** 使用转换函数更新当前界面状态。 */
-    private fun update(transform: (TvUiState) -> TvUiState) {
+    private fun update(transform: (AccountUiState) -> AccountUiState) {
         writeState(transform(readState()))
     }
 

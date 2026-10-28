@@ -8,10 +8,10 @@ import android.os.Environment
 import android.os.SystemClock
 import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.data.local.UpdatePreferences
-import com.roy233.tvcast.data.update.ReleaseRepository
+import com.roy233.tvcast.feature.update.data.UpdatePreferences
+import com.roy233.tvcast.feature.update.data.ReleaseRepository
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.platform.installer.ApkUpdateInstaller
-import com.roy233.tvcast.ui.model.TvUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -25,14 +25,19 @@ import java.io.File
  *
  * @param context 用于访问下载服务和应用私有文件目录的上下文。
  * @param scope 用于执行更新任务的界面生命周期协程作用域。
- * @param readState 读取当前电视界面状态的函数。
- * @param writeState 写入最新电视界面状态的函数。
+ * @param readUpdateState 读取更新功能独占的状态切片。
+ * @param writeUpdateState 写入更新功能独占的状态切片。
  */
 class UpdateCoordinator(
     context: Context,
     private val scope: CoroutineScope,
-    private val readState: () -> TvUiState,
-    private val writeState: (TvUiState) -> Unit,
+    private val readUpdateState: () -> UpdateUiState,
+    private val writeUpdateState: (UpdateUiState) -> Unit,
+    private val openSettingsNavigation: () -> Unit,
+    private val closeSettingsNavigation: () -> Unit,
+    private val openNotesNavigation: () -> Unit,
+    private val closeNotesNavigation: () -> Unit,
+    private val onToast: (String) -> Unit,
     private val preferences: UpdatePreferences = UpdatePreferences(context),
     private val repository: ReleaseRepository = ReleaseRepository(),
     private val installer: ApkUpdateInstaller = ApkUpdateInstaller(context),
@@ -60,39 +65,28 @@ class UpdateCoordinator(
 
     /** 打开应用更新二级页面。 */
     fun openSettings() {
-        val state = readState()
-        writeState(
-            state.copy(
-                destination = com.roy233.tvcast.ui.model.TvDestination.SETTINGS,
-                settingsPage = com.roy233.tvcast.ui.model.SettingsPage.UPDATE,
-                sidebarVisible = false,
-                hudVisible = false,
-            )
-        )
+        openSettingsNavigation()
     }
 
     /** 返回设置主页。 */
     fun closeSettings() {
-        val state = readState()
-        writeState(state.copy(settingsPage = com.roy233.tvcast.ui.model.SettingsPage.ROOT))
+        closeSettingsNavigation()
     }
 
     /** 打开当前可用更新的更新日志页面。 */
     fun openNotes() {
-        val state = readState()
-        if (state.update.availableUpdate == null) return
-        writeState(state.copy(settingsPage = com.roy233.tvcast.ui.model.SettingsPage.UPDATE_NOTES))
+        if (readUpdateState().availableUpdate == null) return
+        openNotesNavigation()
     }
 
     /** 从更新日志返回应用更新页面。 */
     fun closeNotes() {
-        val state = readState()
-        writeState(state.copy(settingsPage = com.roy233.tvcast.ui.model.SettingsPage.UPDATE))
+        closeNotesNavigation()
     }
 
     /** 切换更新发布通道并清除当前查询结果。 */
     fun selectChannel(channel: UpdateChannel) {
-        if (channel == readState().update.channel) return
+        if (channel == readUpdateState().channel) return
         LogHub.i(TAG, "channel selected=${channel.apiValue}")
         cancelDownload(removeTask = true)
         preferences.channel = channel
@@ -126,8 +120,8 @@ class UpdateCoordinator(
 
     /** 查询当前通道是否存在可用更新。 */
     fun checkForUpdates(manual: Boolean = true) {
-        if (readState().update.status == UpdateStatus.CHECKING) return
-        val channel = readState().update.channel
+        if (readUpdateState().status == UpdateStatus.CHECKING) return
+        val channel = readUpdateState().channel
         LogHub.i(
             TAG,
             "check requested channel=${channel.apiValue} manual=$manual " +
@@ -179,12 +173,12 @@ class UpdateCoordinator(
 
     /** 下载当前可用更新，或复用已下载且已校验的缓存文件。 */
     fun downloadUpdate() {
-        val update = readState().update.availableUpdate ?: return
+        val update = readUpdateState().availableUpdate ?: return
         val cacheFile = cacheFile(update)
         scope.launch {
             LogHub.i(TAG, "download requested version=${update.versionName}")
             setUpdateState { it.copy(status = UpdateStatus.VERIFYING, message = "正在检查已下载的安装包…") }
-            val cachedVerification = installer.verify(cacheFile, update)
+            val cachedVerification = installer.verify(cacheFile, update.sha256, update.versionCode)
             if (cachedVerification.isSuccess) {
                 LogHub.i(TAG, "verified cached apk version=${update.versionName} bytes=${cacheFile.length()}")
                 setReady(update, cacheFile, "已复用已验证的安装包")
@@ -213,12 +207,12 @@ class UpdateCoordinator(
 
     /** 请求安装已完成并校验的 APK。 */
     fun installUpdate() {
-        val updateState = readState().update
+        val updateState = readUpdateState()
         val apk = updateState.downloadedApkPath?.let(::File) ?: return
         val update = updateState.availableUpdate ?: return
         scope.launch {
             setUpdateState { it.copy(status = UpdateStatus.VERIFYING, message = "正在再次校验安装包…") }
-            installer.verify(apk, update)
+            installer.verify(apk, update.sha256, update.versionCode)
                 .onSuccess {
                     if (installer.canRequestPackageInstalls()) {
                         setReady(update, apk, "正在打开系统安装器…")
@@ -261,7 +255,7 @@ class UpdateCoordinator(
         if (!manual) showToast("发现新版本 ${update.versionName}")
         scope.launch {
             val cacheFile = cacheFile(update)
-            if (installer.verify(cacheFile, update).isSuccess) {
+            if (installer.verify(cacheFile, update.sha256, update.versionCode).isSuccess) {
                 setReady(update, cacheFile, if (manual) "发现新版本，安装包已就绪" else "发现新版本")
             } else {
                 setUpdateState {
@@ -385,7 +379,7 @@ class UpdateCoordinator(
                     downloadId = null
                     LogHub.i(TAG, "download complete id=$id source=$source bytes=${cacheFile.length()}")
                     setUpdateState { it.copy(status = UpdateStatus.VERIFYING, message = "正在校验安装包…") }
-                    installer.verify(cacheFile, update)
+                    installer.verify(cacheFile, update.sha256, update.versionCode)
                         .onSuccess {
                             LogHub.i(TAG, "apk verification passed version=${update.versionName}")
                             setReady(update, cacheFile, "安装包校验完成")
@@ -489,14 +483,12 @@ class UpdateCoordinator(
 
     /** 更新 TV 根状态中的更新子状态。 */
     private fun setUpdateState(transform: (UpdateUiState) -> UpdateUiState) {
-        val state = readState()
-        writeState(state.copy(update = transform(state.update)))
+        writeUpdateState(transform(readUpdateState()))
     }
 
     /** 在界面底部显示短暂提示，复用全局提示组件。 */
     private fun showToast(message: String) {
-        val state = readState()
-        writeState(state.copy(toast = message))
+        onToast(message)
     }
 
     /** 下载任务状态的快照。 */

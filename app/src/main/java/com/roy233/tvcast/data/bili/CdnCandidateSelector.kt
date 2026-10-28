@@ -2,38 +2,18 @@ package com.roy233.tvcast.data.bili
 
 import com.google.gson.JsonObject
 import com.roy233.tvcast.core.diagnostics.LogHub
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import com.roy233.tvcast.feature.playback.routing.CdnRouteRules
 
 /** 提供 CDN 地址分类、排序和播放轨道选择规则。 */
 object CdnCandidateSelector {
 
     /** 日志标签。 */
     private const val TAG = "CdnSelector"
-    /** 已知 PCDN 主机后缀。 */
-    private val pcdnSuffixes = listOf(
-        ".szbdyd.com",
-        ".mountaintoys.cn",
-        ".nexusedgeio.com",
-        ".ahdohpiechei.com",
-    )
-    /** IPv4 主机名匹配规则。 */
-    private val ipv4Host = Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$")
     /** 已有播放器支持的主流视频编码。 */
     private val supportedVideoCodecs = setOf(7, 12, 13)
 
     /** 按 PCDN、官方 CDN 和原始顺序对地址进行排序。 */
-    fun order(urls: List<String>): List<String> = urls
-        .asSequence()
-        .filter { it.isNotBlank() }
-        .distinct()
-        .withIndex()
-        .sortedWith(
-            compareBy<IndexedValue<String>> { isPcdn(it.value) }
-                .thenBy { !isOfficialCdn(it.value) }
-                .thenBy { it.index }
-        )
-        .map { it.value }
-        .toList()
+    fun order(urls: List<String>): List<String> = CdnRouteRules.order(urls)
 
     /** 从 JSON 轨道对象读取备用播放地址。 */
     fun backupUrls(o: JsonObject): List<String> =
@@ -158,31 +138,10 @@ object CdnCandidateSelector {
     }
 
     /** 判断播放地址是否符合 PCDN 特征。 */
-    fun isPcdn(raw: String): Boolean {
-        val url = httpUrlOf(raw) ?: return false
-        val host = url.host.lowercase()
-        if (host.isBlank()) return false
-        val firstLabel = host.substringBefore('.')
-        if (ipv4Host.matches(host)) return true
-        if (host.startsWith("mcdn.bilivideo.")) return true
-        if (host.contains(".mcdn.bilivideo.")) return true
-        if (pcdnSuffixes.any { host.endsWith(it) }) return true
-        if (firstLabel.startsWith("upos-") && firstLabel.contains("302")) return true
-        if (host == "upos-sz-mirror14b.bilivideo.com") return true
-        if (url.port != 80 && url.port != 443) return true
-        if (url.queryParameter("os")?.equals("mcdn", ignoreCase = true) == true) return true
-        return false
-    }
-
-    /** 将原始地址解析为 HTTP URL。 */
-    private fun httpUrlOf(raw: String): okhttp3.HttpUrl? {
-        val normalized = if (raw.startsWith("//")) "https:$raw" else raw
-        return normalized.toHttpUrlOrNull()
-    }
+    fun isPcdn(raw: String): Boolean = CdnRouteRules.isPcdn(raw)
 
     /** 提取播放地址的规范化主机名。 */
-    private fun cdnHostOf(raw: String): String =
-        httpUrlOf(raw)?.host?.lowercase().orEmpty()
+    private fun cdnHostOf(raw: String): String = CdnRouteRules.hostOf(raw)
 
     private fun JsonObject.string(name: String): String =
         runCatching { get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty() }.getOrDefault("")
@@ -194,11 +153,8 @@ object CdnCandidateSelector {
         runCatching { get(name)?.takeUnless { it.isJsonNull }?.asLong ?: 0L }.getOrDefault(0L)
 
     /** 判断地址是否属于官方 CDN 域名。 */
-    fun isOfficialCdn(raw: String): Boolean {
-        val host = cdnHostOf(raw)
-        return host.endsWith(".bilivideo.com") || host.endsWith(".akamaized.net")
-    }
+    fun isOfficialCdn(raw: String): Boolean = CdnRouteRules.isOfficialCdn(raw)
 
     /** 同一表示层中用于线路切换的网络端点标识。 */
-    fun routeIdentity(raw: String): String = cdnHostOf(raw).ifBlank { raw }
+    fun routeIdentity(raw: String): String = CdnRouteRules.routeIdentity(raw)
 }

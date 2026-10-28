@@ -5,6 +5,10 @@ import android.os.Build
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.feature.account.model.AccountAuthService
+import com.roy233.tvcast.feature.account.model.Poll
+import com.roy233.tvcast.feature.account.model.Qr
+import com.roy233.tvcast.feature.account.model.Token
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,7 +25,7 @@ import java.util.concurrent.TimeUnit
  * (access_key) which the Moss broadcast channel requires, plus the cookie set
  * used by web playurl.
  */
-object CastAuth {
+object CastAuth : AccountAuthService {
 
     /** 日志标签。 */
     private const val TAG = "SimpleBiliAuth"
@@ -45,40 +49,6 @@ object CastAuth {
         "Mozilla/5.0 (Linux; Android 11; TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     /** 保存设备 buvid 的偏好文件名。 */
     private const val PREFS = "bili_cast_auth"
-
-    /**
-     * 保存电视账号认证信息。
-     *
-     * @property accessKey 电视端访问令牌。
-     * @property mid 账号标识。
-     * @property cookie 登录后获得的 Cookie 集合。
-     * @property refreshToken 刷新令牌。
-     * @property expiresIn 令牌有效期。
-     */
-    data class Token(
-        val accessKey: String,
-        val mid: Long,
-        val cookie: String,
-        val refreshToken: String,
-        val expiresIn: Long,
-    )
-
-    /**
-     * 保存二维码地址及其轮询所需的会话信息。
-     *
-     * @property url 二维码内容地址。
-     * @property authCode 二维码认证码。
-     * @property sessionId 登录会话标识。
-     */
-    data class Qr(val url: String, val authCode: String, val sessionId: String)
-
-    /** 表示二维码登录轮询结果。 */
-    sealed class Poll {
-        /** 表示用户尚未完成扫码或确认。 */
-        data class Pending(val code: Int, val message: String) : Poll()
-        /** 表示登录成功并返回认证令牌。 */
-        data class Success(val token: Token) : Poll()
-    }
 
     /** 用于请求认证接口的 HTTP 客户端。 */
     private val client: OkHttpClient = OkHttpClient.Builder()
@@ -184,7 +154,7 @@ object CastAuth {
     // QR flow
     // ------------------------------------------------------------------ //
     /** 请求一组新的二维码登录参数。 */
-    fun requestQr(ctx: Context): Qr {
+    override fun requestQr(context: Context): Qr {
         val sessionId = UUID.randomUUID().toString()
         val body = signedBody(
             mapOf(
@@ -194,9 +164,9 @@ object CastAuth {
                 "extend" to "",
                 "device_tourist_id" to "",
             ),
-            ctx
+            context
         )
-        val root = post("/x/passport-tv-login/qrcode/auth_code", body, ctx)
+        val root = post("/x/passport-tv-login/qrcode/auth_code", body, context)
         val code = root.get("code")?.asInt ?: -1
         if (code != 0) error("auth_code code=$code ${root.get("message")?.asString}")
         val data = root.getAsJsonObject("data")
@@ -207,7 +177,7 @@ object CastAuth {
     }
 
     /** 轮询二维码登录状态并返回当前登录结果。 */
-    fun poll(ctx: Context, authCode: String, sessionId: String): Poll {
+    override fun poll(context: Context, authCode: String, sessionId: String): Poll {
         val body = signedBody(
             mapOf(
                 "auth_code" to authCode,
@@ -216,9 +186,9 @@ object CastAuth {
                 "extend" to "",
                 "device_tourist_id" to "",
             ),
-            ctx
+            context
         )
-        val root = post("/x/passport-tv-login/qrcode/poll", body, ctx)
+        val root = post("/x/passport-tv-login/qrcode/poll", body, context)
         val code = root.get("code")?.asInt ?: -1
         val msg = root.get("message")?.asString ?: ""
         if (code != 0) return Poll.Pending(code, msg)

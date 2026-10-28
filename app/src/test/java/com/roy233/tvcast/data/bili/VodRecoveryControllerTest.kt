@@ -1,16 +1,18 @@
 package com.roy233.tvcast.data.bili
 
+import com.roy233.tvcast.feature.playback.domain.VodRecoveryController as DomainVodRecoveryController
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class VodRecoveryControllerTest {
+class DomainVodRecoveryControllerTest {
 
     @Test
     fun `startup and initial seek buffering never consume CDN candidates`() {
-        val controller = VodRecoveryController()
+        val controller = DomainVodRecoveryController()
         controller.onOpening(positionMs = 2_000L, nowMs = 0L)
 
         assertTrue(controller.onBufferingChanged(buffering = true, nowMs = 10L).ignored)
@@ -38,7 +40,7 @@ class VodRecoveryControllerTest {
         val second = controller.onBufferingChanged(buffering = false, nowMs = 7_400L)
 
         assertTrue(second.countedRebuffer)
-        assertEquals(VodRecoveryController.Failure.TWO_SEVERE_REBUFFERS, second.failure)
+        assertEquals(DomainVodRecoveryController.Failure.TWO_SEVERE_REBUFFERS, second.failure)
     }
 
     @Test
@@ -59,18 +61,18 @@ class VodRecoveryControllerTest {
     fun `persistent buffering and open timeout are each emitted once`() {
         val buffering = stableController()
         buffering.onBufferingChanged(buffering = true, nowMs = 3_000L)
-        assertEquals(VodRecoveryController.Failure.PERSISTENT_BUFFERING, buffering.onTick(8_000L))
+        assertEquals(DomainVodRecoveryController.Failure.PERSISTENT_BUFFERING, buffering.onTick(8_000L))
         assertNull(buffering.onTick(9_000L))
 
-        val opening = VodRecoveryController()
+        val opening = DomainVodRecoveryController()
         opening.onOpening(positionMs = 0L, nowMs = 0L)
-        assertEquals(VodRecoveryController.Failure.OPEN_TIMEOUT, opening.onTick(12_000L))
+        assertEquals(DomainVodRecoveryController.Failure.OPEN_TIMEOUT, opening.onTick(12_000L))
         assertNull(opening.onTick(13_000L))
     }
 
     @Test
     fun `initial playing cancels open timeout during later stabilization`() {
-        val controller = VodRecoveryController()
+        val controller = DomainVodRecoveryController()
         controller.onOpening(positionMs = 0L, nowMs = 0L)
         controller.onPlaying(positionMs = 0L, nowMs = 100L)
 
@@ -86,10 +88,10 @@ class VodRecoveryControllerTest {
 
         assertTrue(update.ignored)
         assertFalse(update.countedRebuffer)
-        assertEquals(VodRecoveryController.Phase.SWITCHING, update.phase)
+        assertEquals(DomainVodRecoveryController.Phase.SWITCHING, update.phase)
     }
 
-    private fun stableController(): VodRecoveryController = VodRecoveryController().also { controller ->
+    private fun stableController(): DomainVodRecoveryController = DomainVodRecoveryController().also { controller ->
         controller.onOpening(positionMs = 0L, nowMs = 0L)
         controller.onPlaying(positionMs = 0L, nowMs = 100L)
         val progress = controller.onProgress(positionMs = 1_500L, activelyPlaying = true, nowMs = 2_200L)

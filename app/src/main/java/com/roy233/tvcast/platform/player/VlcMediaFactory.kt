@@ -4,7 +4,8 @@ import androidx.core.net.toUri
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
-import com.roy233.tvcast.data.bili.BiliApi
+import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 
@@ -25,7 +26,7 @@ internal class VlcMediaFactory(private val libVlc: LibVLC) {
      * @param seekToMs 开始播放前需要跳转的位置，单位为毫秒。
      * @return 已经配置好的媒体；调用方负责持有和释放。
      */
-    fun create(info: BiliApi.PlayInfo, seekToMs: Long): Media {
+    fun create(info: PlaybackRequest, seekToMs: Long): Media {
         PlaybackDiagnostics.ensureSession("player-open")
         PlaybackDiagnostics.state("opening")
         PlaybackDiagnostics.attribute("player.seekToMs", seekToMs.coerceAtLeast(0L).toString())
@@ -57,12 +58,12 @@ internal class VlcMediaFactory(private val libVlc: LibVLC) {
                 LogHub.i(TAG, "media start-time=${seekToMs}ms")
             }
             media.addOption(":http-referrer=https://www.bilibili.com/")
-            media.addOption(":http-user-agent=${BiliApi.UA}")
+            media.addOption(":http-user-agent=${DEFAULT_PLAYBACK_USER_AGENT}")
             media.addOption(":network-caching=2000")
             LogHub.i(
                 TAG,
                 "media options hwDecoder=mediacodec forcedFlush=false " +
-                    "referrer=bilibili ua=${BiliApi.UA.take(32)}… networkCaching=2000",
+                    "referrer=bilibili ua=${DEFAULT_PLAYBACK_USER_AGENT.take(32)}… networkCaching=2000",
             )
             return media
         } catch (t: Throwable) {
@@ -77,16 +78,16 @@ internal class VlcMediaFactory(private val libVlc: LibVLC) {
      * @param info 已解析的播放信息。
      * @param seekToMs 开始播放前需要跳转的位置，单位为毫秒。
      */
-    private fun logOpenSummary(info: BiliApi.PlayInfo, seekToMs: Long) {
+    private fun logOpenSummary(info: PlaybackRequest, seekToMs: Long) {
         val source = if (info.progressiveUrl == null) "dash" else "progressive"
         val video = info.video
         LogHub.i(
             TAG,
             "open source=$source title=${info.title.take(40)} " +
-                "qn=${video.id}(${info.qualityLabel}) codec=${VlcTrackFormat.codecName(video.codecid)} " +
+                "qn=${video.id}(${info.qualityLabel}) codec=${VlcTrackFormat.codecName(video.codecId)} " +
                 "${video.width}x${video.height} bw=${video.bandwidth} " +
                 "audio=${info.audio?.id}(${info.audioLabel}) seek=${seekToMs}ms " +
-                "videos=${info.videos.size} audios=${info.audios.size} backups=${video.backup.size}",
+                "videos=${info.videos.size} audios=${info.audios.size} backups=${video.backupUrls.size}",
         )
         val videoUrl = info.progressiveUrl ?: video.url
         val safeVideoUrl = if (info.isLive) LogRedaction.host(videoUrl) else LogRedaction.url(videoUrl)
@@ -94,11 +95,11 @@ internal class VlcMediaFactory(private val libVlc: LibVLC) {
         info.audio?.let { audio ->
             LogHub.i(TAG, "open audioUrl=${LogRedaction.url(audio.url)}")
         }
-        if (video.backup.isNotEmpty()) {
+        if (video.backupUrls.isNotEmpty()) {
             LogHub.i(
                 TAG,
                 "open backupHosts=" +
-                    video.backup.take(4).joinToString(",") { LogRedaction.host(it) },
+                    video.backupUrls.take(4).joinToString(",") { LogRedaction.host(it) },
             )
         }
         PlaybackDiagnostics.attribute("stream.source", source)
@@ -109,10 +110,10 @@ internal class VlcMediaFactory(private val libVlc: LibVLC) {
         PlaybackDiagnostics.attribute("stream.durationSec", info.durationSec.toString())
         PlaybackDiagnostics.attribute("stream.qn", video.id.toString())
         PlaybackDiagnostics.attribute("stream.qnLabel", info.qualityLabel)
-        PlaybackDiagnostics.attribute("stream.codec", VlcTrackFormat.codecName(video.codecid))
+        PlaybackDiagnostics.attribute("stream.codec", VlcTrackFormat.codecName(video.codecId))
         PlaybackDiagnostics.attribute("stream.size", "${video.width}x${video.height}")
         PlaybackDiagnostics.attribute("stream.bandwidth", video.bandwidth.toString())
-        PlaybackDiagnostics.attribute("stream.pcdn", video.pcdn.toString())
+        PlaybackDiagnostics.attribute("stream.isPcdn", video.isPcdn.toString())
         PlaybackDiagnostics.attribute(
             "stream.videoUrl",
             if (info.isLive) LogRedaction.host(video.url) else LogRedaction.url(video.url),
@@ -128,11 +129,11 @@ internal class VlcMediaFactory(private val libVlc: LibVLC) {
                 mapOf(
                     "source" to "candidate",
                     "id" to track.id.toString(),
-                    "codec" to VlcTrackFormat.codecName(track.codecid),
+                    "codec" to VlcTrackFormat.codecName(track.codecId),
                     "size" to "${track.width}x${track.height}",
                     "bandwidth" to track.bandwidth.toString(),
                     "host" to LogRedaction.host(track.url),
-                    "pcdn" to track.pcdn.toString(),
+                    "pcdn" to track.isPcdn.toString(),
                     "chosen" to (track.url == video.url).toString(),
                 ),
             )
@@ -143,10 +144,10 @@ internal class VlcMediaFactory(private val libVlc: LibVLC) {
                 mapOf(
                     "source" to "candidate",
                     "id" to track.id.toString(),
-                    "codec" to VlcTrackFormat.codecName(track.codecid),
+                    "codec" to VlcTrackFormat.codecName(track.codecId),
                     "bandwidth" to track.bandwidth.toString(),
                     "host" to LogRedaction.host(track.url),
-                    "pcdn" to track.pcdn.toString(),
+                    "pcdn" to track.isPcdn.toString(),
                     "chosen" to (track.url == info.audio?.url).toString(),
                 ),
             )

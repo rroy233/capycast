@@ -8,7 +8,6 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
-import com.roy233.tvcast.feature.update.AppUpdateInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -25,19 +24,20 @@ class ApkUpdateInstaller(private val context: Context) {
      * 校验 APK 的摘要、包名和版本号。
      *
      * @param apk 待校验的 APK 文件。
-     * @param update 发布清单中的更新信息。
+     * @param sha256 发布清单声明的 SHA-256 校验值。
+     * @param versionCode 发布清单声明的整数版本号。
      */
-    suspend fun verify(apk: File, update: AppUpdateInfo): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun verify(apk: File, sha256: String, versionCode: Long): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             require(apk.isFile && apk.length() > 0L) { "更新安装包不存在" }
-            require(sha256(apk).equals(update.sha256, ignoreCase = true)) { "更新安装包校验失败" }
+            require(sha256(apk).equals(sha256, ignoreCase = true)) { "更新安装包校验失败" }
 
             val packageInfo = context.packageManager.getPackageArchiveInfo(
                 apk.absolutePath,
                 PackageManager.GET_ACTIVITIES,
             ) ?: error("无法读取更新安装包")
             require(packageInfo.packageName == context.packageName) { "更新安装包不属于当前应用" }
-            require(PackageInfoCompat.getLongVersionCode(packageInfo) == update.versionCode) {
+            require(PackageInfoCompat.getLongVersionCode(packageInfo) == versionCode) {
                 "更新安装包版本号不匹配"
             }
         }

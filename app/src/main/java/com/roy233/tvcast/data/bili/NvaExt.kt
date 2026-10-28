@@ -2,8 +2,9 @@ package com.roy233.tvcast.data.bili
 
 import android.util.Base64
 import com.google.gson.Gson
-import com.google.gson.annotations.SerializedName
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.feature.cast.domain.CastContent
+import com.roy233.tvcast.feature.cast.domain.CastLink
 import java.io.ByteArrayOutputStream
 import java.util.zip.Inflater
 import javax.crypto.Cipher
@@ -21,14 +22,6 @@ import javax.crypto.spec.SecretKeySpec
  */
 object NvaExtDecoder {
 
-    /** 内容身份分类；优先识别直播与原生 PGC 标识，避免 aid/cid 抢先误分流。 */
-    enum class ContentKind {
-        LIVE,
-        PGC,
-        UGC,
-        UNKNOWN,
-    }
-
     /** 日志标签。 */
     private const val TAG = "NvaExt"
     /** 默认 AES 密钥及初始化向量文本。 */
@@ -37,66 +30,8 @@ object NvaExtDecoder {
     /** JSON 反序列化器。 */
     private val gson = Gson()
 
-    /** 保存 nva 扩展中的设备回调信息。 */
-    data class NvaLink(
-        /** 设备标识。 */
-        @SerializedName("cd") val deviceId: String? = null,
-        /** 回调地址或标识。 */
-        @SerializedName("cb") val callback: String? = null,
-    )
-
-    /** 保存 nva 扩展中携带的内容身份信息。 */
-    data class NvaExtContent(
-        /** 普通稿件标识。 */
-        val aid: Long = 0L,
-        /** 普通分P标识。 */
-        val cid: Long = 0L,
-        /** 原始对象标识。 */
-        val oid: String? = null,
-        /** BV 标识。 */
-        val bvid: String? = null,
-        /** 请求的画质标识。 */
-        val qn: Int = 0,
-        /** 用户期望的画质标识。 */
-        val userDesireQn: Int = 0,
-        /** 用户期望的播放速度。 */
-        val userDesireSpeed: String? = null,
-        /** 剧集标识。 */
-        val eid: Long = 0L,
-        /** 系列标识。 */
-        val sid: Long = 0L,
-        /** 直播间标识。 */
-        val roomId: Long = 0L,
-        /** 内容类型标识。 */
-        val ct: Int = 0,
-        /** 业务会话标识。 */
-        @SerializedName("biz_session_id") val bizSessionId: String? = null,
-        /** 设备链路信息。 */
-        val nl: NvaLink? = null,
-        /** 媒体或版本标识。 */
-        val mv: Long = 0L,
-        /** 投屏类型标识。 */
-        val tp: Int = 0,
-    ) {
-        /** 根据投屏协议标识确定唯一内容类型。 */
-        val contentKind: ContentKind
-            get() = when {
-                roomId > 0L -> ContentKind.LIVE
-                eid > 0L || sid > 0L -> ContentKind.PGC
-                aid > 0L && cid > 0L -> ContentKind.UGC
-                else -> ContentKind.UNKNOWN
-            }
-
-        /** 是否包含普通视频的稿件和分P标识。 */
-        val hasUgc: Boolean get() = contentKind == ContentKind.UGC
-        /** 是否包含 PGC 分集或季标识。 */
-        val hasPgc: Boolean get() = contentKind == ContentKind.PGC
-        /** 是否表示直播。 */
-        val hasLive: Boolean get() = contentKind == ContentKind.LIVE
-    }
-
     /** 解码 `<upnp:longDescription>` 中的 nva 扩展内容。 */
-    fun decode(input: String?): NvaExtContent? {
+    fun decode(input: String?): CastContent? {
         if (input.isNullOrBlank()) return null
         return try {
             val payload = extractPayload(input)
@@ -110,11 +45,28 @@ object NvaExtDecoder {
             cipher.init(Cipher.DECRYPT_MODE, key, iv)
             val compressed = cipher.doFinal(encrypted)
             val json = String(inflate(compressed), Charsets.UTF_8)
-            val content = gson.fromJson(json, NvaExtContent::class.java)
+            val decodedPayload = gson.fromJson(json, NvaPayload::class.java)
+            val content = CastContent(
+                aid = decodedPayload.aid,
+                cid = decodedPayload.cid,
+                oid = decodedPayload.oid,
+                bvid = decodedPayload.bvid,
+                qn = decodedPayload.qn,
+                userDesireQn = decodedPayload.userDesireQn,
+                userDesireSpeed = decodedPayload.userDesireSpeed,
+                epId = decodedPayload.eid,
+                seasonId = decodedPayload.sid,
+                roomId = decodedPayload.roomId,
+                contentType = decodedPayload.ct,
+                businessSessionId = decodedPayload.bizSessionId,
+                link = decodedPayload.nl?.let { CastLink(it.deviceId, it.callback) },
+                mediaVersion = decodedPayload.mv,
+                transportType = decodedPayload.tp,
+            )
             LogHub.i(
                 TAG,
                 "nva_ext aid=${content.aid} cid=${content.cid} oid=${content.oid} " +
-                    "bvid=${content.bvid} qn=${content.qn} eid=${content.eid} sid=${content.sid} " +
+                    "bvid=${content.bvid} qn=${content.qn} eid=${content.epId} sid=${content.seasonId} " +
                     "room=${content.roomId}"
             )
             content
@@ -123,6 +75,30 @@ object NvaExtDecoder {
             null
         }
     }
+
+    /** 协议专属 JSON 结构，仅保留在 data adapter 内。 */
+    private data class NvaPayload(
+        val aid: Long = 0L,
+        val cid: Long = 0L,
+        val oid: String? = null,
+        val bvid: String? = null,
+        val qn: Int = 0,
+        val userDesireQn: Int = 0,
+        val userDesireSpeed: String? = null,
+        val eid: Long = 0L,
+        val sid: Long = 0L,
+        val roomId: Long = 0L,
+        val ct: Int = 0,
+        @com.google.gson.annotations.SerializedName("biz_session_id") val bizSessionId: String? = null,
+        val nl: NvaLinkPayload? = null,
+        val mv: Long = 0L,
+        val tp: Int = 0,
+    )
+
+    private data class NvaLinkPayload(
+        @com.google.gson.annotations.SerializedName("cd") val deviceId: String? = null,
+        @com.google.gson.annotations.SerializedName("cb") val callback: String? = null,
+    )
 
     /** 从 URL 查询参数或裸 base64 文本中提取加密载荷。 */
     private fun extractPayload(input: String): String {

@@ -2,12 +2,9 @@ package com.roy233.tvcast.core.diagnostics
 
 import android.content.Context
 import android.os.Build
-import android.os.SystemClock
 import com.roy233.tvcast.BuildConfig
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.RandomAccessFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -18,6 +15,9 @@ import java.util.Locale
  * 与只保存在内存中的 [LogHub] 不同，这里会把会话开始、失败和崩溃写入应用私有
  * 目录，便于在电视被系统回收或应用崩溃后继续排查。`/playback` 端点会输出会话
  * 时间线、媒体轨道、播放统计、失败快照和 libVLC 原生日志尾部。
+ *
+ * 会话内存状态与 JSON 序列化由 [DiagnosticsSessionRecorder] 负责；文件读写由
+ * [DiagnosticsFileStore] 负责；本对象只承担生命周期入口与两者之间的编排。
  */
 object PlaybackDiagnostics {
 
@@ -35,16 +35,6 @@ object PlaybackDiagnostics {
     private const val OPEN_MARKER = "[OPEN]"
     /** 会话结束标记。 */
     private const val CLOSE_MARKER = "[CLOSE]"
-    /** 内存中保留的最大事件条数。 */
-    private const val MAX_EVENTS = 320
-    /** 内存中保留的最大统计采样数。 */
-    private const val MAX_STATS_SAMPLES = 90
-    /** 单条事件详情允许的最大字符数。 */
-    private const val MAX_EVENT_DETAIL = 500
-    /** 单个会话属性允许的最大字符数。 */
-    private const val MAX_ATTRIBUTE_LENGTH = 400
-    /** 单个会话最多保留的轨道条目数。 */
-    private const val MAX_TRACKS = 160
     /** 单条持久化记录允许的最大字符数。 */
     private const val MAX_HISTORY_LINE = 8000
     /** 播放历史文件允许的最大字节数。 */
@@ -56,44 +46,11 @@ object PlaybackDiagnostics {
     /** 上一次运行保留的 libVLC 原生日志最大字节数。 */
     private const val MAX_VLC_PREVIOUS_BYTES = 256L * 1024L
 
-    /** 保护会话内存状态的锁。 */
-    private val lock = Any()
+    /** 会话内存状态与 JSON 序列化。 */
+    private val session = DiagnosticsSessionRecorder()
+
     /** 保护诊断文件读写的锁。 */
     private val fileLock = Any()
-
-    /** 按时间顺序保留的会话事件。 */
-    private val events = ArrayDeque<String>()
-    /** 当前会话的键值属性。 */
-    private val attributes = LinkedHashMap<String, String>()
-    /** 与设备运行时相关、跨会话保留的属性。 */
-    private val runtimeInfo = LinkedHashMap<String, String>()
-    /** 当前会话的媒体轨道列表。 */
-    private var tracks = JSONArray()
-    /** 当前会话的播放统计采样。 */
-    private var statsSamples = JSONArray()
-    /** 第一次播放统计采样。 */
-    private var statsFirst: JSONObject? = null
-    /** 最近一次播放统计采样。 */
-    private var statsLast: JSONObject? = null
-    /** 最近一次失败快照。 */
-    private var failure: JSONObject? = null
-
-    /** 当前会话标识。 */
-    private var sessionId = ""
-    /** 当前会话来源。 */
-    private var sessionSource = ""
-    /** 当前会话开始时间文本。 */
-    private var sessionStartedWall = ""
-    /** 当前会话开始的单调时钟。 */
-    private var sessionStartedElapsed = 0L
-    /** 当前会话状态文本。 */
-    private var sessionState = "none"
-    /** 当前是否存在打开的会话。 */
-    private var sessionOpen = false
-    /** 读取 libVLC 原生日志时的起始偏移；当前保留本次运行的全部日志。 */
-    private var vlcLogStartOffset = 0L
-    /** 会话递增序号，避免同一秒内标识重复。 */
-    private var sessionCounter = 0
 
     /** 是否已经完成初始化。 */
     @Volatile
@@ -124,7 +81,7 @@ object PlaybackDiagnostics {
         if (installed) return
         var unclean = false
         var previousVlcBytes = 0L
-        synchronized(lock) {
+        synchronized(fileLock) {
             if (installed) return
             val application = context.applicationContext
             appContext = application
@@ -165,42 +122,11 @@ object PlaybackDiagnostics {
      * @param source 会话来源，例如投屏、最近播放或播放器打开。
      */
     fun beginSession(source: String) {
-        val safeSource = source.take(80)
-        val wall = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
-        val shortWall = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
-        val now = SystemClock.elapsedRealtime()
-        val line: String
-        val id: String
-        var supersededId: String? = null
-        synchronized(lock) {
-            if (sessionOpen) {
-                supersededId = sessionId
-                closeSessionLocked("superseded")
-            }
-            sessionCounter += 1
-            id = "$shortWall#${sessionCounter}"
-            sessionId = id
-            sessionSource = safeSource
-            sessionStartedWall = wall
-            sessionStartedElapsed = now
-            sessionState = "starting"
-            sessionOpen = true
-            events.clear()
-            attributes.clear()
-            tracks = JSONArray()
-            statsSamples = JSONArray()
-            statsFirst = null
-            statsLast = null
-            failure = null
-            // 保留本次运行从 libVLC 初始化开始的全部原生日志；读取时仍只取尾部。
-            vlcLogStartOffset = 0L
-            attributes["session.source"] = safeSource
-            line = formatEventLocked("Session", "begin id=$id source=$safeSource")
-        }
-        supersededId?.let { appendHistory("$CLOSE_MARKER id=$it reason=superseded") }
-        appendHistory("$OPEN_MARKER id=$id source=$safeSource startedAt=$wall")
-        LogHub.i(TAG, "session begin id=$id source=$safeSource vlcLogFrom=$vlcLogStartOffset")
-        LogHub.d(TAG, line)
+        val begin = session.begin(source)
+        begin.supersededId?.let { appendHistory("$CLOSE_MARKER id=$it reason=superseded") }
+        appendHistory("$OPEN_MARKER id=${begin.id} source=${begin.source} startedAt=${begin.startedWall}")
+        LogHub.i(TAG, "session begin id=${begin.id} source=${begin.source} vlcLogFrom=${session.vlcLogStartOffset()}")
+        LogHub.d(TAG, begin.line)
     }
 
     /**
@@ -209,8 +135,7 @@ object PlaybackDiagnostics {
      * @param source 需要创建会话时使用的来源。
      */
     fun ensureSession(source: String) {
-        val open = synchronized(lock) { sessionOpen }
-        if (!open) beginSession(source)
+        session.ensure(source)
     }
 
     /**
@@ -219,17 +144,10 @@ object PlaybackDiagnostics {
      * @param reason 结束原因。
      */
     fun closeSession(reason: String) {
-        val safeReason = reason.take(80)
-        val line: String
-        val id: String
-        synchronized(lock) {
-            if (!sessionOpen) return
-            id = sessionId
-            line = closeSessionLocked(safeReason)
-        }
-        appendHistory("$CLOSE_MARKER id=$id reason=$safeReason")
-        LogHub.i(TAG, "session close id=$id reason=$safeReason")
-        LogHub.d(TAG, line)
+        val close = session.close(reason) ?: return
+        appendHistory("$CLOSE_MARKER id=${close.id} reason=${reason.take(80)}")
+        LogHub.i(TAG, "session close id=${close.id} reason=${reason.take(80)}")
+        LogHub.d(TAG, close.line)
     }
 
     /**
@@ -238,9 +156,7 @@ object PlaybackDiagnostics {
      * @param state 新的状态文本。
      */
     fun state(state: String) {
-        synchronized(lock) {
-            if (sessionOpen) sessionState = state.take(80)
-        }
+        session.state(state)
     }
 
     /**
@@ -250,10 +166,7 @@ object PlaybackDiagnostics {
      * @param value 属性值。
      */
     fun attribute(key: String, value: String) {
-        val safeValue = LogRedaction.text(value).take(MAX_ATTRIBUTE_LENGTH)
-        synchronized(lock) {
-            attributes[key.take(80)] = safeValue
-        }
+        session.attribute(key, value)
     }
 
     /**
@@ -263,10 +176,7 @@ object PlaybackDiagnostics {
      * @param value 属性值。
      */
     fun runtime(key: String, value: String) {
-        val safeValue = LogRedaction.text(value).take(MAX_ATTRIBUTE_LENGTH)
-        synchronized(lock) {
-            runtimeInfo[key.take(80)] = safeValue
-        }
+        session.runtime(key, value)
     }
 
     /**
@@ -276,15 +186,7 @@ object PlaybackDiagnostics {
      * @param fields 轨道字段。
      */
     fun track(kind: String, fields: Map<String, String>) {
-        val entry = JSONObject().apply {
-            put("kind", kind)
-            fields.forEach { (key, value) ->
-                put(key, LogRedaction.text(value).take(MAX_ATTRIBUTE_LENGTH))
-            }
-        }
-        synchronized(lock) {
-            if (tracks.length() < MAX_TRACKS) tracks.put(entry)
-        }
+        session.track(kind, fields)
     }
 
     /**
@@ -294,9 +196,7 @@ object PlaybackDiagnostics {
      * @param detail 事件详情。
      */
     fun event(name: String, detail: String = "") {
-        val line = synchronized(lock) {
-            formatEventLocked(name.take(60), detail)
-        }
+        val line = session.event(name, detail)
         LogHub.d(TAG, line)
     }
 
@@ -306,14 +206,7 @@ object PlaybackDiagnostics {
      * @param sample 统计采样 JSON。
      */
     fun stats(sample: JSONObject) {
-        synchronized(lock) {
-            if (statsFirst == null) statsFirst = sample
-            statsLast = sample
-            statsSamples.put(sample)
-            while (statsSamples.length() > MAX_STATS_SAMPLES) {
-                statsSamples.remove(0)
-            }
-        }
+        session.stats(sample)
     }
 
     /**
@@ -324,37 +217,14 @@ object PlaybackDiagnostics {
      * @param detail 供排查使用的详细上下文。
      */
     fun fail(code: String, message: String, detail: String = "") {
-        val safeMessage = LogRedaction.text(message).take(400)
-        val safeDetail = LogRedaction.text(detail).take(1600)
-        val id: String
-        val line: String
-        synchronized(lock) {
-            id = sessionId.ifBlank { "no-session" }
-            val snapshot = JSONObject().apply {
-                put("elapsedMs", elapsedLocked())
-                put("code", code.take(80))
-                put("message", safeMessage)
-                put("detail", safeDetail)
-                put("state", "failed:${code.take(60)}")
-                put("lastStats", statsLast ?: JSONObject.NULL)
-                put("attributes", JSONObject().apply {
-                    attributes.forEach { (key, value) -> put(key, value) }
-                })
-            }
-            failure = snapshot
-            line = formatEventLocked("Failure", "code=${code.take(80)} message=$safeMessage")
-            if (sessionOpen) {
-                sessionState = "failed:${code.take(60)}"
-                sessionOpen = false
-            }
-        }
-        appendHistory("[FAIL] id=$id code=${code.take(80)} message=$safeMessage")
-        if (safeDetail.isNotBlank()) appendHistory("    detail=$safeDetail")
+        val failure = session.fail(code, message, detail)
+        appendHistory("[FAIL] id=${failure.id} code=${failure.code.take(80)} message=${failure.message}")
+        if (failure.detail.isNotBlank()) appendHistory("    detail=${failure.detail}")
         val nativeTail = vlcLogTail(40)
-        if (nativeTail.isNotBlank()) appendHistory("[VLC] id=$id\n$nativeTail")
-        appendHistory("$CLOSE_MARKER id=$id reason=failed:${code.take(60)}")
-        LogHub.e(TAG, "session failure id=$id code=$code message=$safeMessage detail=$safeDetail")
-        LogHub.d(TAG, line)
+        if (nativeTail.isNotBlank()) appendHistory("[VLC] id=${failure.id}\n$nativeTail")
+        appendHistory("$CLOSE_MARKER id=${failure.id} reason=failed:${failure.code.take(60)}")
+        LogHub.e(TAG, "session failure id=${failure.id} code=${failure.code} message=${failure.message} detail=${failure.detail}")
+        LogHub.d(TAG, failure.line)
     }
 
     /**
@@ -364,30 +234,14 @@ object PlaybackDiagnostics {
      * @param throwable 未捕获异常。
      */
     fun recordCrash(threadName: String, throwable: Throwable) {
-        val stack = runCatching {
-            throwable.stackTraceToString()
-                .lineSequence()
-                .take(40)
-                .joinToString("\n")
-        }.getOrDefault("")
-        val safeStack = LogRedaction.text(stack)
-        val id: String
-        synchronized(lock) {
-            id = sessionId.ifBlank { "no-session" }
-            formatEventLocked(
-                "Crash",
-                "thread=${threadName.take(60)} ${LogRedaction.reason(throwable)}",
-            )
-            sessionState = "crashed"
-            sessionOpen = false
-        }
+        val crash = session.recordCrash(threadName, throwable)
         appendHistory(
-            "[CRASH] id=$id thread=${threadName.take(60)} " +
-                "${LogRedaction.reason(throwable)}\n$safeStack",
+            "[CRASH] id=${crash.id} thread=${threadName.take(60)} " +
+                "${crash.reason}\n${crash.stack}",
         )
         LogHub.e(
             TAG,
-            "crash id=$id thread=$threadName ${LogRedaction.reason(throwable)}",
+            "crash id=${crash.id} thread=$threadName ${crash.reason}",
             throwable,
             stack = true,
         )
@@ -410,16 +264,7 @@ object PlaybackDiagnostics {
      *
      * @return 单行会话摘要。
      */
-    fun summary(): String = synchronized(lock) {
-        val id = sessionId.ifBlank { "none" }
-        val currentFailure = failure
-        if (currentFailure == null) {
-            "session=$id state=$sessionState events=${events.size}"
-        } else {
-            "session=$id state=$sessionState code=${currentFailure.optString("code")} " +
-                "message=${currentFailure.optString("message").take(160)} events=${events.size}"
-        }
-    }
+    fun summary(): String = session.summary()
 
     /**
      * 构造完整的播放诊断报告。
@@ -432,15 +277,8 @@ object PlaybackDiagnostics {
             root.put("generatedAt", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
             root.put("installed", installed)
             appContext?.let { context -> root.put("device", DeviceDiagnostics.snapshot(context)) }
-            synchronized(lock) {
-                root.put("session", buildSessionJsonLocked())
-                root.put(
-                    "runtime",
-                    JSONObject().apply {
-                        runtimeInfo.forEach { (key, value) -> put(key, value) }
-                    },
-                )
-            }
+            root.put("session", session.sessionJson())
+            root.put("runtime", session.runtimeJson())
             val fileLog = buildVlcLogJson()
             root.put("vlcLog", fileLog)
             if (!fileLog.optBoolean("available")) {
@@ -470,8 +308,7 @@ object PlaybackDiagnostics {
      */
     fun vlcLogTail(maxLines: Int): String {
         val file = vlcLog ?: return ""
-        val start = synchronized(lock) { vlcLogStartOffset }
-        return readVlcTail(file, start, maxLines)
+        return readVlcTail(file, session.vlcLogStartOffset(), maxLines)
     }
 
     /**
@@ -507,58 +344,6 @@ object PlaybackDiagnostics {
         return File(directory, VLC_LOG_FILE)
     }
 
-    /** 在会话内存中追加一条带相对时间的事件。 */
-    private fun formatEventLocked(name: String, detail: String): String {
-        val safeDetail = LogRedaction.text(detail).take(MAX_EVENT_DETAIL)
-        val line = "+${elapsedLocked()}ms $name" + if (safeDetail.isBlank()) "" else " $safeDetail"
-        events.addLast(line)
-        while (events.size > MAX_EVENTS) events.removeFirst()
-        return line
-    }
-
-    /** 关闭会话并返回生成的事件行。 */
-    private fun closeSessionLocked(reason: String): String {
-        sessionOpen = false
-        sessionState = if (sessionState.startsWith("failed")) sessionState else reason.take(80)
-        return formatEventLocked("Session", "close reason=$reason")
-    }
-
-    /** 返回会话已运行的毫秒数。 */
-    private fun elapsedLocked(): Long =
-        if (sessionStartedElapsed > 0L) {
-            SystemClock.elapsedRealtime() - sessionStartedElapsed
-        } else {
-            0L
-        }
-
-    /** 构造会话 JSON 内容。 */
-    private fun buildSessionJsonLocked(): JSONObject = JSONObject().apply {
-        put("id", sessionId)
-        put("source", sessionSource)
-        put("startedAt", sessionStartedWall)
-        put("state", sessionState)
-        put("open", sessionOpen)
-        put("elapsedMs", elapsedLocked())
-        put("attributes", JSONObject().apply {
-            attributes.forEach { (key, value) -> put(key, value) }
-        })
-        put("tracks", JSONArray().apply {
-            for (index in 0 until tracks.length()) put(tracks.get(index))
-        })
-        put("events", JSONArray().apply {
-            events.forEach { put(it) }
-        })
-        put("stats", JSONObject().apply {
-            put("samples", statsSamples.length())
-            put("first", statsFirst ?: JSONObject.NULL)
-            put("last", statsLast ?: JSONObject.NULL)
-            put("series", JSONArray().apply {
-                for (index in 0 until statsSamples.length()) put(statsSamples.get(index))
-            })
-        })
-        put("failure", failure ?: JSONObject.NULL)
-    }
-
     /** 构造 libVLC 原生日志 JSON。 */
     private fun buildVlcLogJson(): JSONObject = JSONObject().apply {
         val current = vlcLog
@@ -574,45 +359,18 @@ object PlaybackDiagnostics {
     }
 
     /** 读取文件尾部并生成脱敏的日志行。 */
-    private fun readVlcTail(file: File, startOffset: Long, maxLines: Int): String {
-        if (!file.isFile) return ""
-        return runCatching {
-            val length = file.length()
-            if (length <= 0L) return@runCatching ""
-            val from = maxOf(
-                startOffset.coerceIn(0L, length),
-                length - MAX_VLC_TAIL_BYTES,
-            ).coerceAtLeast(0L)
-            RandomAccessFile(file, "r").use { handle ->
-                handle.seek(from)
-                val size = (length - from).toInt().coerceAtMost(MAX_VLC_TAIL_BYTES.toInt())
-                if (size <= 0) return@runCatching ""
-                val bytes = ByteArray(size)
-                handle.readFully(bytes)
-                var text = String(bytes, Charsets.UTF_8)
-                if (from > 0L) text = text.substringAfter('\n', "")
-                text.lineSequence()
-                    .filter { it.isNotBlank() }
-                    .toList()
-                    .takeLast(maxLines)
-                    .joinToString("\n") { LogRedaction.text(it) }
-            }
-        }.getOrDefault("")
-    }
+    private fun readVlcTail(file: File, startOffset: Long, maxLines: Int): String =
+        DiagnosticsFileStore.readVlcTail(file, startOffset, maxLines, MAX_VLC_TAIL_BYTES)
 
-    /** 读取文件尾部文本。 */
-    private fun readTailText(file: File, maxBytes: Long): String = runCatching {
-        val length = file.length()
-        if (length <= 0L) return@runCatching ""
-        val from = (length - maxBytes).coerceAtLeast(0L)
-        RandomAccessFile(file, "r").use { handle ->
-            handle.seek(from)
-            val size = (length - from).toInt()
-            val bytes = ByteArray(size)
-            handle.readFully(bytes)
-            String(bytes, Charsets.UTF_8)
-        }
-    }.getOrDefault("")
+    /**
+     * 读取文件尾部文本。
+     *
+     * @param file 目标文件。
+     * @param maxBytes 读取的字节上限。
+     * @return 文件文本；不可读时返回空串。
+     */
+    private fun readTailText(file: File, maxBytes: Long): String =
+        DiagnosticsFileStore.readTailText(file, maxBytes)
 
     /** 追加一条脱敏后的持久化记录。 */
     private fun appendHistory(raw: String) {
@@ -620,18 +378,23 @@ object PlaybackDiagnostics {
         val safe = LogRedaction.text(raw).take(MAX_HISTORY_LINE)
         synchronized(fileLock) {
             runCatching {
-                file.parentFile?.mkdirs()
-                rotateHistoryIfNeededLocked(file)
-                file.appendText(safe + "\n")
+                DiagnosticsFileStore.rotateHistoryIfNeeded(
+                    file,
+                    maxBytes = MAX_HISTORY_BYTES,
+                    tailBytes = MAX_HISTORY_TAIL_BYTES,
+                )
+                DiagnosticsFileStore.appendHistory(file, safe)
             }
         }
     }
 
     /** 在文件锁内按大小轮转播放历史。 */
     private fun rotateHistoryIfNeededLocked(file: File) {
-        if (!file.isFile || file.length() <= MAX_HISTORY_BYTES) return
-        val tail = readTailText(file, MAX_HISTORY_TAIL_BYTES)
-        file.writeText("[ROTATED] trimmed playback history\n$tail")
+        DiagnosticsFileStore.rotateHistoryIfNeeded(
+            file,
+            maxBytes = MAX_HISTORY_BYTES,
+            tailBytes = MAX_HISTORY_TAIL_BYTES,
+        )
     }
 
     /** 在安装阶段检查播放历史是否需要轮转。 */
