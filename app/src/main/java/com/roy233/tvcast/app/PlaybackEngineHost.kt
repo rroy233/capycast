@@ -70,7 +70,7 @@ class PlaybackEngineHost(
 
     fun stop(reason: String) = activeEngine().stop(reason)
 
-    fun isVlcSeekable(): Boolean = runCatching { vlc.player.isSeekable }.getOrDefault(false)
+    fun isSeekable(): Boolean = activeEngine().isSeekable()
 
     fun stateSnapshot(): String = runCatching { vlc.stateSnapshot() }.getOrDefault("")
 

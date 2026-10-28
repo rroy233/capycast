@@ -797,7 +797,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun seekDanmaku(positionMs: Long) {
         if (::danmakuController.isInitialized) danmakuController.onSeek(positionMs)
     }
-    override fun isVlcSeekable(): Boolean = playbackEngineHost.isVlcSeekable()
+    override fun isSeekable(): Boolean = playbackEngineHost.isSeekable()
     override fun setVolume(volume: Int, reason: String) = setPlayerVolume(volume, reason)
     override fun durationMs(): Long = playerDurationMs()
     override fun volume(): Int = playerVolume()
@@ -1501,15 +1501,18 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** HDR 视频进入专用显示模式，结束或切回 VLC 时立即恢复系统默认色彩模式。 */
     private fun setHdrWindowEnabled(enabled: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val mode = if (enabled) ActivityInfo.COLOR_MODE_HDR else ActivityInfo.COLOR_MODE_DEFAULT
-        runCatching { window.colorMode = mode }
-            .onSuccess {
-                PlaybackDiagnostics.attribute("renderer.window.colorMode", if (enabled) "hdr" else "default")
-                LogHub.i(TAG, "HDR window color mode=${if (enabled) "hdr" else "default"}")
-            }
-            .onFailure { error ->
-                LogHub.e(TAG, "HDR window color mode update failed: ${LogRedaction.reason(error)}")
-            }
+        // 播放器切换可能发生在 DLNA 后台线程；窗口属性必须在主线程设置。
+        runOnUiThread {
+            val mode = if (enabled) ActivityInfo.COLOR_MODE_HDR else ActivityInfo.COLOR_MODE_DEFAULT
+            runCatching { window.colorMode = mode }
+                .onSuccess {
+                    PlaybackDiagnostics.attribute("renderer.window.colorMode", if (enabled) "hdr" else "default")
+                    LogHub.i(TAG, "HDR window color mode=${if (enabled) "hdr" else "default"}")
+                }
+                .onFailure { error ->
+                    LogHub.e(TAG, "HDR window color mode update failed: ${LogRedaction.reason(error)}")
+                }
+        }
     }
 
     /** 启动定时任务以同步播放进度和设备网络信息。 */

@@ -30,7 +30,7 @@ class DlnaTransportCoordinatorTest {
     @Test
     fun `live transport rejects seeking and reports zero duration`() {
         val calls = mutableListOf<String>()
-        val state = HostState(isLive = true, vlcSeekable = true, engineAvailable = true)
+        val state = HostState(isLive = true, seekable = true, engineAvailable = true)
         val coordinator = DlnaTransportCoordinator(host(calls, state))
 
         coordinator.seek(2000L)
@@ -42,9 +42,18 @@ class DlnaTransportCoordinatorTest {
     }
 
     @Test
+    fun `vod transport reports seekable from the active backend`() {
+        val calls = mutableListOf<String>()
+        val state = HostState(isLive = false, seekable = true, engineAvailable = true)
+        val coordinator = DlnaTransportCoordinator(host(calls, state))
+
+        assertEquals(true, coordinator.isSeekable())
+    }
+
+    @Test
     fun `seek clamps to zero and forwards danmaku position`() {
         val calls = mutableListOf<String>()
-        val state = HostState(isLive = false, vlcSeekable = true, engineAvailable = true)
+        val state = HostState(isLive = false, seekable = true, engineAvailable = true)
         val coordinator = DlnaTransportCoordinator(host(calls, state))
 
         coordinator.seek(-500L)
@@ -65,7 +74,7 @@ class DlnaTransportCoordinatorTest {
 
     private class HostState(
         val isLive: Boolean = false,
-        val vlcSeekable: Boolean = false,
+        val seekable: Boolean = false,
         val engineAvailable: Boolean = false,
     )
 
@@ -84,7 +93,7 @@ class DlnaTransportCoordinatorTest {
                 "currentCid" -> 123L
                 "seekTo" -> { calls += "seekTo:${arguments[0]}"; Unit }
                 "seekDanmaku" -> { calls += "seekDanmaku:${arguments[0]}"; Unit }
-                "isVlcSeekable" -> state.vlcSeekable
+                "isSeekable" -> state.seekable
                 "setVolume" -> { calls += "volume:${arguments[0]}"; Unit }
                 "positionMs" -> 5000L
                 "durationMs" -> 9000L

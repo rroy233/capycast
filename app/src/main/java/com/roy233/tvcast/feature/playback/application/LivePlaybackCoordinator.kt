@@ -37,6 +37,7 @@ interface LivePlaybackHost {
     fun setCurrent(request: PlaybackRequest)
     fun isCastActive(): Boolean
     fun isPlaying(): Boolean
+    fun showPlayback(request: PlaybackRequest, seekToMs: Long)
     fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean
     val coroutineScope: CoroutineScope
     fun stateSnapshot(): String
@@ -168,7 +169,9 @@ class LivePlaybackCoordinator(
                 "room=${stream.roomId} quality=${stream.quality} host=${first.candidate.cdnLabel}",
             )
         }
-        val started = playback.openPlayback(livePlayInfo(session, first.candidate, title), 0L)
+        val request = livePlayInfo(session, first.candidate, title)
+        playback.showPlayback(request, 0L)
+        val started = playback.openPlayback(request, 0L)
         if (started) startBackupRefresh(session)
         else playback.coroutineScope.launch { handleLiveRouteOpenFailure("initial-open-failed") }
     }

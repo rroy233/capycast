@@ -25,6 +25,9 @@ class VlcPlaybackEngineAdapter(
     override fun isPlaying(): Boolean =
         runCatching { engine.player.isPlaying }.getOrDefault(false)
 
+    override fun isSeekable(): Boolean =
+        runCatching { engine.player.isSeekable }.getOrDefault(false)
+
     override fun volume(fallback: Int): Int =
         runCatching { engine.player.volume }.getOrDefault(fallback)
 

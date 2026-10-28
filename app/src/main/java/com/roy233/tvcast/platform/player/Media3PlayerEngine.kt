@@ -249,6 +249,7 @@ class Media3PlayerEngine(
     fun positionMs(): Long = player.currentPosition.coerceAtLeast(0L)
     fun durationMs(): Long = player.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
     fun isPlaying(): Boolean = player.isPlaying
+    fun isSeekable(): Boolean = player.isCurrentMediaItemSeekable
     fun volume(): Int = (player.volume * 100).toInt().coerceIn(0, 100)
 
     private fun progressiveSource(track: MediaTrack): MediaSource {

@@ -13,7 +13,7 @@ interface DlnaTransportHost {
     fun currentCid(): Long?
     fun seekTo(positionMs: Long, reason: String)
     fun seekDanmaku(positionMs: Long)
-    fun isVlcSeekable(): Boolean
+    fun isSeekable(): Boolean
     fun setVolume(volume: Int, reason: String)
     fun positionMs(): Long
     fun durationMs(): Long
@@ -76,7 +76,7 @@ class DlnaTransportCoordinator(private val host: DlnaTransportHost) : DlnaCastCo
         }
     }
 
-    override fun isSeekable(): Boolean = !host.currentIsLive() && host.isVlcSeekable()
+    override fun isSeekable(): Boolean = !host.currentIsLive() && host.isSeekable()
 
     override fun setVolume(volume: Int) {
         val value = volume.coerceIn(0, 100)

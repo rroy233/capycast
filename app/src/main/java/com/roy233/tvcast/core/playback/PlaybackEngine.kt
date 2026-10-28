@@ -38,6 +38,9 @@ interface PlaybackEngine {
     /** 当前是否正在播放。 */
     fun isPlaying(): Boolean
 
+    /** 当前媒体是否支持定位。 */
+    fun isSeekable(): Boolean
+
     /** 当前音量；后端无法读取时返回调用方提供的回退值。 */
     fun volume(fallback: Int): Int
 

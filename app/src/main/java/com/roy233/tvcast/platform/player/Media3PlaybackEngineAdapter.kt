@@ -30,6 +30,8 @@ class Media3PlaybackEngineAdapter(
 
     override fun isPlaying(): Boolean = engine()?.isPlaying() ?: false
 
+    override fun isSeekable(): Boolean = engine()?.isSeekable() ?: false
+
     override fun volume(fallback: Int): Int = engine()?.volume() ?: fallback
 
     override fun seekTo(positionMs: Long, reason: String): Long =
