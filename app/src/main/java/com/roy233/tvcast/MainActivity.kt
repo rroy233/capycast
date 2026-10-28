@@ -1,7 +1,7 @@
 package com.roy233.tvcast
 
 import android.content.Context
-import com.roy233.tvcast.data.auth.CastAuth
+import com.roy233.tvcast.feature.account.model.Token
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -539,7 +539,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 读取当前电视端登录令牌。 */
     override fun accessKey(): String? = authTokenStore.load()?.accessKey
 
-    override fun authToken(): CastAuth.Token? = authTokenStore.load()
+    override fun authToken(): Token? = authTokenStore.load()
 
     /** 可供解析器使用的应用上下文。 */
     override fun appContext(): Context = applicationContext

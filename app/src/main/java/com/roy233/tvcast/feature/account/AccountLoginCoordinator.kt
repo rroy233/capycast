@@ -2,9 +2,11 @@ package com.roy233.tvcast.feature.account
 
 import android.content.Context
 import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.data.auth.AuthTokenStore
-import com.roy233.tvcast.data.auth.CastAuth
+import com.roy233.tvcast.feature.account.model.AccountAuthService
 import com.roy233.tvcast.feature.account.model.AccountNavigator
+import com.roy233.tvcast.feature.account.model.AccountSessionStore
+import com.roy233.tvcast.feature.account.model.Poll
+import com.roy233.tvcast.feature.account.model.Token
 import com.roy233.tvcast.platform.qr.QrCodeGenerator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,12 +27,14 @@ class AccountLoginCoordinator(
     /** 写入账号功能独占的状态切片。 */
     private val writeState: (AccountUiState) -> Unit,
     /** 登录令牌存储。 */
-    private val authTokenStore: AuthTokenStore,
+    private val sessionStore: AccountSessionStore,
+    /** 二维码登录服务。 */
+    private val authService: AccountAuthService,
     private val accountNavigator: AccountNavigator,
     /** 二维码生成器。 */
     private val qrCodeGenerator: QrCodeGenerator,
     /** 登录令牌可用时的回调。 */
-    private val onTokenAvailable: (CastAuth.Token) -> Unit,
+    private val onTokenAvailable: (Token) -> Unit,
     /** 退出登录时的回调。 */
     private val onLogout: () -> Unit,
     /** 退出登录后的导航和续播状态更新。 */
@@ -44,7 +48,7 @@ class AccountLoginCoordinator(
 
     /** 读取已有令牌或启动新的二维码登录流程。 */
     fun startOrLogin() {
-        val token = authTokenStore.load()
+        val token = sessionStore.load()
         LogHub.i(TAG, "startOrLogin token=${token != null}")
         if (token != null) {
             onTokenAvailable(token)
@@ -87,7 +91,7 @@ class AccountLoginCoordinator(
         loginJob = scope.launch {
             while (isActive) {
                 val qr = withContext(Dispatchers.IO) {
-                    runCatching { CastAuth.requestQr(context) }
+                    runCatching { authService.requestQr(context) }
                 }
                 if (qr.isFailure) {
                     LogHub.e(TAG, "qr request failed: ${qr.exceptionOrNull()?.message}")
@@ -118,12 +122,12 @@ class AccountLoginCoordinator(
                     delay(2000)
                     age += 2
                     val poll = withContext(Dispatchers.IO) {
-                        runCatching { CastAuth.poll(context, code.authCode, code.sessionId) }
+                        runCatching { authService.poll(context, code.authCode, code.sessionId) }
                     }.getOrNull()
 
                     when (poll) {
-                        is CastAuth.Poll.Success -> {
-                            authTokenStore.save(poll.token)
+                        is Poll.Success -> {
+                            sessionStore.save(poll.token)
                             onTokenAvailable(poll.token)
                             LogHub.setLogin(poll.token.mid)
                             LogHub.setQrPending(false)
@@ -143,7 +147,7 @@ class AccountLoginCoordinator(
                             return@launch
                         }
 
-                        is CastAuth.Poll.Pending -> {
+                        is Poll.Pending -> {
                             if (poll.code != lastPending) {
                                 lastPending = poll.code
                                 LogHub.i(TAG, "qr poll ${poll.code} ${poll.message}")
@@ -194,7 +198,7 @@ class AccountLoginCoordinator(
     fun logout() {
         loginJob?.cancel()
         loginJob = null
-        authTokenStore.clear()
+        sessionStore.clear()
         onLogout()
         LogHub.setLogin(0L)
         LogHub.setQrPending(false)

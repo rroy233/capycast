@@ -73,7 +73,7 @@ class CapyCastContainer(
     val playbackHistoryCoordinator: PlaybackHistoryCoordinator by lazy {
         PlaybackHistoryCoordinator(
             scope = scope,
-            authTokenStore = authTokenStore,
+            sessionStore = authTokenStore,
             outbox = PlaybackHistoryOutbox(context),
             isEnabled = { uiPreferences.syncPlaybackHistory },
             buildNumber = CastAuth.tvBuildNumber,
@@ -87,7 +87,8 @@ class CapyCastContainer(
             scope = scope,
             readState = readAccountState,
             writeState = writeAccountState,
-            authTokenStore = authTokenStore,
+            sessionStore = authTokenStore,
+            authService = CastAuth,
             accountNavigator = BiliAccountNavigator(authTokenStore),
             qrCodeGenerator = QrCodeGenerator(),
             onTokenAvailable = {

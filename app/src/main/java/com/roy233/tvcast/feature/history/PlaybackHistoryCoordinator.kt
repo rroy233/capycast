@@ -3,7 +3,8 @@ package com.roy233.tvcast.feature.history
 import android.os.SystemClock
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
-import com.roy233.tvcast.data.auth.AuthTokenStore
+import com.roy233.tvcast.feature.account.model.AccountSessionStore
+import com.roy233.tvcast.feature.account.model.Token
 import com.roy233.tvcast.data.bili.LiveHeartbeatRequest
 import com.roy233.tvcast.data.bili.LiveHeartbeatResponse
 import com.roy233.tvcast.data.bili.PlaybackHistoryApi
@@ -24,7 +25,7 @@ import kotlin.math.max
 /** 负责将电视投屏的点播与直播进度同步到当前 B 站账号。 */
 class PlaybackHistoryCoordinator(
     private val scope: CoroutineScope,
-    private val authTokenStore: AuthTokenStore,
+    private val sessionStore: AccountSessionStore,
     private val outbox: PlaybackHistoryOutbox,
     private val api: PlaybackHistoryApi = PlaybackHistoryApi(),
     private val isEnabled: () -> Boolean,
@@ -42,7 +43,7 @@ class PlaybackHistoryCoordinator(
     private var retryJob: Job? = scope.launch {
         while (isActive) {
             delay(RETRY_INTERVAL_MS)
-            authTokenStore.load()?.let { retryPendingForAccount(it.mid) }
+            sessionStore.load()?.let { retryPendingForAccount(it.mid) }
         }
     }
 
@@ -139,7 +140,7 @@ class PlaybackHistoryCoordinator(
             return
         }
         LogHub.i(TAG, "playback history sync enabled account=$accountMid")
-        authTokenStore.load()?.let { retryPendingForAccount(it.mid) }
+        sessionStore.load()?.let { retryPendingForAccount(it.mid) }
         if (isPlaying) currentContent?.let(::ensureSession)
     }
 
@@ -161,7 +162,7 @@ class PlaybackHistoryCoordinator(
     /** 登录或启动时只重试与当前账号匹配的快照。 */
     fun retryPendingForAccount(mid: Long) {
         if (!isEnabled() || mid <= 0L || authBlockedMid == mid || flushJob?.isActive == true) return
-        val token = authTokenStore.load() ?: return
+        val token = sessionStore.load() ?: return
         if (token.mid != mid) {
             LogHub.w(TAG, "history retry skipped: token account changed requested=$mid current=${token.mid}")
             return
@@ -169,7 +170,7 @@ class PlaybackHistoryCoordinator(
         flushJob = scope.launch {
             while (isActive && isEnabled()) {
                 val report = outbox.pendingForAccount(mid).firstOrNull() ?: break
-                val currentToken = authTokenStore.load()
+                val currentToken = sessionStore.load()
                 if (currentToken == null || currentToken.mid != report.accountMid) {
                     LogHub.w(TAG, "history retry stopped: no matching account for snapshot=${report.sessionId}")
                     break
@@ -250,7 +251,7 @@ class PlaybackHistoryCoordinator(
 
     private fun ensureSession(content: PlaybackHistoryContent) {
         if (!isEnabled()) return
-        val token = authTokenStore.load() ?: run {
+        val token = sessionStore.load() ?: run {
             LogHub.w(TAG, "history session skipped: TV login required stableKey=${content.stableKey}")
             return
         }
@@ -294,7 +295,7 @@ class PlaybackHistoryCoordinator(
         val session = activeSession ?: return
         if (!isEnabled()) return
         if (session.content.isLive) return
-        val token = authTokenStore.load()
+        val token = sessionStore.load()
         if (token == null || token.mid != session.accountMid) {
             LogHub.w(TAG, "history snapshot queued without matching token reason=$reason account=${session.accountMid}")
         }
@@ -387,7 +388,7 @@ class PlaybackHistoryCoordinator(
         heartbeatJob = scope.launch {
             while (isActive && isPlaying && activeSession?.id == session.id && isEnabled()) {
                 val content = currentContent ?: session.content
-                val token = authTokenStore.load()
+                val token = sessionStore.load()
                 if (token == null || token.mid != session.accountMid) {
                     LogHub.w(TAG, "live heartbeat stopped: no matching login account=${session.accountMid}")
                     break
@@ -456,7 +457,7 @@ class PlaybackHistoryCoordinator(
         ?.substringAfter('=')
         .orEmpty()
 
-    private fun com.roy233.tvcast.data.auth.CastAuth.Token.toWebHistoryAuth(): WebHistoryAuth? {
+    private fun Token.toWebHistoryAuth(): WebHistoryAuth? {
         val sessData = cookie.extractCookie("SESSDATA")
         val csrf = cookie.extractCookie("bili_jct")
         if (sessData.isBlank() || csrf.isBlank() || mid <= 0L) return null

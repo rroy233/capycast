@@ -1,19 +1,21 @@
 package com.roy233.tvcast.data.auth
 
 import android.content.Context
+import com.roy233.tvcast.feature.account.model.AccountSessionStore
+import com.roy233.tvcast.feature.account.model.Token
 
 /**
  * 持久化电视端登录令牌。
  *
  * @param context 用于访问应用偏好的上下文。
  */
-class AuthTokenStore(context: Context) : BiliSessionReader {
+class AuthTokenStore(context: Context) : BiliSessionReader, AccountSessionStore {
 
     /** 保存登录令牌的偏好存储。 */
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /** 保存登录令牌及其关联的账号信息。 */
-    fun save(token: CastAuth.Token) {
+    override fun save(token: Token) {
         prefs.edit()
             .putString("access_key", token.accessKey)
             .putLong("mid", token.mid)
@@ -29,11 +31,11 @@ class AuthTokenStore(context: Context) : BiliSessionReader {
      *
      * @return 完整且有效的令牌；没有可用令牌时返回 null。
      */
-    fun load(): CastAuth.Token? {
+    override fun load(): Token? {
         val access = prefs.getString("access_key", null) ?: return null
         val mid = prefs.getLong("mid", 0L)
         if (access.isEmpty() || mid <= 0) return null
-        return CastAuth.Token(
+        return Token(
             accessKey = access,
             mid = mid,
             cookie = prefs.getString("cookie", "").orEmpty(),
@@ -45,7 +47,7 @@ class AuthTokenStore(context: Context) : BiliSessionReader {
     override fun cookie(): String = load()?.cookie.orEmpty()
 
     /** 清除已保存的登录令牌。 */
-    fun clear() {
+    override fun clear() {
         prefs.edit().clear().apply()
     }
 
