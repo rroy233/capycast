@@ -15,7 +15,7 @@ import com.roy233.tvcast.feature.playback.model.VodSession
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
 import com.roy233.tvcast.feature.playback.presentation.TrackOptionMapper
 import com.roy233.tvcast.ui.model.PlaybackSpeed
-import com.roy233.tvcast.ui.model.RecentCast
+import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.PlaybackUiState

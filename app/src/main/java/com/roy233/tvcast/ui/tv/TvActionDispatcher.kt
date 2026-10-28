@@ -4,7 +4,7 @@ import com.roy233.tvcast.core.danmaku.AiShieldLevel
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.update.UpdateChannel
 import com.roy233.tvcast.ui.model.PanelKind
-import com.roy233.tvcast.ui.model.RecentCast
+import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination

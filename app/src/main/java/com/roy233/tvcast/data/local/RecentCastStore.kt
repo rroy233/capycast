@@ -4,7 +4,7 @@ import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.local.RecentCast
+import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.core.playback.PlaybackRequest
 
 /**

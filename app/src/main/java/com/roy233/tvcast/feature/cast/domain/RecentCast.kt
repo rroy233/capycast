@@ -1,6 +1,10 @@
-package com.roy233.tvcast.data.local
+package com.roy233.tvcast.feature.cast.domain
 
-/** 保存最近一次投屏内容的摘要信息。 */
+/**
+ * 用户可重新发起投屏的内容摘要。
+ *
+ * 此模型属于投屏领域；本地存储仅负责将其序列化和恢复，界面仅负责展示它。
+ */
 data class RecentCast(
     val aid: Long,
     val cid: Long,

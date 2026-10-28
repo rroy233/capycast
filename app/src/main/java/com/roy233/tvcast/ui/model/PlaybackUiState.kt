@@ -1,6 +1,7 @@
 package com.roy233.tvcast.ui.model
 
 import com.roy233.tvcast.core.danmaku.AiShieldLevel
+import com.roy233.tvcast.feature.cast.domain.RecentCast
 
 /** 播放与投屏功能可读写的 UI 状态投影，不包含账号、更新或设备设置状态。 */
 data class PlaybackUiState(

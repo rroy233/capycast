@@ -18,7 +18,8 @@ class LayerDependencyTest {
                     .filter { it.startsWith("import ") && it.contains("com.roy233.tvcast.feature") }
                     .filterNot { line ->
                         line.contains("com.roy233.tvcast.feature.playback.model") ||
-                            line.contains("com.roy233.tvcast.feature.playback.routing")
+                            line.contains("com.roy233.tvcast.feature.playback.routing") ||
+                            line.contains("com.roy233.tvcast.feature.cast.domain")
                     }
                     .map { "${file.relativeTo(root).path}: $it" }
             }

@@ -11,7 +11,7 @@ import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.PlaybackSpeed
 import com.roy233.tvcast.core.danmaku.AiShieldLevel
 import kotlin.math.roundToInt
-import com.roy233.tvcast.ui.model.RecentCast
+import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.TrackOption
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
