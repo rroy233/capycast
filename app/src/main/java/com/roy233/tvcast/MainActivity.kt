@@ -148,8 +148,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 播放进度轮询任务。 */
     private var tickerJob: Job? = null
 
-    /** 当前播放信息。 */
-    private var current: BiliApi.PlayInfo? = null
     /** 当前播放器使用的稳定播放请求。 */
     private var currentRequest: PlaybackRequest? = null
     /** 当前是否存在活动投屏。 */
@@ -272,7 +270,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             readState = { ui.playbackUiState() },
             writeState = { state -> ui = ui.withPlaybackUiState(state) },
             isEngineInitialized = { ::playbackEngineHost.isInitialized },
-            isLive = { current?.isLive == true },
+            isLive = { currentRequest?.isLive == true },
             positionMs = { playerPositionMs() },
             durationMs = { playerDurationMs() },
             isPlaying = { playerIsPlaying() },
@@ -409,31 +407,10 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         ui = ui.withPlaybackUiState(state)
     }
 
-    /** 记录当前播放信息。 */
-    fun setCurrent(info: BiliApi.PlayInfo) {
-        current = info
-        currentRequest = BiliPlaybackMapper.map(info)
-    }
-
-    /** 返回当前直播会话使用的服务端播放信息。 */
-    fun currentInfo(): BiliApi.PlayInfo? = current
-
     override fun currentRequest(): PlaybackRequest? = currentRequest
 
     override fun setCurrent(request: PlaybackRequest) {
         currentRequest = request
-        current = current?.let { info ->
-            val video = info.video.takeIf { it.id == request.video.id }?.copy(
-                url = request.video.url,
-                backup = request.video.backupUrls,
-                pcdn = request.video.isPcdn,
-            ) ?: info.video
-            val audio = info.audio?.takeIf { it.id == request.audio?.id }?.let { track ->
-                val source = request.audio ?: return@let track
-                track.copy(url = source.url, backup = source.backupUrls, pcdn = source.isPcdn)
-            }
-            info.copy(video = video, audio = audio)
-        }
     }
 
     /** 当前是否存在活动投屏。 */
@@ -441,9 +418,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 当前播放位置，单位为毫秒。 */
     override fun positionMs(): Long = playerPositionMs()
-
-    /** 使用指定播放信息打开播放器。 */
-    fun openPlayback(info: BiliApi.PlayInfo, seekToMs: Long): Boolean = play(info, seekToMs)
 
     override fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean {
         currentRequest = request
@@ -517,13 +491,13 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun snapshot(): PlaybackSnapshot = playbackEngineHost.snapshot(ui.volume)
 
     /** 当前内容是否为直播。 */
-    override fun isLive(): Boolean = current?.isLive == true
+    override fun isLive(): Boolean = currentRequest?.isLive == true
 
     /** 当前是否存在播放信息。 */
-    override fun currentAvailable(): Boolean = current != null
+    override fun currentAvailable(): Boolean = currentRequest != null
 
     /** 当前直播线路之外的备用源数量。 */
-    override fun liveBackupCount(): Int = current?.liveBackupCount ?: 0
+    override fun liveBackupCount(): Int = currentRequest?.liveBackupCount ?: 0
 
     /** 返回 VLC 提供的直播进度与读取统计。 */
     override fun liveTelemetry(): LivePlaybackTelemetry? =
@@ -781,7 +755,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 LogHub.w(TAG, "dlna stop ignored: player engine unavailable")
             }
             castActive = false
-            current = null
+            currentRequest = null
             LogHub.setCast("")
             LogHub.setPlay("")
             runOnUiThread {
@@ -813,8 +787,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
         /** 处理远端跳转命令。 */
         override fun onSeek(positionMs: Long) {
-            if (current?.isLive == true) {
-                LogHub.w(TAG, "dlna seek rejected for live room=${current?.cid}")
+            if (currentRequest?.isLive == true) {
+                LogHub.w(TAG, "dlna seek rejected for live room=${currentRequest?.cid}")
                 return
             }
             if (::playbackEngineHost.isInitialized) {
@@ -834,7 +808,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         }
 
         /** 直播没有定位能力，其他媒体按 libVLC 能力报告定位状态。 */
-        override fun isSeekable(): Boolean = current?.isLive != true &&
+        override fun isSeekable(): Boolean = currentRequest?.isLive != true &&
             playbackEngineHost.isVlcSeekable()
 
         /** 处理远端音量设置命令。 */
@@ -850,11 +824,11 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
         /** 返回播放器当前播放位置。 */
         override fun positionMs(): Long =
-            if (current?.isLive == true) 0L else playerPositionMs()
+            if (currentRequest?.isLive == true) 0L else playerPositionMs()
 
         /** 返回播放器当前媒体时长。 */
         override fun durationMs(): Long =
-            if (current?.isLive == true) 0L else playerDurationMs()
+            if (currentRequest?.isLive == true) 0L else playerDurationMs()
 
         /** 返回播放器当前是否正在播放。 */
         override fun isPlaying(): Boolean =
@@ -1016,7 +990,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             positionMs = if (seek > 0L) seek else playerPositionMs(),
             durationMs = playerDurationMs().takeIf { it > 0L } ?: ui.durationMs,
         )
-        current?.let { info ->
+        currentRequest?.let { info ->
             playbackHistoryCoordinator.onPlaying(
                 content = playbackHistoryContent(info),
                 positionMs = playerPositionMs(),
@@ -1051,7 +1025,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         playbackHistoryCoordinator.finish("media3-ended", ended = true)
         clearLiveSession("media3-ended")
         castActive = false
-        current = null
+        currentRequest = null
         if (::danmakuController.isInitialized) danmakuController.close()
         ui = ui.copy(
             mode = TvMode.IDLE,
@@ -1085,8 +1059,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             error.code.contains("CODEC", ignoreCase = true)
         if (handleVodPlaybackFailure("media3-player-error", preferCodecFallback = decoderFailure)) return
         playbackHistoryCoordinator.finish("media3-error")
-        val info = current
-        lastErrorRetry = info?.let { currentInfo -> { play(currentInfo, playerPositionMs()) } }
+        val info = currentRequest
+        lastErrorRetry = info?.let { currentInfo -> { castCoordinator.openPlayback(currentInfo, playerPositionMs()) } }
         val licenseFailure = error.code.contains("DRM", ignoreCase = true) ||
             error.code.contains("LICENSE", ignoreCase = true)
         val code = when {
@@ -1134,7 +1108,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                         ui = ui.copy(durationMs = duration)
                     }
                     refreshVideoSize()
-                    if (current?.isLive == true) {
+                    if (currentRequest?.isLive == true) {
                         if (::liveDanmakuController.isInitialized) liveDanmakuController.onPlaying()
                         liveCoordinator.health.onPlaying()
                         liveCoordinator.stallWatchdog.reset()
@@ -1148,7 +1122,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                         danmakuController.onPlaying(position)
                         if (seek > 0) danmakuController.onSeek(seek)
                     }
-                    current?.let { info ->
+                    currentRequest?.let { info ->
                         playbackHistoryCoordinator.onPlaying(
                             content = playbackHistoryContent(info),
                             positionMs = playerPositionMs(),
@@ -1163,7 +1137,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 runOnUiThread {
                     ui = ui.copy(isPlaying = false)
                     playbackHistoryCoordinator.onPaused(playerPositionMs(), playerDurationMs())
-                    if (current?.isLive == true) {
+                    if (currentRequest?.isLive == true) {
                         if (::liveDanmakuController.isInitialized) liveDanmakuController.onPaused()
                     } else if (::danmakuController.isInitialized) {
                         danmakuController.onPaused(
@@ -1187,7 +1161,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 playbackHistoryCoordinator.finish("vlc-ended", ended = true)
                 clearLiveSession("vlc-end-reached")
                 castActive = false
-                current = null
+                currentRequest = null
                 runOnUiThread {
                     if (::danmakuController.isInitialized) danmakuController.close()
                     if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
@@ -1222,7 +1196,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                     .getOrDefault("(snapshot unavailable)")
                 LogHub.e(TAG, "ui playback failed code=PLAYBACK_FAILED snapshot=$snapshot")
                 playbackHistoryCoordinator.finish("vlc-error")
-                val info = current
+                val info = currentRequest
                 if (info?.isLive == true) {
                     handleLivePlaybackFailure("player-error")
                     return
@@ -1230,7 +1204,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 if (info != null && handleVodPlaybackFailure("player-error")) return
                 if (info != null) {
                     lastErrorRetry = {
-                        play(info, playerPositionMs())
+                        castCoordinator.openPlayback(info, playerPositionMs())
                     }
                 }
                 showError(
@@ -1248,13 +1222,13 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 val buffering = event.isBuffering
                 runOnUiThread {
                     ui = ui.copy(isBuffering = buffering)
-                    if (current?.isLive == true &&
+                    if (currentRequest?.isLive == true &&
                         liveCoordinator.health.onBuffering(buffering)
                     ) {
                         handleLivePlaybackFailure("two-consecutive-rebuffers")
                     }
-                    if (current?.isLive != true) observeVodBuffering(buffering)
-                    if (current?.isLive != true && ::danmakuController.isInitialized) {
+                    if (currentRequest?.isLive != true) observeVodBuffering(buffering)
+                    if (currentRequest?.isLive != true && ::danmakuController.isInitialized) {
                         danmakuController.onBuffering(
                             buffering,
                             playerPositionMs(),
@@ -1425,29 +1399,22 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     private fun liveProbeOrder(): Comparator<RankedLiveSource> = LiveQualityMapper.probeOrder()
 
-    /** 使用指定播放信息打开播放器并更新界面状态。 */
-    /** 使用指定播放信息打开播放器并更新界面状态。 */
-    private fun play(info: BiliApi.PlayInfo, seekToMs: Long): Boolean {
-        setCurrent(info)
-        return castCoordinator.openPlayback(BiliPlaybackMapper.map(info), seekToMs)
-    }
-
     /** 切换当前视频清晰度并从当前位置继续播放。 */
     private fun switchQuality(qn: Int) {
-        if (current?.isLive == true) {
+        if (currentRequest?.isLive == true) {
             switchLiveQuality(qn)
             return
         }
-        val info = current
-        if (info == null) {
+        val request = currentRequest
+        if (request == null) {
             LogHub.w(TAG, "switchQuality qn=$qn ignored: no current media")
             return
         }
-        val track = info.videos.firstOrNull { it.id == qn }
+        val track = request.videos.firstOrNull { it.id == qn }
         if (track == null) {
             LogHub.w(
                 TAG,
-                "switchQuality qn=$qn not found; available=${info.videos.joinToString(",") { it.id.toString() }}",
+                "switchQuality qn=$qn not found; available=${request.videos.joinToString(",") { it.id.toString() }}",
             )
             return
         }
@@ -1455,41 +1422,40 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         val position = playerPositionMs()
         LogHub.i(
             TAG,
-            "switchQuality qn=$qn codec=${track.codecid} ${track.width}x${track.height} " +
+            "switchQuality qn=$qn codec=${track.codecId} ${track.width}x${track.height} " +
                 "host=${LogRedaction.host(track.url)} at=${position}ms",
         )
         PlaybackDiagnostics.event(
             "QualitySwitch",
-            "qn=$qn codec=${track.codecid} size=${track.width}x${track.height} " +
+            "qn=$qn codec=${track.codecId} size=${track.width}x${track.height} " +
                 "host=${LogRedaction.host(track.url)} at=${position}ms",
         )
         vodCoordinator.switching = true
         scope.launch {
             try {
-                val mediaTrack = BiliPlaybackMapper.mapTrack(track)
-                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(mediaTrack) }
-                if (current?.video?.id != info.video.id || !castActive) return@launch
+                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(track) }
+                if (currentRequest?.video?.id != request.video.id || !castActive) return@launch
                 val route = routes.firstOrNull() ?: RankedVodRoute(track.url)
                 val orderedRoutes = routes.ifEmpty { listOf(route) }
-                val nextInfo = info.copy(video = track.copy(
+                val nextRequest = request.copy(video = track.copy(
                     url = route.url,
-                    backup = orderedRoutes.filterNot { it.url == route.url }.map { it.url },
-                    pcdn = CdnRouteRules.isPcdn(route.url),
+                    backupUrls = orderedRoutes.filterNot { it.url == route.url }.map { it.url },
+                    isPcdn = CdnRouteRules.isPcdn(route.url),
                 ))
                 val oldSession = vodCoordinator.activeSession
                 vodCoordinator.activeSession = VodSession(
-                    request = BiliPlaybackMapper.map(nextInfo),
+                    request = nextRequest,
                     videoRoutes = orderedRoutes,
                     audioRoutes = oldSession?.audioRoutes.orEmpty(),
                     lastPositionMs = position,
                     lastProgressAtMs = SystemClock.elapsedRealtime(),
                 )
                 startVodBackupRefresh()
-                if (play(nextInfo, position)) {
+                if (castCoordinator.openPlayback(nextRequest, position)) {
                     ui = ui.copy(
                         panel = PanelKind.QUALITY,
                         qualitySource = "手动",
-                        toast = "已切换 ${nextInfo.qualityLabel}",
+                        toast = "已切换 ${nextRequest.qualityLabel}",
                     )
                 }
             } catch (error: Throwable) {
@@ -1572,20 +1538,20 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 切换当前音轨并从当前位置继续播放。 */
     private fun switchAudio(id: Int) {
-        if (current?.isLive == true) {
+        if (currentRequest?.isLive == true) {
             LogHub.w(TAG, "manual audio switch ignored for live id=$id")
             return
         }
-        val info = current
-        if (info == null) {
+        val request = currentRequest
+        if (request == null) {
             LogHub.w(TAG, "switchAudio id=$id ignored: no current media")
             return
         }
-        val track = info.audios.firstOrNull { it.id == id }
+        val track = request.audios.firstOrNull { it.id == id }
         if (track == null) {
             LogHub.w(
                 TAG,
-                "switchAudio id=$id not found; available=${info.audios.joinToString(",") { it.id.toString() }}",
+                "switchAudio id=$id not found; available=${request.audios.joinToString(",") { it.id.toString() }}",
             )
             return
         }
@@ -1602,25 +1568,24 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         vodCoordinator.switching = true
         scope.launch {
             try {
-                val mediaTrack = BiliPlaybackMapper.mapTrack(track)
-                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(mediaTrack) }
-                if (current?.video?.id != info.video.id || !castActive) return@launch
+                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(track) }
+                if (currentRequest?.video?.id != request.video.id || !castActive) return@launch
                 val route = routes.firstOrNull() ?: RankedVodRoute(track.url)
                 val orderedRoutes = routes.ifEmpty { listOf(route) }
-                val nextInfo = info.copy(audio = track.copy(
+                val nextRequest = request.copy(audio = track.copy(
                     url = route.url,
-                    backup = orderedRoutes.filterNot { it.url == route.url }.map { it.url },
-                    pcdn = CdnRouteRules.isPcdn(route.url),
+                    backupUrls = orderedRoutes.filterNot { it.url == route.url }.map { it.url },
+                    isPcdn = CdnRouteRules.isPcdn(route.url),
                 ))
                 vodCoordinator.activeSession?.let { session ->
-                    session.request = BiliPlaybackMapper.map(nextInfo)
+                    session.request = nextRequest
                     session.audioRoutes = orderedRoutes
                     session.attemptedAudioUrls.clear()
                 }
-                if (play(nextInfo, position)) {
+                if (castCoordinator.openPlayback(nextRequest, position)) {
                     ui = ui.copy(
                         panel = PanelKind.AUDIO,
-                        toast = "已切换 ${BiliApi.audioLabelFor(id)}",
+                        toast = "已切换 ${nextRequest.audioLabel}",
                     )
                 }
             } catch (error: Throwable) {
@@ -1718,7 +1683,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         if (playbackEngineHost.backend == PlaybackBackend.MEDIA3) return
         if (!::playbackEngineHost.isInitialized) return
         val size = playbackEngineHost.videoSize() ?: return
-        val liveCodec = current?.takeIf { it.isLive }?.video?.codecs
+        val liveCodec = currentRequest?.takeIf { it.isLive }?.video?.codecs
         val detail = if (liveCodec.isNullOrBlank()) {
             ui.qualityDetail
         } else {
@@ -1735,7 +1700,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         PlaybackDiagnostics.attribute("stream.size", "${size.first}x${size.second}")
         if (liveCodec != null) {
             PlaybackDiagnostics.attribute("live.videoSize", "${size.first}x${size.second}")
-            current?.let { LogHub.setPlay(describe(it)) }
+            currentRequest?.let { LogHub.setPlay(describe(it)) }
         }
         layoutDanmaku()
     }
@@ -1751,11 +1716,11 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         LogHub.i(
             TAG,
             "retry requested hasAction=${action != null} hasNva=${lastNva != null} " +
-                "current=${current != null}",
+                "current=${currentRequest != null}",
         )
         if (action != null) {
             ui = ui.copy(
-                mode = if (current != null) TvMode.PLAYING else TvMode.LOADING,
+                mode = if (currentRequest != null) TvMode.PLAYING else TvMode.LOADING,
                 error = null,
                 hudVisible = true,
             )
@@ -1772,7 +1737,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 关闭错误状态并恢复空闲界面。 */
     private fun dismissError() {
-        LogHub.i(TAG, "dismiss error; current=${current != null} castActive=$castActive")
+        LogHub.i(TAG, "dismiss error; current=${currentRequest != null} castActive=$castActive")
         playbackHistoryCoordinator.finish("dismiss-error")
         clearLiveSession("dismiss-error")
         if (::playbackEngineHost.isInitialized) {
@@ -1780,7 +1745,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         } else {
             LogHub.w(TAG, "dismiss error without player engine")
         }
-        current = null
+        currentRequest = null
         castActive = false
         resolving = false
         lastErrorRetry = null
@@ -1811,7 +1776,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private fun stopCasting() {
         LogHub.i(
             TAG,
-            "stopCasting requested mode=${ui.mode} current=${current != null} " +
+            "stopCasting requested mode=${ui.mode} current=${currentRequest != null} " +
                 "castActive=$castActive",
         )
         resolveJob?.cancel()
@@ -1825,7 +1790,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         } else {
             LogHub.w(TAG, "stopCasting without player engine")
         }
-        current = null
+        currentRequest = null
         castActive = false
         resolving = false
         lastNva = null
@@ -1895,7 +1860,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             } else {
                 LogHub.w(TAG, "showError cannot stop playback: player engine unavailable")
             }
-            current = null
+            currentRequest = null
             castActive = false
         }
         runOnUiThread {
@@ -1938,7 +1903,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private fun playerVolume(): Int = playbackEngineHost.snapshot(ui.volume).volume
 
     private fun seekPlayer(positionMs: Long, reason: String): Long {
-        if (current?.isLive != true) {
+        if (currentRequest?.isLive != true) {
             vodCoordinator.onSeek(positionMs)
         }
         return playbackEngineHost.seekTo(positionMs, reason)
@@ -2019,7 +1984,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 将当前媒体与投屏 NVA 身份映射到 B 站 TV 历史业务类型。 */
-    private fun playbackHistoryContent(info: BiliApi.PlayInfo): PlaybackHistoryContent {
+    private fun playbackHistoryContent(info: PlaybackRequest): PlaybackHistoryContent {
         val nva = lastNva?.takeIf { candidate ->
             if (info.isLive) {
                 candidate.roomId > 0L && (info.cid <= 0L || candidate.roomId == info.cid)
@@ -2072,17 +2037,17 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 将播放信息整理为诊断日志摘要。 */
-    private fun describe(info: BiliApi.PlayInfo?): String {
+    private fun describe(info: PlaybackRequest?): String {
         if (info == null) return ""
         val v = info.video
         val width = if (info.isLive && ui.videoWidth > 0) ui.videoWidth else v.width
         val height = if (info.isLive && ui.videoHeight > 0) ui.videoHeight else v.height
-        val codec = v.codecs.ifBlank { VlcTrackFormat.codecName(v.codecid) }
+        val codec = v.codecs.ifBlank { VlcTrackFormat.codecName(v.codecId) }
         val audio = if (info.isLive) "自动音轨" else info.audioLabel
         return "${info.title}\n${info.qualityLabel}  ${width}x$height  " +
             "codec=$codec  $audio\n" +
             "aid=${info.aid} cid=${info.cid}  duration=${info.durationSec}s  " +
-            "progressive=${info.progressiveUrl != null}  backup=${v.backup.size}\n" +
+            "progressive=${info.progressiveUrl != null}  backup=${v.backupUrls.size}\n" +
             "video=${LogRedaction.host(v.url)}  audio=${LogRedaction.host(info.audio?.url)}"
     }
 
@@ -2112,7 +2077,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun onDestroy() {
         super.onDestroy()
         LogHub.i(TAG, "activity destroy")
-        if (current != null) {
+        if (currentRequest != null) {
             playbackHistoryCoordinator.onPosition(
                 positionMs = playerPositionMs(),
                 durationMs = playerDurationMs(),
