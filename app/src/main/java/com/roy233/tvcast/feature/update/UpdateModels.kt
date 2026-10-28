@@ -1,7 +1,6 @@
 package com.roy233.tvcast.feature.update
 
-/** 发布通道由数据层定义，此处保留同名别名供更新功能使用。 */
-typealias UpdateChannel = com.roy233.tvcast.data.local.UpdateChannel
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 
 /** 表示应用更新流程当前所处的阶段。 */
 enum class UpdateStatus {

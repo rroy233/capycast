@@ -4,7 +4,7 @@ import android.os.Build
 import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.update.AppUpdateInfo
-import com.roy233.tvcast.feature.update.UpdateChannel
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.feature.update.UpdateManifest
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject

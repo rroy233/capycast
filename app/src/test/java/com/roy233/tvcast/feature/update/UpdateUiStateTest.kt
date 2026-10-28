@@ -1,5 +1,6 @@
 package com.roy233.tvcast.feature.update
 
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

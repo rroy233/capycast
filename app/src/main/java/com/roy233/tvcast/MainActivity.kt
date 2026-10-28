@@ -88,7 +88,7 @@ import com.roy233.tvcast.core.danmaku.MediaClock
 import com.roy233.tvcast.data.bili.danmaku.DanmakuApi
 import com.roy233.tvcast.data.bili.danmaku.DanmakuRepository
 import com.roy233.tvcast.feature.history.PlaybackHistoryContent
-import com.roy233.tvcast.feature.update.UpdateChannel
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.feature.account.AccountUiState
 import com.roy233.tvcast.platform.dlna.DlnaRenderer
 import com.roy233.tvcast.feature.playback.presentation.TrackOptionMapper
@@ -147,8 +147,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     /** 当前媒体解析任务。 */
     private var resolveJob: Job? = null
-    /** 播放进度轮询任务。 */
-    private var tickerJob: Job? = null
 
     /** 当前播放器使用的稳定播放请求。 */
     private var currentRequest: PlaybackRequest? = null

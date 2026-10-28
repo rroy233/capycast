@@ -2,7 +2,7 @@ package com.roy233.tvcast.ui.tv
 
 import com.roy233.tvcast.core.danmaku.AiShieldLevel
 import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.feature.update.UpdateChannel
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.SettingsPage

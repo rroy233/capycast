@@ -64,7 +64,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.roy233.tvcast.feature.update.UpdateChannel
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions

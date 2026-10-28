@@ -1,4 +1,4 @@
-package com.roy233.tvcast.data.local
+package com.roy233.tvcast.feature.update.model
 
 /**
  * 表示用户选择的发布通道。

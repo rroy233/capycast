@@ -10,6 +10,7 @@ import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.data.local.UpdatePreferences
 import com.roy233.tvcast.feature.update.data.ReleaseRepository
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.platform.installer.ApkUpdateInstaller
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

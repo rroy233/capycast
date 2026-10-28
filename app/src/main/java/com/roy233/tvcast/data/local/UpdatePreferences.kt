@@ -1,7 +1,7 @@
 package com.roy233.tvcast.data.local
 
 import android.content.Context
-import com.roy233.tvcast.data.local.UpdateChannel
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 
 /**
  * 保存应用更新通道和自动检查开关。
