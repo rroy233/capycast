@@ -32,6 +32,8 @@ import com.roy233.tvcast.ui.model.withPlaybackUiState
 import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.app.CapyCastContainer
 import com.roy233.tvcast.app.PlaybackEngineHost
+import com.roy233.tvcast.app.DlnaCastHost
+import com.roy233.tvcast.app.DlnaCastListenerAdapter
 import com.roy233.tvcast.ui.tv.TvActionDispatcher
 import com.roy233.tvcast.ui.tv.TvActionHost
 import com.roy233.tvcast.ui.tv.TvStateHolder
@@ -107,7 +109,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost, PlaybackEventConsumer {
+class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost, PlaybackEventConsumer, DlnaCastHost {
 
     /** 当前播放后端及其原生资源。 */
     private lateinit var playbackEngineHost: PlaybackEngineHost
@@ -704,133 +706,32 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
-    private val dlnaListener = object : DlnaRenderer.Listener {
-        /** 处理新的投屏媒体请求。 */
-        override fun onCast(uri: String, metadata: String, title: String, longDescription: String) {
-            LogHub.i(
-                TAG,
-                "dlna cast uri=${LogRedaction.url(uri)} title=${title.take(80)} " +
-                    "metadata=${metadata.length}B longDescription=${longDescription.length}B",
-            )
-            runOnUiThread { handleCast(uri, title, longDescription) }
-        }
+    private val dlnaListener by lazy { DlnaCastListenerAdapter(this) }
 
-        /** 处理远端播放命令。 */
-        override fun onPlay() {
-            pendingPause = false
-            if (::playbackEngineHost.isInitialized) {
-                setPlayerPaused(false, "dlna-play")
-            } else {
-                LogHub.w(TAG, "dlna play ignored: player engine unavailable")
-            }
-            runOnUiThread { ui = ui.copy(isPlaying = true, hudVisible = true) }
-        }
+    override fun onCast(uri: String, title: String, longDescription: String) =
+        handleCast(uri, title, longDescription)
 
-        /** 处理远端暂停命令。 */
-        override fun onPause() {
-            pendingPause = true
-            if (::playbackEngineHost.isInitialized) {
-                setPlayerPaused(true, "dlna-pause")
-            } else {
-                LogHub.w(TAG, "dlna pause ignored: player engine unavailable")
-            }
-            runOnUiThread { ui = ui.copy(isPlaying = false, hudVisible = true) }
-        }
-
-        /** 处理远端停止命令。 */
-        override fun onStop() {
-            pendingPause = false
-            playbackHistoryCoordinator.finish("dlna-stop")
-            clearLiveSession("dlna-stop")
-            if (::playbackEngineHost.isInitialized) {
-                stopActivePlayback("dlna-stop")
-            } else {
-                LogHub.w(TAG, "dlna stop ignored: player engine unavailable")
-            }
-            castActive = false
-            currentRequest = null
-            LogHub.setCast("")
-            LogHub.setPlay("")
-            runOnUiThread {
-                ui = ui.copy(
-                    mode = TvMode.IDLE,
-                    destination = TvDestination.HOME,
-                    sidebarVisible = true,
-                    castTitle = "",
-                    qualityLabel = "",
-                    qualityDetail = "",
-                    qualitySource = "",
-                    audioLabel = "",
-                    isPlaying = false,
-                    isBuffering = false,
-                    isLive = false,
-                    liveFormat = "",
-                    liveCdn = "",
-                    liveBackupCount = 0,
-                    positionMs = 0,
-                    durationMs = 0,
-                    hudVisible = false,
-                    tracks = emptyList(),
-                    audios = emptyList(),
-                    toast = "投屏已结束",
-                    showContinue = ui.rememberPlaybackContent,
-                )
-            }
-        }
-
-        /** 处理远端跳转命令。 */
-        override fun onSeek(positionMs: Long) {
-            if (currentRequest?.isLive == true) {
-                LogHub.w(TAG, "dlna seek rejected for live room=${currentRequest?.cid}")
-                return
-            }
-            if (::playbackEngineHost.isInitialized) {
-                seekPlayer(positionMs, "dlna-seek")
-            } else {
-                LogHub.w(TAG, "dlna seek ignored: player engine unavailable")
-            }
-            runOnUiThread {
-                ui = ui.copy(
-                    positionMs = positionMs.coerceAtLeast(0L),
-                    hudVisible = true,
-                )
-                if (::danmakuController.isInitialized) {
-                    danmakuController.onSeek(positionMs.coerceAtLeast(0L))
-                }
-            }
-        }
-
-        /** 直播没有定位能力，其他媒体按 libVLC 能力报告定位状态。 */
-        override fun isSeekable(): Boolean = currentRequest?.isLive != true &&
-            playbackEngineHost.isVlcSeekable()
-
-        /** 处理远端音量设置命令。 */
-        override fun onSetVolume(volume: Int) {
-            val v = volume.coerceIn(0, 100)
-            if (::playbackEngineHost.isInitialized) {
-                setPlayerVolume(v, "dlna-volume")
-            } else {
-                LogHub.w(TAG, "dlna volume ignored: player engine unavailable")
-            }
-            runOnUiThread { ui = ui.copy(volume = v, hudVisible = true) }
-        }
-
-        /** 返回播放器当前播放位置。 */
-        override fun positionMs(): Long =
-            if (currentRequest?.isLive == true) 0L else playerPositionMs()
-
-        /** 返回播放器当前媒体时长。 */
-        override fun durationMs(): Long =
-            if (currentRequest?.isLive == true) 0L else playerDurationMs()
-
-        /** 返回播放器当前是否正在播放。 */
-        override fun isPlaying(): Boolean =
-            playerIsPlaying()
-
-        /** 返回播放器当前音量。 */
-        override fun volume(): Int =
-            playerVolume()
+    override fun engineAvailable(): Boolean = ::playbackEngineHost.isInitialized
+    override fun setPaused(paused: Boolean, reason: String) = setPlayerPaused(paused, reason)
+    override fun finishHistory(reason: String) = playbackHistoryCoordinator.finish(reason)
+    override fun clearSession(reason: String) = clearLiveSession(reason)
+    override fun stopPlayback(reason: String) = stopActivePlayback(reason)
+    override fun clearCurrentCast() {
+        castActive = false
+        currentRequest = null
     }
+    override fun currentIsLive(): Boolean = currentRequest?.isLive == true
+    override fun currentCid(): Long? = currentRequest?.cid
+    override fun seekTo(positionMs: Long, reason: String) { seekPlayer(positionMs, reason) }
+    override fun seekDanmaku(positionMs: Long) {
+        if (::danmakuController.isInitialized) danmakuController.onSeek(positionMs)
+    }
+    override fun isVlcSeekable(): Boolean = playbackEngineHost.isVlcSeekable()
+    override fun setVolume(volume: Int, reason: String) = setPlayerVolume(volume, reason)
+    override fun durationMs(): Long = playerDurationMs()
+    override fun volume(): Int = playerVolume()
+    override fun onMainThread(action: () -> Unit) = runOnUiThread(action)
+    override fun updateState(transform: (TvUiState) -> TvUiState) { ui = transform(ui) }
 
     /** 初始化播放器、投屏服务、界面和账号状态。 */
     override fun onCreate(savedInstanceState: Bundle?) {
