@@ -7,7 +7,7 @@ import android.content.Context
  *
  * @param context 用于访问应用偏好的上下文。
  */
-class AuthTokenStore(context: Context) {
+class AuthTokenStore(context: Context) : BiliSessionReader {
 
     /** 保存登录令牌的偏好存储。 */
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -41,6 +41,8 @@ class AuthTokenStore(context: Context) {
             expiresIn = prefs.getLong("expires_in", 0L),
         )
     }
+
+    override fun cookie(): String = load()?.cookie.orEmpty()
 
     /** 清除已保存的登录令牌。 */
     fun clear() {

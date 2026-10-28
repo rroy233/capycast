@@ -1,6 +1,6 @@
 package com.roy233.tvcast.data.bili
 
-import com.roy233.tvcast.data.auth.BiliSessionProvider
+import com.roy233.tvcast.data.auth.BiliSessionReader
 import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
 
 import android.os.SystemClock
@@ -40,13 +40,12 @@ object BiliApi {
         .followRedirects(true)
         .build()
 
-    /** 登录后使用的 Cookie 请求头；为空时按匿名用户请求。 */
-    /** 当前 B 站请求使用的 Cookie；由 [BiliSessionProvider] 统一持有。 */
-    var cookie: String
-        get() = BiliSessionProvider.cookie
-        set(value) {
-            BiliSessionProvider.cookie = value
-        }
+    /** 组合根在首次请求之前提供当前账号的会话读取器。 */
+    @Volatile private var sessionReader: BiliSessionReader = BiliSessionReader { "" }
+
+    fun bindSession(reader: BiliSessionReader) {
+        sessionReader = reader
+    }
 
     /** 描述一个可播放媒体轨道。 */
     data class Track(
@@ -230,7 +229,7 @@ object BiliApi {
      * @param url 请求地址。
      * @param purpose 请求用途，用于日志区分。
      */
-    private fun get(url: String, purpose: String): String = httpClient.get(url, purpose, cookie)
+    private fun get(url: String, purpose: String): String = httpClient.get(url, purpose, sessionReader.cookie())
 
     /**
      * 发送带有公共请求头和登录 Cookie 的二进制 GET 请求。
@@ -240,7 +239,7 @@ object BiliApi {
      * @param url 请求地址。
      * @param purpose 请求用途，用于日志区分。
      */
-    fun getBytes(url: String, purpose: String): ByteArray = httpClient.getBytes(url, purpose, cookie)
+    fun getBytes(url: String, purpose: String): ByteArray = httpClient.getBytes(url, purpose, sessionReader.cookie())
 
     /**
      * 请求统一 API 并校验业务状态码。
@@ -349,32 +348,6 @@ object BiliApi {
             return data.get("pic")?.asString.orEmpty()
                 .replace("http://", "https://")
         }
-    }
-
-    /** 根据剧集标识和分P标识解析 PGC/OGV 内容。 */
-    fun resolvePgc(epId: Long, cid: Long, title: String): PlayInfo {
-        if (epId <= 0) error("invalid epId=$epId")
-        val url = "https://api.bilibili.com/pgc/player/web/playurl" +
-            "?ep_id=$epId&cid=$cid&qn=127&fnval=4048&fnver=0&fourk=1"
-        val text = get(url, "pgc-playurl")
-        val root = JsonParser.parseString(text).asJsonObject
-        val code = root.get("code")?.asInt ?: -1
-        if (code != 0) {
-            val msg = root.get("message")?.asString ?: "unknown"
-            LogHub.e(TAG, "pgc rejected epId=$epId cid=$cid code=$code message=$msg")
-            error("pgc code=$code message=$msg")
-        }
-        val result = root.getAsJsonObject("result") ?: run {
-            LogHub.e(TAG, "pgc result missing epId=$epId cid=$cid")
-            error("pgc result missing")
-        }
-        LogHub.i(
-            TAG,
-            "resolvePgc epId=$epId cid=$cid title=${title.take(40)} " +
-                "isPreview=${root.get("is_preview")?.asBoolean ?: false} " +
-                "resultKeys=${result.keySet().joinToString(",")}",
-        )
-        return parsePlay(result, 0L, cid, title, "", 0L)
     }
 
     /** 构造普通视频播放接口地址。 */

@@ -249,7 +249,7 @@ class CastSessionCoordinator(
         LogHub.i(
             TAG,
             "cast nva aid=${nva.aid} cid=${nva.cid} bvid=${nva.bvid} " +
-                "epId=${nva.epId} seasonId=${nva.seasonId} room=${nva.roomId} " +
+                "eid=${nva.epId} sid=${nva.seasonId} room=${nva.roomId} " +
                 "qn=${nva.qn} desireQn=${nva.userDesireQn} speed=$desiredSpeed " +
                 "ct=${nva.contentType} tp=${nva.transportType}",
         )
@@ -283,7 +283,7 @@ class CastSessionCoordinator(
         LogHub.i(
             TAG,
             "resolve begin branch=$branch aid=${nva.aid} cid=${nva.cid} " +
-                "bvid=${nva.bvid} epId=${nva.epId} room=${nva.roomId}",
+                "bvid=${nva.bvid} eid=${nva.epId} room=${nva.roomId}",
         )
         PlaybackDiagnostics.attribute("resolve.branch", branch)
         val state = playback.state()

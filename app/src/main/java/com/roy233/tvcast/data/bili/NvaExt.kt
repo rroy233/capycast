@@ -66,7 +66,7 @@ object NvaExtDecoder {
             LogHub.i(
                 TAG,
                 "nva_ext aid=${content.aid} cid=${content.cid} oid=${content.oid} " +
-                    "bvid=${content.bvid} qn=${content.qn} epId=${content.epId} seasonId=${content.seasonId} " +
+                    "bvid=${content.bvid} qn=${content.qn} eid=${content.epId} sid=${content.seasonId} " +
                     "room=${content.roomId}"
             )
             content

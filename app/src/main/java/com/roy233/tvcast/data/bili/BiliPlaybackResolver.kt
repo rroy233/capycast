@@ -2,11 +2,13 @@ package com.roy233.tvcast.data.bili
 
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.core.playback.PlaybackResolver
+import com.roy233.tvcast.data.auth.BiliSessionReader
 import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
 
 /** B 站普通视频与 PGC 协议的播放请求 adapter。 */
 class BiliPlaybackResolver(
-    private val pgcResolver: PgcPlaybackResolver = PgcPlaybackResolver(),
+    sessionReader: BiliSessionReader,
+    private val pgcResolver: PgcPlaybackResolver = PgcPlaybackResolver(cookieProvider = sessionReader::cookie),
 ) : PlaybackResolver {
     override suspend fun resolveVod(
         aid: Long,

@@ -55,8 +55,10 @@ class CapyCastContainer(
     /** TV 登录令牌存储；直播协议需要其中的 access_key。 */
     val authTokenStore: AuthTokenStore by lazy { AuthTokenStore(context) }
 
+    init { BiliApi.bindSession(authTokenStore) }
+
     /** 将 B 站协议响应适配为播放器无关的请求。 */
-    val playbackResolver: PlaybackResolver by lazy { BiliPlaybackResolver() }
+    val playbackResolver: PlaybackResolver by lazy { BiliPlaybackResolver(authTokenStore) }
 
     /** 设备信息读取器。 */
     val deviceInfo: DeviceInfoProvider by lazy { DeviceInfoProvider(context) }
@@ -87,7 +89,6 @@ class CapyCastContainer(
             authTokenStore = authTokenStore,
             qrCodeGenerator = QrCodeGenerator(),
             onTokenAvailable = {
-                BiliApi.cookie = it.cookie
                 playbackHistoryCoordinator.onAccountAvailable(it.mid)
             },
             onLogout = {
@@ -96,7 +97,6 @@ class CapyCastContainer(
                     positionMs = positionMs(),
                     durationMs = durationMs(),
                 )
-                BiliApi.cookie = ""
             },
             onLogoutUi = onLogoutUi,
             onToast = onToast,

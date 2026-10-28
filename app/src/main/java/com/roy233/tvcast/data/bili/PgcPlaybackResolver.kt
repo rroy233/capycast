@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 
 /** Resolves PGC episode metadata and the highest stream actually returned to the active account. */
 class PgcPlaybackResolver(
-    private val cookieProvider: () -> String = { BiliApi.cookie },
+    private val cookieProvider: () -> String = { "" },
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
