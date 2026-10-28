@@ -53,6 +53,8 @@ import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
 import com.roy233.tvcast.core.playback.PlaybackSnapshot
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
+import com.roy233.tvcast.feature.playback.application.PlaybackSelectionCoordinator
+import com.roy233.tvcast.feature.playback.application.PlaybackSelectionHost
 import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.LivePlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.LivePlaybackHost
@@ -107,7 +109,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost, PlaybackEventHost, DlnaCastHost {
+class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost, PlaybackEventHost, PlaybackSelectionHost, DlnaCastHost {
 
     /** 当前播放后端及其原生资源。 */
     private lateinit var playbackEngineHost: PlaybackEngineHost
@@ -171,6 +173,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private val playbackTicker by lazy { PlaybackTicker(this) }
     /** 投屏会话协调器。 */
     private val castCoordinator by lazy { CastSessionCoordinator(this) }
+    private val playbackSelectionCoordinator by lazy { PlaybackSelectionCoordinator(this) }
 
     /** 电视界面根状态持有者。 */
     private val stateHolder = TvStateHolder()
@@ -436,6 +439,28 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun setDesiredPlaybackSpeed(speed: Float) {
         ui = ui.copy(playbackSpeed = speed)
     }
+
+    override fun vodCoordinator(): VodPlaybackCoordinator = vodCoordinator
+    override fun liveCoordinator(): LivePlaybackCoordinator = liveCoordinator
+    override fun openSelectedPlayback(request: PlaybackRequest, positionMs: Long): Boolean =
+        castCoordinator.openPlayback(request, positionMs)
+    override fun liveAccessKey(): String? = authTokenStore.load()?.accessKey
+    override suspend fun resolveLiveQuality(
+        accessKey: String, roomId: Long, quality: Int, forceAvc: Boolean,
+    ): LivePlayInfo = livePlaybackResolver.resolve(accessKey, roomId, quality, forceAvc)
+    override fun switchSelectedLiveRoute(
+        target: RankedLiveSource, reason: String, from: LiveStreamCandidate?,
+    ): Boolean = switchLiveRoute(target, reason, from)
+    override suspend fun onSelectedLiveRouteOpenFailure(reason: String) {
+        handleLiveRouteOpenFailure(reason)
+    }
+    override fun onQualitySelected(label: String) {
+        ui = ui.copy(panel = PanelKind.QUALITY, qualitySource = "手动", toast = "已切换 $label")
+    }
+    override fun onAudioSelected(label: String) {
+        ui = ui.copy(panel = PanelKind.AUDIO, toast = "已切换 $label")
+    }
+    override fun showSelectionToast(message: String) { ui = ui.copy(toast = message) }
 
     override fun showRouteToast(message: String) { ui = ui.copy(toast = message) }
     override fun isPausedWithoutBuffering(): Boolean = !ui.isBuffering && !ui.isPlaying
@@ -1173,197 +1198,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     private fun liveProbeOrder(): Comparator<RankedLiveSource> = LiveQualityMapper.probeOrder()
 
-    /** 切换当前视频清晰度并从当前位置继续播放。 */
-    private fun switchQuality(qn: Int) {
-        if (currentRequest?.isLive == true) {
-            switchLiveQuality(qn)
-            return
-        }
-        val request = currentRequest
-        if (request == null) {
-            LogHub.w(TAG, "switchQuality qn=$qn ignored: no current media")
-            return
-        }
-        val track = request.videos.firstOrNull { it.id == qn }
-        if (track == null) {
-            LogHub.w(
-                TAG,
-                "switchQuality qn=$qn not found; available=${request.videos.joinToString(",") { it.id.toString() }}",
-            )
-            return
-        }
-        if (vodCoordinator.switching) return
-        val position = playerPositionMs()
-        LogHub.i(
-            TAG,
-            "switchQuality qn=$qn codec=${track.codecId} ${track.width}x${track.height} " +
-                "host=${LogRedaction.host(track.url)} at=${position}ms",
-        )
-        PlaybackDiagnostics.event(
-            "QualitySwitch",
-            "qn=$qn codec=${track.codecId} size=${track.width}x${track.height} " +
-                "host=${LogRedaction.host(track.url)} at=${position}ms",
-        )
-        vodCoordinator.switching = true
-        scope.launch {
-            try {
-                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(track) }
-                if (currentRequest?.video?.id != request.video.id || !castActive) return@launch
-                val route = routes.firstOrNull() ?: RankedVodRoute(track.url)
-                val orderedRoutes = routes.ifEmpty { listOf(route) }
-                val nextRequest = request.copy(video = track.copy(
-                    url = route.url,
-                    backupUrls = orderedRoutes.filterNot { it.url == route.url }.map { it.url },
-                    isPcdn = CdnRouteRules.isPcdn(route.url),
-                ))
-                val oldSession = vodCoordinator.activeSession
-                vodCoordinator.activeSession = VodSession(
-                    request = nextRequest,
-                    videoRoutes = orderedRoutes,
-                    audioRoutes = oldSession?.audioRoutes.orEmpty(),
-                    lastPositionMs = position,
-                    lastProgressAtMs = SystemClock.elapsedRealtime(),
-                )
-                startVodBackupRefresh()
-                if (castCoordinator.openPlayback(nextRequest, position)) {
-                    ui = ui.copy(
-                        panel = PanelKind.QUALITY,
-                        qualitySource = "手动",
-                        toast = "已切换 ${nextRequest.qualityLabel}",
-                    )
-                }
-            } catch (error: Throwable) {
-                LogHub.e(TAG, "quality switch failed qn=$qn ${LogRedaction.reason(error)}", error)
-                ui = ui.copy(toast = "画质切换失败")
-            } finally {
-                vodCoordinator.switching = false
-            }
-        }
-    }
-
-    /** 按用户选择重新解析并播放指定直播画质。 */
-    private fun switchLiveQuality(qn: Int) {
-        val session = liveCoordinator.activeSession ?: return
-        if (!castActive) return
-        if (qn == session.stream.quality) {
-            ui = ui.copy(toast = "已是当前画质")
-            return
-        }
-        if (liveCoordinator.switching) return
-        liveCoordinator.switching = true
-        scope.launch {
-            try {
-                val token = authTokenStore.load()
-                    ?: error("TV login expired during live quality switch")
-                val forceAvc = session.active.codecid == 7
-                val resolved = withContext(Dispatchers.IO) {
-                    val live = livePlaybackResolver.resolve(token.accessKey, session.stream.roomId, qn, forceAvc)
-                    live to liveCoordinator.cdn.rankInitial(live.qualityCandidates)
-                }
-                if (liveCoordinator.activeSession !== session || !castActive) return@launch
-                if (resolved.second.isEmpty()) error("live quality switch returned no routes")
-                val actual = resolved.first
-                val old = session.active
-                session.stream = actual
-                session.routes = resolved.second.toMutableList()
-                session.attemptedUrls.clear()
-                session.avcFallbackAttempted = forceAvc
-                session.downshiftedQualities.clear()
-                val next = session.routes.firstOrNull { it.candidate.quality == actual.quality }
-                    ?: session.routes.first()
-                PlaybackDiagnostics.event(
-                    "LiveQualitySwitch",
-                    "requested=$qn actual=${actual.quality} " +
-                        "from=${old.cdnLabel}/${old.format}/${old.codecName} " +
-                        "to=${next.candidate.cdnLabel}/${next.candidate.format}/" +
-                        "${next.candidate.codecName}",
-                )
-                LogHub.i(
-                    TAG,
-                    "live quality switch requested=$qn actual=${actual.quality} " +
-                        "selected=${next.candidate.cdnLabel}/${next.candidate.format}/" +
-                        "${next.candidate.codecName}",
-                )
-                if (!switchLiveRoute(next, "user-quality", old)) {
-                    handleLiveRouteOpenFailure("quality-switch-open-failed")
-                }
-            } catch (failure: Throwable) {
-                LogHub.e(
-                    TAG,
-                    "live quality switch failed qn=$qn " +
-                        "error=${failure.javaClass.simpleName}",
-                )
-                PlaybackDiagnostics.event(
-                    "LiveQualitySwitchFailed",
-                    "requested=$qn error=${failure.javaClass.simpleName}",
-                )
-                ui = ui.copy(toast = "画质切换失败")
-            } finally {
-                liveCoordinator.switching = false
-            }
-        }
-    }
-
-    /** 切换当前音轨并从当前位置继续播放。 */
-    private fun switchAudio(id: Int) {
-        if (currentRequest?.isLive == true) {
-            LogHub.w(TAG, "manual audio switch ignored for live id=$id")
-            return
-        }
-        val request = currentRequest
-        if (request == null) {
-            LogHub.w(TAG, "switchAudio id=$id ignored: no current media")
-            return
-        }
-        val track = request.audios.firstOrNull { it.id == id }
-        if (track == null) {
-            LogHub.w(
-                TAG,
-                "switchAudio id=$id not found; available=${request.audios.joinToString(",") { it.id.toString() }}",
-            )
-            return
-        }
-        val position = playerPositionMs()
-        LogHub.i(
-            TAG,
-            "switchAudio id=$id host=${LogRedaction.host(track.url)} at=${position}ms",
-        )
-        PlaybackDiagnostics.event(
-            "AudioSwitch",
-            "id=$id host=${LogRedaction.host(track.url)} at=${position}ms",
-        )
-        if (vodCoordinator.switching) return
-        vodCoordinator.switching = true
-        scope.launch {
-            try {
-                val routes = withContext(Dispatchers.IO) { vodCoordinator.cdn.rankTrack(track) }
-                if (currentRequest?.video?.id != request.video.id || !castActive) return@launch
-                val route = routes.firstOrNull() ?: RankedVodRoute(track.url)
-                val orderedRoutes = routes.ifEmpty { listOf(route) }
-                val nextRequest = request.copy(audio = track.copy(
-                    url = route.url,
-                    backupUrls = orderedRoutes.filterNot { it.url == route.url }.map { it.url },
-                    isPcdn = CdnRouteRules.isPcdn(route.url),
-                ))
-                vodCoordinator.activeSession?.let { session ->
-                    session.request = nextRequest
-                    session.audioRoutes = orderedRoutes
-                    session.attemptedAudioUrls.clear()
-                }
-                if (castCoordinator.openPlayback(nextRequest, position)) {
-                    ui = ui.copy(
-                        panel = PanelKind.AUDIO,
-                        toast = "已切换 ${nextRequest.audioLabel}",
-                    )
-                }
-            } catch (error: Throwable) {
-                LogHub.e(TAG, "audio switch failed id=$id ${LogRedaction.reason(error)}", error)
-                ui = ui.copy(toast = "音轨切换失败")
-            } finally {
-                vodCoordinator.switching = false
-            }
-        }
-    }
+    private fun switchQuality(qn: Int) = playbackSelectionCoordinator.switchQuality(qn)
+    private fun switchAudio(id: Int) = playbackSelectionCoordinator.switchAudio(id)
 
     /** 切换播放器的播放与暂停状态。 */
     private fun togglePlayPause() = playbackCoordinator.togglePlayPause()
