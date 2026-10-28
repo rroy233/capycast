@@ -30,6 +30,7 @@ import com.roy233.tvcast.ui.model.CastPlaybackStateProjector
 import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.app.CapyCastContainer
 import com.roy233.tvcast.app.PlaybackEngineHost
+import com.roy233.tvcast.app.MainThreadPlaybackAccess
 import com.roy233.tvcast.app.DlnaCastListenerAdapter
 import com.roy233.tvcast.feature.cast.application.DlnaTransportCoordinator
 import com.roy233.tvcast.feature.cast.application.DlnaTransportHost
@@ -486,6 +487,11 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             .getOrDefault(false)
     }
 
+    override fun onLivePlaybackOpened(roomId: Long) {
+        onDanmakuClose()
+        openLiveDanmaku(roomId)
+    }
+
     /** 用于后台线路探测的协程作用域。 */
     override val coroutineScope: CoroutineScope get() = scope
 
@@ -716,9 +722,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
     }
 
-    /** 打开直播弹幕会话。 */
-    override fun onLiveDanmakuOpen(roomId: Long) = openLiveDanmaku(roomId)
-
     /** 打开点播弹幕会话。 */
     override fun onVodDanmakuOpen(aid: Long, cid: Long, durationMs: Long, seekToMs: Long) {
         if (::danmakuController.isInitialized) {
@@ -784,6 +787,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
     private val dlnaCommands by lazy { DlnaTransportCoordinator(this) }
     private val dlnaListener by lazy { DlnaCastListenerAdapter(dlnaCommands) }
+    private val mainThreadPlaybackAccess by lazy { MainThreadPlaybackAccess() }
 
     override fun onCast(uri: String, title: String, longDescription: String) =
         handleCast(uri, title, longDescription)
@@ -802,6 +806,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun durationMs(): Long = playerDurationMs()
     override fun volume(): Int = playerVolume()
     override fun onMainThread(action: () -> Unit) = runOnUiThread(action)
+    override fun <T> readOnMainThread(action: () -> T): T = mainThreadPlaybackAccess.read(action)
     override fun showDlnaPlayState(playing: Boolean) { ui = ui.copy(isPlaying = playing, hudVisible = true) }
     override fun showDlnaSeekState(positionMs: Long) { ui = ui.copy(positionMs = positionMs, hudVisible = true) }
     override fun showDlnaVolumeState(volume: Int) { ui = ui.copy(volume = volume, hudVisible = true) }

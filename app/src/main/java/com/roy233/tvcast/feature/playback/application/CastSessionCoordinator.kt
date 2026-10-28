@@ -56,7 +56,7 @@ interface CastSessionHost : RecentCastHost {
     fun startPlaybackBackend(request: PlaybackRequest, seekToMs: Long): Boolean
     fun onDanmakuClose()
     fun onLiveDanmakuClose()
-    fun onLiveDanmakuOpen(roomId: Long)
+    fun onLivePlaybackOpened(roomId: Long)
     fun onVodDanmakuOpen(aid: Long, cid: Long, durationMs: Long, seekToMs: Long)
     fun onDanmakuPlaybackRate(rate: Float)
     fun onDanmakuSettings()
@@ -351,8 +351,7 @@ class CastSessionCoordinator(
         }
 
         if (request.isLive) {
-            playback.onDanmakuClose()
-            playback.onLiveDanmakuOpen(request.cid)
+            playback.onLivePlaybackOpened(request.cid)
         } else {
             playback.onLiveDanmakuClose()
             playback.onVodDanmakuOpen(request.aid, request.cid, request.durationSec * 1000, seekToMs)

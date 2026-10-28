@@ -39,6 +39,8 @@ interface LivePlaybackHost {
     fun isPlaying(): Boolean
     fun showPlayback(request: PlaybackRequest, seekToMs: Long)
     fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean
+    /** 成功打开直播流后建立并保持该房间的弹幕会话。 */
+    fun onLivePlaybackOpened(roomId: Long)
     val coroutineScope: CoroutineScope
     fun stateSnapshot(): String
     fun setPendingPause(paused: Boolean)
@@ -172,8 +174,12 @@ class LivePlaybackCoordinator(
         val request = livePlayInfo(session, first.candidate, title)
         playback.showPlayback(request, 0L)
         val started = playback.openPlayback(request, 0L)
-        if (started) startBackupRefresh(session)
-        else playback.coroutineScope.launch { handleLiveRouteOpenFailure("initial-open-failed") }
+        if (started) {
+            playback.onLivePlaybackOpened(stream.roomId)
+            startBackupRefresh(session)
+        } else {
+            playback.coroutineScope.launch { handleLiveRouteOpenFailure("initial-open-failed") }
+        }
     }
 
     /** 将一条直播源适配到共用播放器模型；直播时长、音轨和续播身份均为空。 */
@@ -432,6 +438,7 @@ class LivePlaybackCoordinator(
             )
         }
         val started = playback.openPlayback(info, 0L)
+        if (started) playback.onLivePlaybackOpened(session.stream.roomId)
         if (!started) {
             pendingSwitch = null
             PlaybackDiagnostics.event(

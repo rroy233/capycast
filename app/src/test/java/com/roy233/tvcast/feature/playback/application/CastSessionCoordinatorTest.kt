@@ -174,7 +174,7 @@ class CastSessionCoordinatorTest {
 
         override fun onLiveDanmakuClose() = Unit
 
-        override fun onLiveDanmakuOpen(roomId: Long) = Unit
+        override fun onLivePlaybackOpened(roomId: Long) = Unit
 
         override fun onVodDanmakuOpen(aid: Long, cid: Long, durationMs: Long, seekToMs: Long) = Unit
 
