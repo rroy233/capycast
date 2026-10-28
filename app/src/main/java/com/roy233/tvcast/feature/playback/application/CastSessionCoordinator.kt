@@ -11,13 +11,8 @@ import com.roy233.tvcast.feature.playback.model.PgcPlaybackFailure
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.feature.playback.model.CastResolution
 import com.roy233.tvcast.feature.playback.model.VodSession
-import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
-import com.roy233.tvcast.feature.playback.presentation.TrackOptionMapper
 import com.roy233.tvcast.ui.model.PlaybackSpeed
 import com.roy233.tvcast.feature.cast.domain.RecentCast
-import com.roy233.tvcast.ui.model.TvDestination
-import com.roy233.tvcast.ui.model.TvMode
-import com.roy233.tvcast.ui.model.PlaybackUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,8 +23,13 @@ import android.os.SystemClock
 
 /** 投屏会话需要宿主提供的解析、播放与界面能力。 */
 interface CastSessionHost {
-    fun state(): PlaybackUiState
-    fun setState(state: PlaybackUiState)
+    fun remembersPlaybackContent(): Boolean
+    fun playbackSpeed(): Float
+    fun showRecentLoading(title: String)
+    fun showIncomingCast(title: String)
+    fun showResolveLoading(title: String)
+    fun showPlayback(request: PlaybackRequest, seekToMs: Long)
+    fun setDesiredPlaybackSpeed(speed: Float)
     fun coroutineScope(): CoroutineScope
     fun isResolving(): Boolean
     fun setResolving(resolving: Boolean)
@@ -93,7 +93,7 @@ class CastSessionCoordinator(
 
     /** 将当前播放信息加入最近投屏记录。 */
     fun recordRecent(request: PlaybackRequest) {
-        if (!playback.state().rememberPlaybackContent) return
+        if (!playback.remembersPlaybackContent()) return
         playback.addRecentRecord(request)
     }
 
@@ -117,16 +117,7 @@ class CastSessionCoordinator(
         )
         playback.coroutineScope().launch {
             playback.setResolving(true)
-            playback.setState(
-                playback.state().copy(
-                    mode = TvMode.LOADING,
-                    castTitle = recent.title,
-                    destination = TvDestination.HOME,
-                    sidebarVisible = false,
-                    helpVisible = false,
-                    hudVisible = false,
-                ),
-            )
+            playback.showRecentLoading(recent.title)
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     playback.resolveVodPlayback(
@@ -192,34 +183,7 @@ class CastSessionCoordinator(
         playback.setRetry(null)
         playback.clearLoginUi()
         LogHub.setCast(title)
-        val state = playback.state()
-        playback.setState(
-            state.copy(
-                mode = TvMode.LOADING,
-                showContinue = state.rememberPlaybackContent,
-                castTitle = title.ifBlank { "正在投屏" },
-                qualityLabel = "",
-                qualityDetail = "",
-                qualitySource = "",
-                audioLabel = "",
-                aid = 0L,
-                cid = 0L,
-                isPlaying = false,
-                isBuffering = false,
-                isLive = false,
-                liveFormat = "",
-                liveCdn = "",
-                liveBackupCount = 0,
-                positionMs = 0,
-                durationMs = 0,
-                hudVisible = true,
-                panel = null,
-                stopCastConfirm = false,
-                error = null,
-                tracks = emptyList(),
-                audios = emptyList(),
-            ),
-        )
+        playback.showIncomingCast(title)
 
         val nva = playback.decodeCastContent(longDescription)
         if (nva == null) {
@@ -262,7 +226,7 @@ class CastSessionCoordinator(
         PlaybackDiagnostics.attribute("cast.requestQn", nva.qn.toString())
         PlaybackDiagnostics.attribute("cast.desireQn", nva.userDesireQn.toString())
         PlaybackDiagnostics.attribute("cast.desireSpeed", desiredSpeed.toString())
-        playback.setState(playback.state().copy(playbackSpeed = desiredSpeed))
+        playback.setDesiredPlaybackSpeed(desiredSpeed)
         resolve(nva, title)
     }
 
@@ -286,16 +250,7 @@ class CastSessionCoordinator(
                 "bvid=${nva.bvid} eid=${nva.epId} room=${nva.roomId}",
         )
         PlaybackDiagnostics.attribute("resolve.branch", branch)
-        val state = playback.state()
-        playback.setState(
-            state.copy(
-                mode = TvMode.LOADING,
-                showContinue = state.rememberPlaybackContent,
-                castTitle = title.ifBlank { "正在投屏" },
-                error = null,
-                hudVisible = true,
-            ),
-        )
+        playback.showResolveLoading(title)
 
         playback.setResolveJob(
             playback.coroutineScope().launch {
@@ -454,53 +409,7 @@ class CastSessionCoordinator(
                 "seek=${seekToMs}ms progressive=${request.progressiveUrl != null} vodGeneration=${vodGeneration ?: "none"}",
         )
 
-        val state = playback.state()
-        playback.setState(
-            state.copy(
-                mode = TvMode.PLAYING,
-                showContinue = state.rememberPlaybackContent,
-                castTitle = request.title,
-                qualityLabel = if (request.isLive) {
-                    LiveQualityMapper.label(request.video.id)
-                } else {
-                    request.qualityLabel
-                },
-                qualityDetail = if (request.isLive) {
-                    request.video.codecs.ifBlank {
-                        com.roy233.tvcast.platform.player.VlcTrackFormat.codecName(request.video.codecId)
-                    }
-                } else {
-                    request.video.codecs
-                },
-                qualitySource = if (request.isLive) "直播" else if (request.video.id >= 80) "已提升" else "",
-                audioLabel = if (request.isLive) "自动音轨" else request.audioLabel,
-                aid = request.aid,
-                cid = request.cid,
-                isPlaying = true,
-                isBuffering = false,
-                isLive = request.isLive,
-                liveFormat = request.liveFormat,
-                liveCdn = request.liveCdn,
-                liveBackupCount = request.liveBackupCount,
-                liveQualities = if (request.isLive) {
-                    playback.liveSessionCoordinator().activeSession
-                        ?.let { LiveQualityMapper.options(it.stream) }
-                        ?: emptyList()
-                } else {
-                    emptyList()
-                },
-                positionMs = if (request.isLive) 0L else seekToMs.coerceAtLeast(0L),
-                durationMs = if (request.isLive) 0L else request.durationSec * 1000,
-                selectedQn = request.video.id,
-                selectedAudioId = request.audio?.id ?: 0,
-                tracks = TrackOptionMapper.tracks(request),
-                audios = TrackOptionMapper.audios(request),
-                hudVisible = true,
-                panel = null,
-                error = null,
-                stopCastConfirm = false,
-            ),
-        )
+        playback.showPlayback(request, seekToMs)
         if (!request.isLive) recordRecent(request)
 
         val started = playback.startPlaybackBackend(request, seekToMs)
@@ -538,7 +447,7 @@ class CastSessionCoordinator(
         } else {
             playback.onLiveDanmakuClose()
             playback.onVodDanmakuOpen(request.aid, request.cid, request.durationSec * 1000, seekToMs)
-            playback.onDanmakuPlaybackRate(playback.state().playbackSpeed)
+            playback.onDanmakuPlaybackRate(playback.playbackSpeed())
             playback.onDanmakuSettings()
             playback.onDanmakuLayout()
         }

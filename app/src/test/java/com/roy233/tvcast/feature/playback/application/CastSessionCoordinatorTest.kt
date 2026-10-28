@@ -71,10 +71,20 @@ class CastSessionCoordinatorTest {
         var playbackState = PlaybackUiState(rememberPlaybackContent = true)
         var error: ErrorReport? = null
 
-        override fun state(): PlaybackUiState = playbackState
-
-        override fun setState(state: PlaybackUiState) {
-            playbackState = state
+        override fun remembersPlaybackContent(): Boolean = playbackState.rememberPlaybackContent
+        override fun playbackSpeed(): Float = playbackState.playbackSpeed
+        override fun showRecentLoading(title: String) {
+            playbackState = playbackState.copy(mode = TvMode.LOADING, castTitle = title)
+        }
+        override fun showIncomingCast(title: String) {
+            playbackState = playbackState.copy(mode = TvMode.LOADING, castTitle = title)
+        }
+        override fun showResolveLoading(title: String) {
+            playbackState = playbackState.copy(mode = TvMode.LOADING, castTitle = title)
+        }
+        override fun showPlayback(request: PlaybackRequest, seekToMs: Long) = Unit
+        override fun setDesiredPlaybackSpeed(speed: Float) {
+            playbackState = playbackState.copy(playbackSpeed = speed)
         }
 
         override fun coroutineScope(): CoroutineScope = scope

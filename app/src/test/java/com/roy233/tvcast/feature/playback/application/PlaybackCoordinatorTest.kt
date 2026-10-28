@@ -66,8 +66,26 @@ class PlaybackCoordinatorTest {
         val danmakuSeeks = mutableListOf<Long>()
 
         val coordinator = PlaybackCoordinator(
-            readState = { state },
-            writeState = { state = it },
+            canControl = { state.mode == TvMode.PLAYING || state.mode == TvMode.LOADING },
+            canPreviewSeek = { state.mode == TvMode.PLAYING },
+            displayedDurationMs = { state.durationMs },
+            previewPositionMs = { state.seekPreviewPositionMs },
+            updatePlaying = { state = state.copy(isPlaying = it, hudVisible = true) },
+            updatePosition = { position, duration ->
+                state = state.copy(positionMs = position, durationMs = duration ?: state.durationMs, hudVisible = true)
+            },
+            updatePreview = { position, duration ->
+                state = state.copy(
+                    positionMs = position ?: state.positionMs,
+                    durationMs = duration ?: state.durationMs,
+                    seekPreviewPositionMs = position,
+                )
+            },
+            updateSpeed = { speed, message ->
+                state = state.copy(playbackSpeed = speed, hudVisible = true, toast = message)
+            },
+            updateVolume = { state = state.copy(volume = it, hudVisible = true) },
+            showToast = { state = state.copy(toast = it) },
             isEngineInitialized = { true },
             isLive = { live },
             positionMs = { positionMs },

@@ -26,9 +26,7 @@ import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
-import com.roy233.tvcast.ui.model.PlaybackUiState
-import com.roy233.tvcast.ui.model.playbackUiState
-import com.roy233.tvcast.ui.model.withPlaybackUiState
+import com.roy233.tvcast.ui.model.CastPlaybackStateProjector
 import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.app.CapyCastContainer
 import com.roy233.tvcast.app.PlaybackEngineHost
@@ -266,8 +264,26 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 通用播放控制协调器。 */
     private val playbackCoordinator by lazy {
         PlaybackCoordinator(
-            readState = { ui.playbackUiState() },
-            writeState = { state -> ui = ui.withPlaybackUiState(state) },
+            canControl = { ui.mode == TvMode.PLAYING || ui.mode == TvMode.LOADING },
+            canPreviewSeek = { ui.mode == TvMode.PLAYING },
+            displayedDurationMs = { ui.durationMs },
+            previewPositionMs = { ui.seekPreviewPositionMs },
+            updatePlaying = { playing -> ui = ui.copy(isPlaying = playing, hudVisible = true) },
+            updatePosition = { position, duration ->
+                ui = ui.copy(positionMs = position, durationMs = duration ?: ui.durationMs, hudVisible = true)
+            },
+            updatePreview = { position, duration ->
+                ui = ui.copy(
+                    positionMs = position ?: ui.positionMs,
+                    durationMs = duration ?: ui.durationMs,
+                    seekPreviewPositionMs = position,
+                )
+            },
+            updateSpeed = { speed, message ->
+                ui = ui.copy(playbackSpeed = speed, hudVisible = true, toast = message)
+            },
+            updateVolume = { volume -> ui = ui.copy(volume = volume, hudVisible = true) },
+            showToast = { message -> ui = ui.copy(toast = message) },
             isEngineInitialized = { ::playbackEngineHost.isInitialized },
             isLive = { currentRequest?.isLive == true },
             positionMs = { playerPositionMs() },
@@ -398,12 +414,25 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     override fun handleHomeBack() = handleHomeBackInternal()
 
-    /** 返回当前电视界面状态。 */
-    override fun state(): PlaybackUiState = ui.playbackUiState()
-
-    /** 提交新的电视界面状态。 */
-    override fun setState(state: PlaybackUiState) {
-        ui = ui.withPlaybackUiState(state)
+    override fun remembersPlaybackContent(): Boolean = ui.rememberPlaybackContent
+    override fun playbackSpeed(): Float = ui.playbackSpeed
+    override fun showRecentLoading(title: String) {
+        ui = CastPlaybackStateProjector.recentLoading(ui, title)
+    }
+    override fun showIncomingCast(title: String) {
+        ui = CastPlaybackStateProjector.incomingCast(ui, title)
+    }
+    override fun showResolveLoading(title: String) {
+        ui = CastPlaybackStateProjector.resolving(ui, title)
+    }
+    override fun showPlayback(request: PlaybackRequest, seekToMs: Long) {
+        val liveQualities = if (request.isLive) {
+            liveCoordinator.activeSession?.let { LiveQualityMapper.options(it.stream) } ?: emptyList()
+        } else emptyList()
+        ui = CastPlaybackStateProjector.playing(ui, request, seekToMs, liveQualities)
+    }
+    override fun setDesiredPlaybackSpeed(speed: Float) {
+        ui = ui.copy(playbackSpeed = speed)
     }
 
     override fun showRouteToast(message: String) { ui = ui.copy(toast = message) }
