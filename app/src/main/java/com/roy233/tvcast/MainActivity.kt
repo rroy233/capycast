@@ -40,8 +40,6 @@ import com.roy233.tvcast.ui.tv.TvStateHolder
 import com.roy233.tvcast.ui.tv.DoubleBackExitGate
 import com.roy233.tvcast.ui.tv.HomeBackExitTiming
 import com.roy233.tvcast.ui.tv.TvKeyHandler
-import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.bili.LivePlayUrlResolver
 import com.roy233.tvcast.data.bili.routing.OkHttpLiveRouteProbe
 import com.roy233.tvcast.data.bili.routing.OkHttpVodRouteProbe
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
@@ -263,6 +261,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 应用更新流程协调器。 */
     private val updateCoordinator get() = container.updateCoordinator
     private val playbackResolver get() = container.playbackResolver
+    private val livePlaybackResolver get() = container.livePlaybackResolver
 
     /** 通用播放控制协调器。 */
     private val playbackCoordinator by lazy {
@@ -696,14 +695,14 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     override suspend fun resolveLivePlayback(accessKey: String, roomId: Long): LivePlayInfo =
-        LivePlayUrlResolver.resolve(this, accessKey, roomId)
+        livePlaybackResolver.resolve(accessKey, roomId)
 
     override suspend fun resolveLivePlayback(
         accessKey: String,
         roomId: Long,
         quality: Int,
         forceAvc: Boolean,
-    ): LivePlayInfo = LivePlayUrlResolver.resolve(this, accessKey, roomId, quality, forceAvc)
+    ): LivePlayInfo = livePlaybackResolver.resolve(accessKey, roomId, quality, forceAvc)
 
     override suspend fun resolveVodPlayback(
         aid: Long,
@@ -1397,13 +1396,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                     ?: error("TV login expired during live quality switch")
                 val forceAvc = session.active.codecid == 7
                 val resolved = withContext(Dispatchers.IO) {
-                    val live = LivePlayUrlResolver.resolve(
-                        context = applicationContext,
-                        accessKey = token.accessKey,
-                        roomId = session.stream.roomId,
-                        quality = qn,
-                        forceAvc = forceAvc,
-                    )
+                    val live = livePlaybackResolver.resolve(token.accessKey, session.stream.roomId, qn, forceAvc)
                     live to liveCoordinator.cdn.rankInitial(live.qualityCandidates)
                 }
                 if (liveCoordinator.activeSession !== session || !castActive) return@launch

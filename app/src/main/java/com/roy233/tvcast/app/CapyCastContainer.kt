@@ -5,6 +5,8 @@ import com.roy233.tvcast.data.auth.AuthTokenStore
 import com.roy233.tvcast.data.auth.CastAuth
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.BiliPlaybackResolver
+import com.roy233.tvcast.data.bili.BiliLivePlaybackResolver
+import com.roy233.tvcast.feature.playback.model.LivePlaybackResolver
 import com.roy233.tvcast.data.local.DanmakuPreferences
 import com.roy233.tvcast.data.local.PlaybackHistoryOutbox
 import com.roy233.tvcast.data.local.RecentCastStore
@@ -59,6 +61,7 @@ class CapyCastContainer(
 
     /** 将 B 站协议响应适配为播放器无关的请求。 */
     val playbackResolver: PlaybackResolver by lazy { BiliPlaybackResolver(authTokenStore) }
+    val livePlaybackResolver: LivePlaybackResolver by lazy { BiliLivePlaybackResolver(context) }
 
     /** 设备信息读取器。 */
     val deviceInfo: DeviceInfoProvider by lazy { DeviceInfoProvider(context) }
