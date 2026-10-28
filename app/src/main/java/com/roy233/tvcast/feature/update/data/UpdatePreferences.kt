@@ -1,4 +1,4 @@
-package com.roy233.tvcast.data.local
+package com.roy233.tvcast.feature.update.data
 
 import android.content.Context
 import com.roy233.tvcast.feature.update.model.UpdateChannel
