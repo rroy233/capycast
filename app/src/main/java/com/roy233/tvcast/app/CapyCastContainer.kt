@@ -4,6 +4,7 @@ import android.content.Context
 import com.roy233.tvcast.data.auth.AuthTokenStore
 import com.roy233.tvcast.data.auth.CastAuth
 import com.roy233.tvcast.data.bili.BiliApi
+import com.roy233.tvcast.data.bili.BiliPlaybackResolver
 import com.roy233.tvcast.data.local.DanmakuPreferences
 import com.roy233.tvcast.data.local.PlaybackHistoryOutbox
 import com.roy233.tvcast.data.local.RecentCastStore
@@ -11,6 +12,7 @@ import com.roy233.tvcast.data.local.UiPreferences
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
 import com.roy233.tvcast.feature.account.AccountUiState
 import com.roy233.tvcast.feature.history.PlaybackHistoryCoordinator
+import com.roy233.tvcast.core.playback.PlaybackResolver
 import com.roy233.tvcast.feature.update.UpdateCoordinator
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.platform.device.DeviceInfoProvider
@@ -52,6 +54,9 @@ class CapyCastContainer(
 
     /** TV 登录令牌存储；直播协议需要其中的 access_key。 */
     val authTokenStore: AuthTokenStore by lazy { AuthTokenStore(context) }
+
+    /** 将 B 站协议响应适配为播放器无关的请求。 */
+    val playbackResolver: PlaybackResolver by lazy { BiliPlaybackResolver() }
 
     /** 设备信息读取器。 */
     val deviceInfo: DeviceInfoProvider by lazy { DeviceInfoProvider(context) }

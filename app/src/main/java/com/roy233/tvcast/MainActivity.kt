@@ -39,11 +39,9 @@ import com.roy233.tvcast.ui.tv.DoubleBackExitGate
 import com.roy233.tvcast.ui.tv.HomeBackExitTiming
 import com.roy233.tvcast.ui.tv.TvKeyHandler
 import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.data.bili.CdnCandidateSelector
 import com.roy233.tvcast.data.bili.LivePlayUrlResolver
 import com.roy233.tvcast.data.bili.routing.OkHttpLiveRouteProbe
 import com.roy233.tvcast.data.bili.routing.OkHttpVodRouteProbe
-import com.roy233.tvcast.data.bili.PgcPlaybackResolver
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
 import com.roy233.tvcast.feature.playback.model.LiveStreamCandidate
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
@@ -56,7 +54,6 @@ import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
 import com.roy233.tvcast.core.playback.PlaybackSnapshot
 import com.roy233.tvcast.core.playback.PlaybackRequest
-import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
 import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.LivePlaybackCoordinator
@@ -263,6 +260,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private val loginCoordinator get() = container.loginCoordinator
     /** 应用更新流程协调器。 */
     private val updateCoordinator get() = container.updateCoordinator
+    private val playbackResolver get() = container.playbackResolver
 
     /** 通用播放控制协调器。 */
     private val playbackCoordinator by lazy {
@@ -693,12 +691,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         epId: Long,
         seasonId: Long,
     ): PlaybackRequest {
-        val info = if (epId > 0L || seasonId > 0L) {
-            PgcPlaybackResolver().resolve(epId, seasonId, cid, aid, bvid, title)
-        } else {
-            BiliApi.resolveByAidCid(aid, cid, title, bvid)
-        }
-        return BiliPlaybackMapper.map(info)
+        return playbackResolver.resolveVod(aid, cid, bvid, title, epId, seasonId)
     }
 
     /** 应用起播前的暂停请求。 */
