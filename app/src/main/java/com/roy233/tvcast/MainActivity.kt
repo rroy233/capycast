@@ -55,6 +55,8 @@ import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.PlaybackSelectionCoordinator
 import com.roy233.tvcast.feature.playback.application.PlaybackSelectionHost
+import com.roy233.tvcast.feature.playback.application.PlaybackSessionHost
+import com.roy233.tvcast.feature.playback.application.PlaybackSessionLifecycle
 import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.LivePlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.LivePlaybackHost
@@ -109,7 +111,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost, PlaybackEventHost, PlaybackSelectionHost, DlnaCastHost {
+class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost, PlaybackEventHost, PlaybackSelectionHost, PlaybackSessionHost, DlnaCastHost {
 
     /** 当前播放后端及其原生资源。 */
     private lateinit var playbackEngineHost: PlaybackEngineHost
@@ -161,8 +163,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private var lastNva: CastContent? = null
     /** 最近一次投屏标题。 */
     private var lastTitle = ""
-    /** 最近一次失败操作的重试回调。 */
-    private var lastErrorRetry: (() -> Unit)? = null
     /** 最近一次播放器读取失败告警的单调时刻。 */
     private var lastPlayerReadWarningAt = 0L
     /** 点播会话协调器。 */
@@ -174,6 +174,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 投屏会话协调器。 */
     private val castCoordinator by lazy { CastSessionCoordinator(this) }
     private val playbackSelectionCoordinator by lazy { PlaybackSelectionCoordinator(this) }
+    private val playbackSessionLifecycle by lazy { PlaybackSessionLifecycle(this) }
 
     /** 电视界面根状态持有者。 */
     private val stateHolder = TvStateHolder()
@@ -508,7 +509,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 记录失败重试动作。 */
     override fun setRetry(action: (() -> Unit)?) {
-        lastErrorRetry = action
+        playbackSessionLifecycle.setRetry(action)
     }
 
     override fun clearLoginUi() {
@@ -962,7 +963,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         currentRequest = null
     }
     override fun setRetryFor(request: PlaybackRequest) {
-        lastErrorRetry = { castCoordinator.openPlayback(request, playerPositionMs()) }
+        playbackSessionLifecycle.setRetry { castCoordinator.openPlayback(request, playerPositionMs()) }
     }
     override fun updateMedia3Playing(seek: Long) {
         ui = ui.copy(
@@ -1313,46 +1314,45 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 设置音量，沿用界面的 0..100 标度。 */
     private fun setVolume(volume: Int) = playbackCoordinator.setVolume(volume)
 
-    /** 重试最近一次失败的解析或播放操作。 */
-    private fun retryLastAction() {
-        val action = lastErrorRetry
-        lastErrorRetry = null
-        LogHub.i(
-            TAG,
-            "retry requested hasAction=${action != null} hasNva=${lastNva != null} " +
-                "current=${currentRequest != null}",
-        )
-        if (action != null) {
-            ui = ui.copy(
-                mode = if (currentRequest != null) TvMode.PLAYING else TvMode.LOADING,
-                error = null,
-                hudVisible = true,
-            )
-            action()
-            return
-        }
-        val nva = lastNva
-        if (nva != null) {
-            resolveNvaAndPlay(nva, lastTitle)
-        } else {
-            dismissError()
-        }
-    }
+    private fun retryLastAction() = playbackSessionLifecycle.retry()
+    private fun dismissError() = playbackSessionLifecycle.dismissError()
+    private fun stopCasting() = playbackSessionLifecycle.stopCasting()
+    private fun showError(
+        title: String, message: String, code: String, canRetry: Boolean, keepVideo: Boolean = false,
+    ) = playbackSessionLifecycle.showError(title, message, code, canRetry, keepVideo)
 
-    /** 关闭错误状态并恢复空闲界面。 */
-    private fun dismissError() {
-        LogHub.i(TAG, "dismiss error; current=${currentRequest != null} castActive=$castActive")
-        playbackHistoryCoordinator.finish("dismiss-error")
-        clearLiveSession("dismiss-error")
-        if (::playbackEngineHost.isInitialized) {
-            stopActivePlayback("dismiss-error")
-        } else {
-            LogHub.w(TAG, "dismiss error without player engine")
-        }
+    override fun modeForLog(): String = ui.mode.toString()
+    override fun finishSessionHistory(reason: String) { playbackHistoryCoordinator.finish(reason) }
+    override fun hasCurrentRequest(): Boolean = currentRequest != null
+    override fun lastCastContent(): CastContent? = lastNva
+    override fun lastCastTitle(): String = lastTitle
+    override fun resolveCast(content: CastContent, title: String) = resolveNvaAndPlay(content, title)
+    override fun cancelResolveJob() {
+        resolveJob?.cancel()
+        resolveJob = null
+    }
+    override fun resetPendingPlayback() {
+        pendingPause = false
+        pendingSeekMs = 0L
+    }
+    override fun stopPlaybackForSession(reason: String) = stopActivePlayback(reason)
+    override fun clearSessionIdentity(clearCastMetadata: Boolean, clearResolving: Boolean) {
         currentRequest = null
         castActive = false
-        resolving = false
-        lastErrorRetry = null
+        if (clearResolving) resolving = false
+        if (clearCastMetadata) {
+            lastNva = null
+            lastTitle = ""
+        }
+    }
+    override fun showRetryState(hasCurrent: Boolean) {
+        ui = ui.copy(
+            mode = if (hasCurrent) TvMode.PLAYING else TvMode.LOADING,
+            error = null,
+            hudVisible = true,
+        )
+    }
+    override fun showDismissedState() {
         ui = ui.copy(
             mode = TvMode.IDLE,
             error = null,
@@ -1375,35 +1375,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             showContinue = ui.rememberPlaybackContent,
         )
     }
-
-    /** 停止当前电视播放并返回首页，保持应用与 DLNA 服务继续运行。 */
-    private fun stopCasting() {
-        LogHub.i(
-            TAG,
-            "stopCasting requested mode=${ui.mode} current=${currentRequest != null} " +
-                "castActive=$castActive",
-        )
-        resolveJob?.cancel()
-        resolveJob = null
-        playbackHistoryCoordinator.finish("user-stop")
-        clearLiveSession("user-stop")
-        pendingPause = false
-        pendingSeekMs = 0L
-        if (::playbackEngineHost.isInitialized) {
-            stopActivePlayback("user-stop")
-        } else {
-            LogHub.w(TAG, "stopCasting without player engine")
-        }
-        currentRequest = null
-        castActive = false
-        resolving = false
-        lastNva = null
-        lastTitle = ""
-        lastErrorRetry = null
-        runCatching { dlna.markCastFailed("user-stop") }
-        PlaybackDiagnostics.closeSession("user-stop")
-        LogHub.setCast("")
-        LogHub.setPlay("")
+    override fun showStoppedState() {
         ui = ui.copy(
             mode = TvMode.IDLE,
             destination = TvDestination.HOME,
@@ -1432,56 +1404,20 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             toast = "投屏已停止",
         )
     }
-
-    /** 展示错误信息并根据参数决定是否保留视频画面。 */
-    private fun showError(
-        title: String,
-        message: String,
-        code: String,
-        canRetry: Boolean,
-        keepVideo: Boolean = false,
-    ) {
-        playbackHistoryCoordinator.finish("error:$code")
-        val snapshot = if (::playbackEngineHost.isInitialized) {
-            runCatching { playbackEngineHost.stateSnapshot() }.getOrDefault("(unavailable)")
-        } else {
-            "(player engine unavailable)"
-        }
-        LogHub.e(
-            TAG,
-            "showError code=$code canRetry=$canRetry keepVideo=$keepVideo " +
-                "title=$title message=${LogRedaction.text(message)} snapshot=$snapshot",
+    override fun showErrorState(title: String, message: String, code: String, canRetry: Boolean) {
+        ui = ui.copy(
+            mode = TvMode.ERROR,
+            error = TvError(title, message, code, canRetry),
+            hudVisible = false,
+            isPlaying = false,
+            isBuffering = false,
+            isLive = false,
+            liveFormat = "",
+            liveCdn = "",
+            liveBackupCount = 0,
+            panel = null,
+            stopCastConfirm = false,
         )
-        PlaybackDiagnostics.attribute("ui.errorCode", code)
-        PlaybackDiagnostics.event(
-            "UiError",
-            "code=$code canRetry=$canRetry keepVideo=$keepVideo title=$title",
-        )
-        if (!keepVideo) {
-            clearLiveSession("show-error:$code")
-            if (::playbackEngineHost.isInitialized) {
-                stopActivePlayback("show-error:$code")
-            } else {
-                LogHub.w(TAG, "showError cannot stop playback: player engine unavailable")
-            }
-            currentRequest = null
-            castActive = false
-        }
-        runOnUiThread {
-            ui = ui.copy(
-                mode = TvMode.ERROR,
-                error = TvError(title, message, code, canRetry),
-                hudVisible = false,
-                isPlaying = false,
-                isBuffering = false,
-                isLive = false,
-                liveFormat = "",
-                liveCdn = "",
-                liveBackupCount = 0,
-                panel = null,
-                stopCastConfirm = false,
-            )
-        }
     }
 
     /** 首页连续两次返回退出，首按显示明确提示。 */
