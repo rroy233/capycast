@@ -490,6 +490,22 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 返回当前后端的统一播放状态。 */
     override fun snapshot(): PlaybackSnapshot = playbackEngineHost.snapshot(ui.volume)
 
+    override fun isPlaybackVisible(): Boolean = ui.mode == TvMode.PLAYING || ui.mode == TvMode.LOADING
+    override fun isBuffering(): Boolean = ui.isBuffering
+    override fun displayedDurationMs(): Long = ui.durationMs
+    override fun updateProgress(positionMs: Long, durationMs: Long, playing: Boolean, volume: Int, liveBackupCount: Int) {
+        ui = ui.copy(
+            positionMs = positionMs,
+            durationMs = durationMs,
+            isPlaying = playing,
+            volume = volume,
+            liveBackupCount = liveBackupCount,
+        )
+    }
+    override fun updateNetwork(wifiName: String, localIp: String) {
+        ui = ui.copy(network = wifiName, ip = localIp)
+    }
+
     /** 当前内容是否为直播。 */
     override fun isLive(): Boolean = currentRequest?.isLive == true
 
