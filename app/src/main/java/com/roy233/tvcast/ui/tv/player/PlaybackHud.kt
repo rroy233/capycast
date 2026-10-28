@@ -26,7 +26,7 @@ import androidx.compose.material.icons.rounded.Settings
 import com.roy233.tvcast.R
 import com.roy233.tvcast.ui.designsystem.*
 import com.roy233.tvcast.ui.model.PanelKind
-import com.roy233.tvcast.ui.model.PlaybackSpeed
+import com.roy233.tvcast.feature.playback.presentation.PlaybackSpeed
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors

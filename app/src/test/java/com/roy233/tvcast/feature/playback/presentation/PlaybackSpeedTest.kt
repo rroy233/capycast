@@ -1,4 +1,4 @@
-package com.roy233.tvcast.ui.model
+package com.roy233.tvcast.feature.playback.presentation
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

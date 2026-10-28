@@ -18,7 +18,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.ui.model.PanelKind
-import com.roy233.tvcast.ui.model.PlaybackSpeed
+import com.roy233.tvcast.feature.playback.presentation.PlaybackSpeed
 import com.roy233.tvcast.feature.cast.domain.CastContent
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.SettingsPage

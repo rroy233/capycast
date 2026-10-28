@@ -1,7 +1,7 @@
 package com.roy233.tvcast.feature.playback.application
 
 import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.ui.model.PlaybackSpeed
+import com.roy233.tvcast.feature.playback.presentation.PlaybackSpeed
 
 /**
  * 协调通用播放控制：暂停/恢复、进度调整、倍速与音量。

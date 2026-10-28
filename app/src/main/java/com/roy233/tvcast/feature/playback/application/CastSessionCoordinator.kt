@@ -14,7 +14,7 @@ import com.roy233.tvcast.feature.playback.model.PgcPlaybackFailure
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.feature.playback.model.CastResolution
 import com.roy233.tvcast.feature.playback.model.VodSession
-import com.roy233.tvcast.ui.model.PlaybackSpeed
+import com.roy233.tvcast.feature.playback.presentation.PlaybackSpeed
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
