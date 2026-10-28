@@ -178,7 +178,7 @@ class UpdateCoordinator(
         scope.launch {
             LogHub.i(TAG, "download requested version=${update.versionName}")
             setUpdateState { it.copy(status = UpdateStatus.VERIFYING, message = "正在检查已下载的安装包…") }
-            val cachedVerification = installer.verify(cacheFile, update)
+            val cachedVerification = installer.verify(cacheFile, update.sha256, update.versionCode)
             if (cachedVerification.isSuccess) {
                 LogHub.i(TAG, "verified cached apk version=${update.versionName} bytes=${cacheFile.length()}")
                 setReady(update, cacheFile, "已复用已验证的安装包")
@@ -212,7 +212,7 @@ class UpdateCoordinator(
         val update = updateState.availableUpdate ?: return
         scope.launch {
             setUpdateState { it.copy(status = UpdateStatus.VERIFYING, message = "正在再次校验安装包…") }
-            installer.verify(apk, update)
+            installer.verify(apk, update.sha256, update.versionCode)
                 .onSuccess {
                     if (installer.canRequestPackageInstalls()) {
                         setReady(update, apk, "正在打开系统安装器…")
@@ -255,7 +255,7 @@ class UpdateCoordinator(
         if (!manual) showToast("发现新版本 ${update.versionName}")
         scope.launch {
             val cacheFile = cacheFile(update)
-            if (installer.verify(cacheFile, update).isSuccess) {
+            if (installer.verify(cacheFile, update.sha256, update.versionCode).isSuccess) {
                 setReady(update, cacheFile, if (manual) "发现新版本，安装包已就绪" else "发现新版本")
             } else {
                 setUpdateState {
@@ -379,7 +379,7 @@ class UpdateCoordinator(
                     downloadId = null
                     LogHub.i(TAG, "download complete id=$id source=$source bytes=${cacheFile.length()}")
                     setUpdateState { it.copy(status = UpdateStatus.VERIFYING, message = "正在校验安装包…") }
-                    installer.verify(cacheFile, update)
+                    installer.verify(cacheFile, update.sha256, update.versionCode)
                         .onSuccess {
                             LogHub.i(TAG, "apk verification passed version=${update.versionName}")
                             setReady(update, cacheFile, "安装包校验完成")

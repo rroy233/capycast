@@ -60,6 +60,26 @@ class LayerDependencyTest {
     }
 
     @Test
+    fun `feature layer does not depend on data adapters`() {
+        assertNoImports(
+            packageDir = "feature",
+            forbidden = listOf("com.roy233.tvcast.data"),
+        )
+    }
+
+    @Test
+    fun `platform layer does not depend on feature data or ui packages`() {
+        assertNoImports(
+            packageDir = "platform",
+            forbidden = listOf(
+                "com.roy233.tvcast.feature",
+                "com.roy233.tvcast.data",
+                "com.roy233.tvcast.ui",
+            ),
+        )
+    }
+
+    @Test
     fun `platform player adapters do not depend on Bilibili data models`() {
         assertNoImports(
             packageDir = "platform/player",
