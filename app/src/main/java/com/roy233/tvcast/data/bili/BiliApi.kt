@@ -165,18 +165,6 @@ object BiliApi {
             }
     }
 
-    /** 保存账号导航接口返回的身份信息。 */
-    data class Nav(
-        /** 用户名。 */
-        val uname: String,
-        /** 用户头像地址。 */
-        val face: String,
-        /** 是否为大会员。 */
-        val vip: Boolean,
-        /** 账号标识。 */
-        val mid: Long,
-    )
-
     /** 将画质标识转换为展示文本。 */
     fun qnLabel(qn: Int): String = when (qn) {
         127 -> "8K"
@@ -511,26 +499,6 @@ object BiliApi {
     /** 用于端到端播放验证的示例 BV 标识。 */
     const val SAMPLE_BVID = "BV1GJ411x7h7"
 
-    /** 查询当前登录账号的身份信息。 */
-    fun nav(): Nav {
-        val text = get("https://api.bilibili.com/x/web-interface/nav", "nav")
-        val root = JsonParser.parseString(text).asJsonObject
-        val code = root.get("code")?.asInt ?: -1
-        if (code != 0) {
-            val msg = root.get("message")?.asString ?: "unknown"
-            error("nav code=$code message=$msg")
-        }
-        val data = root.getAsJsonObject("data")
-        val vipObject = data.getAsJsonObject("vip")
-        val vip = (vipObject?.get("status")?.asInt ?: 0) == 1 ||
-            (data.get("vipStatus")?.asInt ?: 0) == 1
-        return Nav(
-            uname = data.get("uname")?.asString ?: "",
-            face = data.get("face")?.asString ?: "",
-            vip = vip,
-            mid = data.get("mid")?.asLong ?: 0L,
-        )
-    }
 }
 
 /**

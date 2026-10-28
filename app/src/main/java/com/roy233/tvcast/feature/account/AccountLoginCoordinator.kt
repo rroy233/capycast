@@ -4,7 +4,7 @@ import android.content.Context
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.data.auth.AuthTokenStore
 import com.roy233.tvcast.data.auth.CastAuth
-import com.roy233.tvcast.data.bili.BiliApi
+import com.roy233.tvcast.feature.account.model.AccountNavigator
 import com.roy233.tvcast.platform.qr.QrCodeGenerator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +26,7 @@ class AccountLoginCoordinator(
     private val writeState: (AccountUiState) -> Unit,
     /** 登录令牌存储。 */
     private val authTokenStore: AuthTokenStore,
+    private val accountNavigator: AccountNavigator,
     /** 二维码生成器。 */
     private val qrCodeGenerator: QrCodeGenerator,
     /** 登录令牌可用时的回调。 */
@@ -224,12 +225,12 @@ class AccountLoginCoordinator(
     private fun fetchNav() {
         scope.launch {
             val nav = withContext(Dispatchers.IO) {
-                runCatching { BiliApi.nav() }.getOrNull()
+                runCatching { accountNavigator.currentProfile() }.getOrNull()
             }
             if (nav != null) {
                 update {
                     it.copy(
-                        accountName = nav.uname.ifBlank { "已登录" },
+                        accountName = nav.name.ifBlank { "已登录" },
                         vip = nav.vip,
                         mid = if (nav.mid > 0) nav.mid else it.mid,
                     )

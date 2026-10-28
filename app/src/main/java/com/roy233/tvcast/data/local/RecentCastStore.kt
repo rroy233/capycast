@@ -3,7 +3,6 @@ package com.roy233.tvcast.data.local
 import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.core.playback.PlaybackRequest
 
@@ -25,17 +24,6 @@ class RecentCastStore(context: Context) {
         val type = object : TypeToken<List<RecentCast>>() {}.type
         (gson.fromJson<List<RecentCast>>(raw, type) ?: emptyList()).take(MAX_ITEMS)
     }.getOrDefault(emptyList())
-
-    /**
-     * 将一次播放信息加入最近投屏记录并持久化。
-     *
-     * @param current 当前记录列表。
-     * @param info 待加入的播放信息。
-     * @return 去重并限制数量后的最新记录列表。
-     */
-    fun add(current: List<RecentCast>, info: BiliApi.PlayInfo): List<RecentCast> {
-        return add(current, BiliPlaybackRecord(info))
-    }
 
     /** 将播放器请求加入最近投屏记录并持久化。 */
     fun add(current: List<RecentCast>, request: PlaybackRequest): List<RecentCast> = add(
@@ -59,10 +47,6 @@ class RecentCastStore(context: Context) {
         runCatching { prefs.edit().putString(KEY_ITEMS, gson.toJson(list)).apply() }
         return list
     }
-
-    private fun BiliPlaybackRecord(info: BiliApi.PlayInfo) = PlaybackRecord(
-        info.aid, info.cid, info.title, info.cover, info.qualityLabel, info.isPgc, info.epId, info.seasonId,
-    )
 
     private data class PlaybackRecord(
         val aid: Long, val cid: Long, val title: String, val cover: String, val quality: String,

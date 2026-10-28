@@ -6,6 +6,9 @@ import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.feature.cast.domain.CastContent
+import com.roy233.tvcast.feature.cast.application.RecentCastCoordinator
+import com.roy233.tvcast.feature.cast.application.RecentCastHost
+import com.roy233.tvcast.feature.cast.application.CastRequestResolver
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
 import com.roy233.tvcast.feature.playback.model.PgcPlaybackFailure
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
@@ -22,17 +25,12 @@ import kotlinx.coroutines.withContext
 import android.os.SystemClock
 
 /** 投屏会话需要宿主提供的解析、播放与界面能力。 */
-interface CastSessionHost {
-    fun remembersPlaybackContent(): Boolean
+interface CastSessionHost : RecentCastHost {
     fun playbackSpeed(): Float
-    fun showRecentLoading(title: String)
     fun showIncomingCast(title: String)
     fun showResolveLoading(title: String)
     fun showPlayback(request: PlaybackRequest, seekToMs: Long)
     fun setDesiredPlaybackSpeed(speed: Float)
-    fun coroutineScope(): CoroutineScope
-    fun isResolving(): Boolean
-    fun setResolving(resolving: Boolean)
     fun cancelResolve()
     fun setResolveJob(job: Job)
     fun currentRequest(): PlaybackRequest?
@@ -40,14 +38,10 @@ interface CastSessionHost {
     fun setCastActive(active: Boolean)
     fun decodeCastContent(longDescription: String): CastContent?
     fun lastNva(): CastContent?
-    fun setLastNva(nva: CastContent?)
     fun setLastTitle(title: String)
     fun setRetry(action: (() -> Unit)?)
     fun clearLoginUi()
     fun setPendingPause(paused: Boolean)
-    fun reportError(title: String, message: String, code: String, canRetry: Boolean, keepVideo: Boolean)
-    fun addRecentRecord(request: PlaybackRequest)
-    fun newHistorySession()
     fun endLiveSession(reason: String)
     fun stopPlaybackForCast(reason: String)
     fun markCastFailed(code: String)
@@ -69,14 +63,6 @@ interface CastSessionHost {
     fun onDanmakuLayout()
     fun applyPlaybackRate(request: PlaybackRequest)
     suspend fun resolveLivePlayback(accessKey: String, roomId: Long): LivePlayInfo
-    suspend fun resolveVodPlayback(
-        aid: Long,
-        cid: Long,
-        bvid: String,
-        title: String,
-        epId: Long = 0L,
-        seasonId: Long = 0L,
-    ): PlaybackRequest
     fun applyPendingPause()
     fun vodSessionCoordinator(): VodPlaybackCoordinator
     fun liveSessionCoordinator(): LivePlaybackCoordinator
@@ -90,70 +76,22 @@ interface CastSessionHost {
 class CastSessionCoordinator(
     private val playback: CastSessionHost,
 ) {
+    private val recent = RecentCastCoordinator(playback, ::openPlayback)
+    private val requestResolver = CastRequestResolver(
+        accessKey = playback::accessKey,
+        resolveLive = playback::resolveLivePlayback,
+        rankLive = { playback.liveSessionCoordinator().cdn.rankInitial(it.qualityCandidates) },
+        resolveVod = { aid, cid, bvid, title, epId, seasonId ->
+            playback.resolveVodPlayback(aid, cid, bvid, title, epId, seasonId)
+        },
+        rankVod = { playback.vodSessionCoordinator().cdn.rankPlayback(it) },
+    )
 
     /** 将当前播放信息加入最近投屏记录。 */
-    fun recordRecent(request: PlaybackRequest) {
-        if (!playback.remembersPlaybackContent()) return
-        playback.addRecentRecord(request)
-    }
+    fun recordRecent(request: PlaybackRequest) = recent.record(request)
 
     /** 根据最近投屏记录重新解析并开始播放。 */
-    fun recast(recent: RecentCast) {
-        if (playback.isResolving()) {
-            LogHub.w(TAG, "recast ignored: another resolve is running")
-            return
-        }
-        playback.newHistorySession()
-        playback.setLastNva(null)
-        PlaybackDiagnostics.beginSession("recast")
-        PlaybackDiagnostics.attribute("cast.source", "recent")
-        PlaybackDiagnostics.attribute("recent.aid", recent.aid.toString())
-        PlaybackDiagnostics.attribute("recent.cid", recent.cid.toString())
-        PlaybackDiagnostics.attribute("recent.title", recent.title)
-        LogHub.i(
-            TAG,
-            "recast begin aid=${recent.aid} cid=${recent.cid} pgc=${recent.isPgc} " +
-                "epId=${recent.epId} seasonId=${recent.seasonId} title=${recent.title.take(40)}",
-        )
-        playback.coroutineScope().launch {
-            playback.setResolving(true)
-            playback.showRecentLoading(recent.title)
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    playback.resolveVodPlayback(
-                        aid = recent.aid,
-                        cid = recent.cid,
-                        bvid = "",
-                        title = recent.title,
-                        epId = recent.epId.takeIf { recent.isPgc } ?: 0L,
-                        seasonId = recent.seasonId.takeIf { recent.isPgc } ?: 0L,
-                    )
-                }
-            }
-            playback.setResolving(false)
-            result.onSuccess { openPlayback(it, 0L) }.onFailure {
-                LogHub.e(
-                    TAG,
-                    "recast resolve failed: ${LogRedaction.reason(it)}",
-                    it,
-                    stack = true,
-                )
-                PlaybackDiagnostics.fail(
-                    code = "RECAST_FAILED",
-                    message = it.message ?: "视频信息已失效",
-                    detail = "aid=${recent.aid} cid=${recent.cid} " +
-                        "reason=${LogRedaction.reason(it)}",
-                )
-                playback.reportError(
-                    title = "无法继续投屏",
-                    message = it.message ?: "视频信息已失效，请从手机重新投屏。",
-                    code = "RECAST_FAILED",
-                    canRetry = false,
-                    keepVideo = false,
-                )
-            }
-        }
-    }
+    fun recast(recent: RecentCast) = this.recent.recast(recent)
 
     /** 处理 DLNA 投屏请求并解析其媒体身份。 */
     fun handleCast(uri: String, title: String, longDescription: String) {
@@ -255,36 +193,7 @@ class CastSessionCoordinator(
         playback.setResolveJob(
             playback.coroutineScope().launch {
                 val result = withContext(Dispatchers.IO) {
-                    runCatching {
-                        when {
-                            nva.hasLive -> {
-                                val accessKey = playback.accessKey()
-                                    ?: error("TV account login is required for live playback")
-                                val liveInfo = playback.resolveLivePlayback(accessKey, nva.roomId)
-                                val routes = playback.liveSessionCoordinator()
-                                    .cdn.rankInitial(liveInfo.qualityCandidates)
-                                if (routes.isEmpty()) {
-                                    error("live response has no eligible CDN routes")
-                                }
-                                CastResolution.Live(liveInfo, routes)
-                            }
-                            nva.hasPgc -> CastResolution.Vod(
-                                playback.vodSessionCoordinator().cdn.rankPlayback(
-                                    playback.resolveVodPlayback(
-                                        aid = nva.aid, cid = nva.cid, bvid = nva.bvid.orEmpty(), title = title,
-                                        epId = nva.epId, seasonId = nva.seasonId,
-                                    ),
-                                ),
-                            )
-                            nva.hasUgc -> CastResolution.Vod(
-                                playback.vodSessionCoordinator().cdn.rankPlayback(
-                                    playback.resolveVodPlayback(nva.aid, nva.cid, nva.bvid.orEmpty(), title),
-                                ),
-                            )
-                            else ->
-                                error("no playable identity in nva_ext")
-                        }
-                    }
+                    runCatching { requestResolver.resolve(nva, title) }
                 }
                 if (!isActive) return@launch
                 playback.setResolving(false)

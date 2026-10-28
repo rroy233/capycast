@@ -10,7 +10,7 @@ class LayerDependencyTest {
     private val root = File("src/main/java/com/roy233/tvcast")
 
     @Test
-    fun `data layer depends only on routing contracts and playback models`() {
+    fun `data layer depends only on feature owned ports and models`() {
         val offenders = File(root, "data").walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
             .flatMap { file ->
@@ -19,7 +19,8 @@ class LayerDependencyTest {
                     .filterNot { line ->
                         line.contains("com.roy233.tvcast.feature.playback.model") ||
                             line.contains("com.roy233.tvcast.feature.playback.routing") ||
-                            line.contains("com.roy233.tvcast.feature.cast.domain")
+                            line.contains("com.roy233.tvcast.feature.cast.domain") ||
+                            line.contains("com.roy233.tvcast.feature.account.model")
                     }
                     .map { "${file.relativeTo(root).path}: $it" }
             }

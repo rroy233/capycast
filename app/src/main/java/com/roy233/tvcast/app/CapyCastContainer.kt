@@ -6,6 +6,7 @@ import com.roy233.tvcast.data.auth.CastAuth
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.BiliPlaybackResolver
 import com.roy233.tvcast.data.bili.BiliLivePlaybackResolver
+import com.roy233.tvcast.data.bili.BiliAccountNavigator
 import com.roy233.tvcast.feature.playback.model.LivePlaybackResolver
 import com.roy233.tvcast.data.local.DanmakuPreferences
 import com.roy233.tvcast.data.local.PlaybackHistoryOutbox
@@ -90,6 +91,7 @@ class CapyCastContainer(
             readState = readAccountState,
             writeState = writeAccountState,
             authTokenStore = authTokenStore,
+            accountNavigator = BiliAccountNavigator(authTokenStore),
             qrCodeGenerator = QrCodeGenerator(),
             onTokenAvailable = {
                 playbackHistoryCoordinator.onAccountAvailable(it.mid)
