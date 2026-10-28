@@ -3,7 +3,6 @@ package com.roy233.tvcast.app
 import android.content.Context
 import com.roy233.tvcast.data.auth.AuthTokenStore
 import com.roy233.tvcast.data.auth.CastAuth
-import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.BiliPlaybackResolver
 import com.roy233.tvcast.data.bili.BiliLivePlaybackResolver
 import com.roy233.tvcast.data.bili.BiliAccountNavigator
@@ -57,8 +56,6 @@ class CapyCastContainer(
 
     /** TV 登录令牌存储；直播协议需要其中的 access_key。 */
     val authTokenStore: AuthTokenStore by lazy { AuthTokenStore(context) }
-
-    init { BiliApi.bindSession(authTokenStore) }
 
     /** 将 B 站协议响应适配为播放器无关的请求。 */
     val playbackResolver: PlaybackResolver by lazy { BiliPlaybackResolver(authTokenStore) }

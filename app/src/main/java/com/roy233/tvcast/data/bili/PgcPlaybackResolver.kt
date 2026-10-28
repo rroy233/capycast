@@ -1,9 +1,8 @@
 package com.roy233.tvcast.data.bili
 
-import com.roy233.tvcast.data.bili.pgc.PsshBoxParser
+import com.roy233.tvcast.data.bili.pgc.PgcPsshReader
 
 import android.os.SystemClock
-import android.util.Base64
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -29,6 +28,9 @@ class PgcPlaybackResolver(
         .build(),
     private val wbiSigner: WbiSigner = WbiSigner(cookieProvider),
 ) {
+    private val psshReader = PgcPsshReader(client)
+    private val metadataResolver = PgcMetadataResolver(::getJson)
+    private val playurlFallback = PgcPlayurlFallback(::requestPlayurl)
 
     fun resolve(
         epId: Long,
@@ -42,7 +44,7 @@ class PgcPlaybackResolver(
             throw PgcPlaybackException("PGC_METADATA_FAILED", "缺少番剧分集或季标识")
         }
         val cookie = cookieProvider()
-        val metadata = loadEpisodeMetadata(epId, seasonId, cid, aid, cookie)
+        val metadata = metadataResolver.loadEpisodeMetadata(epId, seasonId, cid, aid, cookie)
         val resolvedEpId = metadata.episodeId.takeIf { it > 0L } ?: epId
         val resolvedSeasonId = metadata.seasonId.takeIf { it > 0L } ?: seasonId
         val resolvedCid = metadata.cid.takeIf { it > 0L } ?: cid
@@ -69,27 +71,7 @@ class PgcPlaybackResolver(
             throw PgcPlaybackException("PGC_PLAYURL_FAILED", "无法签名番剧播放请求", cause = failure)
         }
 
-        val v2 = requestPlayurl(V2_PLAYURL_PATH, signed, cookie, "pgc-playurl-v2")
-        val payload = when {
-            v2.code == 0 && v2.play != null -> v2.play
-            v2.code == 0 || v2.code in V2_LEGACY_FALLBACK_CODES -> {
-                LogHub.w(
-                    TAG,
-                    "PGC v2 response requires legacy fallback epId=$resolvedEpId " +
-                        "code=${v2.code} hasPayload=${v2.play != null}",
-                )
-                val legacy = requestPlayurl(LEGACY_PLAYURL_PATH, signed, cookie, "pgc-playurl-legacy")
-                if (legacy.code != 0) {
-                    throw playurlFailure("legacy", resolvedEpId, legacy.code, legacy.message)
-                }
-                legacy.play ?: throw PgcPlaybackException(
-                    noPlayableCode(legacy.play),
-                    "B 站未返回可解析的番剧播放信息",
-                    apiCode = legacy.code,
-                )
-            }
-            else -> throw playurlFailure("v2", resolvedEpId, v2.code, v2.message)
-        }
+        val payload = playurlFallback.resolve(signed, cookie, resolvedEpId)
 
         val title = metadata.episodeTitle
             .ifBlank { metadata.seasonTitle }
@@ -106,7 +88,7 @@ class PgcPlaybackResolver(
             cover = metadata.episodeCover.ifBlank { metadata.seasonCover },
             durationMs = metadata.durationMs,
         )
-        val protectedInfo = if (selected.isDrm) attachPssh(selected) else selected
+        val protectedInfo = if (selected.isDrm) psshReader.attach(selected) else selected
         LogHub.i(
             TAG,
             "PGC resolved epId=$resolvedEpId seasonId=$resolvedSeasonId aid=$resolvedAid cid=$resolvedCid " +
@@ -117,112 +99,6 @@ class PgcPlaybackResolver(
         )
         return protectedInfo
     }
-
-    private fun loadEpisodeMetadata(
-        epId: Long,
-        seasonId: Long,
-        cid: Long,
-        aid: Long,
-        cookie: String,
-    ): EpisodeMetadata {
-        val season = getJson(
-            SEASON_PATH.toHttpUrl().newBuilder().apply {
-                if (epId > 0L) addQueryParameter("ep_id", epId.toString())
-                else addQueryParameter("season_id", seasonId.toString())
-            }.build(),
-            cookie,
-            "pgc-season",
-        )
-        val code = season.int("code", -1)
-        if (code != 0) {
-            LogHub.e(TAG, "PGC season rejected epId=$epId seasonId=$seasonId code=$code")
-            throw PgcPlaybackException("PGC_METADATA_FAILED", "B 站未返回番剧详情", apiCode = code)
-        }
-        val rootData = season.objectOrNull("result") ?: season.objectOrNull("data")
-            ?: throw PgcPlaybackException("PGC_METADATA_FAILED", "番剧详情缺少数据")
-        val episodeList = episodesFrom(rootData)
-        val selectedFromSeason = when {
-            epId > 0L -> episodeList.firstOrNull { it.episodeId == epId }
-            cid > 0L -> episodeList.firstOrNull { it.cid == cid }
-            aid > 0L -> episodeList.firstOrNull { it.aid == aid }
-            else -> null
-        }
-        val directEpisode = rootData.objectOrNull("episode")
-            ?: rootData.objectOrNull("ep_info")
-            ?: rootData.objectOrNull("episode_info")
-        val direct = directEpisode?.let(::episodeFrom)
-        val selectedDirect = direct?.takeIf { candidate ->
-            when {
-                epId > 0L -> candidate.episodeId == epId
-                cid > 0L -> candidate.cid == cid
-                aid > 0L -> candidate.aid == aid
-                else -> false
-            }
-        }
-        val episode = selectedFromSeason ?: selectedDirect ?: run {
-            val resolvedSeason = rootData.long("season_id", seasonId)
-            if (resolvedSeason <= 0L) null else loadSeasonSections(resolvedSeason, cookie).firstOrNull { candidate ->
-                when {
-                    epId > 0L -> candidate.episodeId == epId
-                    cid > 0L -> candidate.cid == cid
-                    aid > 0L -> candidate.aid == aid
-                    else -> false
-                }
-            }
-        }
-        if (episode == null) {
-            LogHub.e(
-                TAG,
-                "PGC episode not found epId=$epId seasonId=${rootData.long("season_id", seasonId)} " +
-                    "cid=$cid aid=$aid episodes=${episodeList.size}",
-            )
-            throw PgcPlaybackException("PGC_METADATA_FAILED", "无法从番剧详情定位投屏分集")
-        }
-        return EpisodeMetadata(
-            episodeId = episode.episodeId,
-            seasonId = rootData.long("season_id", seasonId),
-            aid = episode.aid,
-            cid = episode.cid,
-            bvid = episode.bvid,
-            episodeTitle = listOf(episode.title, episode.longTitle).filter(String::isNotBlank).joinToString(" "),
-            seasonTitle = rootData.string("title"),
-            episodeCover = episode.cover,
-            seasonCover = rootData.string("cover"),
-            durationMs = episode.durationMs,
-        )
-    }
-
-    private fun loadSeasonSections(seasonId: Long, cookie: String): List<EpisodeMetadata> {
-        val url = "$SEASON_SECTION_PATH?season_id=$seasonId".toHttpUrl()
-        val root = getJson(url, cookie, "pgc-season-section")
-        val code = root.int("code", -1)
-        if (code != 0) {
-            LogHub.w(TAG, "PGC season section unavailable seasonId=$seasonId code=$code")
-            return emptyList()
-        }
-        val result = root.objectOrNull("result") ?: root.objectOrNull("data") ?: return emptyList()
-        val sections = mutableListOf<JsonObject>()
-        result.objectOrNull("main_section")?.array("episodes")?.mapNotNullTo(sections) { it.asObjectOrNull() }
-        result.array("section")?.forEach { section ->
-            section.asObjectOrNull()?.array("episodes")?.mapNotNullTo(sections) { it.asObjectOrNull() }
-        }
-        return sections.map(::episodeFrom)
-    }
-
-    private fun episodesFrom(root: JsonObject): List<EpisodeMetadata> =
-        root.array("episodes")?.mapNotNull { element -> element.asObjectOrNull()?.let(::episodeFrom) }.orEmpty()
-
-    private fun episodeFrom(json: JsonObject) = EpisodeMetadata(
-        episodeId = json.long("id", json.long("ep_id", 0L)),
-        seasonId = json.long("season_id", 0L),
-        aid = json.long("aid", 0L),
-        cid = json.long("cid", 0L),
-        bvid = json.string("bvid"),
-        title = json.string("title"),
-        longTitle = json.string("long_title"),
-        cover = json.string("cover").replace("http://", "https://"),
-        durationMs = json.long("duration", 0L),
-    )
 
     private fun requestPlayurl(
         path: String,
@@ -355,72 +231,6 @@ class PgcPlaybackResolver(
         )
     }
 
-    private fun attachPssh(info: BiliApi.PlayInfo): BiliApi.PlayInfo {
-        val tracks = listOfNotNull(info.video, info.audio)
-        val enriched = tracks.map { track ->
-            if (track.initializationRange.isBlank()) return@map track
-            val pssh = fetchPssh(track)
-            track.copy(psshBase64 = pssh)
-        }
-        val video = enriched.firstOrNull() ?: info.video
-        val audio = enriched.getOrNull(1)
-        if (enriched.none { it.psshBase64.isNotBlank() }) {
-            throw PgcPlaybackException(
-                "PGC_DRM_METADATA_INVALID",
-                "受保护媒体缺少 Widevine 初始化数据",
-            )
-        }
-        return info.copy(video = video, audio = audio)
-    }
-
-    private fun fetchPssh(track: BiliApi.Track): String {
-        val range = parseByteRange(track.initializationRange)
-            ?: throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine 初始化范围无效")
-        if (range.second - range.first + 1L > MAX_INIT_RANGE_BYTES) {
-            throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine 初始化数据范围过大")
-        }
-        val request = Request.Builder()
-            .url(track.url)
-            .header("User-Agent", BiliApi.UA)
-            .header("Referer", WEB_REFERER)
-            .header("Origin", WEB_ORIGIN)
-            .header("Range", "bytes=${range.first}-${range.second}")
-            .get()
-            .build()
-        try {
-            client.newCall(request).execute().use { response ->
-                if (response.code != 206 && !response.isSuccessful) {
-                    LogHub.e(
-                        TAG,
-                        "PGC DRM initialization range failed status=${response.code} " +
-                            "host=${LogRedaction.host(track.url)}",
-                    )
-                    throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "读取 Widevine 初始化数据失败")
-                }
-                val bytes = response.body?.source()?.readByteArray(MAX_INIT_RANGE_BYTES + 1L)
-                    ?: throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine 初始化数据为空")
-                if (bytes.size.toLong() > MAX_INIT_RANGE_BYTES) {
-                    throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine 初始化数据超出限制")
-                }
-                val pssh = PsshBoxParser.findWidevinePssh(bytes)
-                if (pssh == null) {
-                    LogHub.e(TAG, "PGC DRM init data has no Widevine PSSH host=${LogRedaction.host(track.url)}")
-                    return ""
-                }
-                return Base64.encodeToString(pssh, Base64.NO_WRAP)
-            }
-        } catch (failure: PgcPlaybackException) {
-            throw failure
-        } catch (failure: Exception) {
-            LogHub.e(
-                TAG,
-                "PGC DRM initialization read error=${LogRedaction.reason(failure)} " +
-                    "host=${LogRedaction.host(track.url)}",
-            )
-            throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "读取 Widevine 初始化数据失败", cause = failure)
-        }
-    }
-
     private fun getJson(url: HttpUrl, cookie: String, purpose: String): JsonObject {
         val started = SystemClock.elapsedRealtime()
         val request = Request.Builder()
@@ -468,36 +278,10 @@ class PgcPlaybackResolver(
         }
     }
 
-    private fun playurlFailure(endpoint: String, epId: Long, code: Int, message: String) =
-        PgcPlaybackException(
-            errorCode = if (code == -101 || code == -111) "PGC_LOGIN_REQUIRED" else "PGC_PLAYURL_FAILED",
-            userMessage = when (code) {
-                -101, -111 -> "请重新登录 B 站账号后重试"
-                -10403 -> "该番剧在当前地区不可播放"
-                else -> "B 站拒绝了番剧播放请求（code=$code）"
-            },
-            apiCode = code,
-        ).also {
-            LogHub.e(
-                TAG,
-                "PGC playurl rejected endpoint=$endpoint epId=$epId code=$code " +
-                    "message=${LogRedaction.text(message).take(120)}",
-            )
-        }
-
-    private fun noPlayableCode(play: JsonObject?) =
-        if (play?.bool("is_preview") == true) "PGC_PREVIEW_ONLY" else "PGC_MEDIA_UNAVAILABLE"
-
     companion object {
         private const val TAG = "PgcResolver"
-        private const val SEASON_PATH = "https://api.bilibili.com/pgc/view/web/season"
-        private const val SEASON_SECTION_PATH = "https://api.bilibili.com/pgc/web/season/section"
-        private const val V2_PLAYURL_PATH = "/pgc/player/web/v2/playurl"
-        private const val LEGACY_PLAYURL_PATH = "/pgc/player/web/playurl"
         private const val WEB_REFERER = "https://www.bilibili.com/"
         private const val WEB_ORIGIN = "https://www.bilibili.com"
-        private const val MAX_INIT_RANGE_BYTES = 1024L * 1024L
-        private val V2_LEGACY_FALLBACK_CODES = setOf(-400, -404)
 
         internal fun buildPlayurlParams(
             epId: Long,
@@ -562,14 +346,6 @@ class PgcPlaybackResolver(
             return dashHasVideo || durlHasAddress
         }
 
-        private fun parseByteRange(raw: String): Pair<Long, Long>? {
-            val parts = raw.trim().split('-', limit = 2)
-            if (parts.size != 2) return null
-            val start = parts[0].toLongOrNull() ?: return null
-            val end = parts[1].toLongOrNull() ?: return null
-            return (start to end).takeIf { start >= 0L && end >= start }
-        }
-
         private fun codecRank(codecid: Int): Int = when (codecid) {
             12 -> 3
             13 -> 2
@@ -580,47 +356,21 @@ class PgcPlaybackResolver(
 
     internal data class PlayurlEnvelope(val code: Int, val message: String, val play: JsonObject?)
 
-    private data class EpisodeMetadata(
-        val episodeId: Long,
-        val seasonId: Long,
-        val aid: Long,
-        val cid: Long,
-        val bvid: String,
-        val title: String = "",
-        val longTitle: String = "",
-        val episodeTitle: String = "",
-        val seasonTitle: String = "",
-        val cover: String = "",
-        val episodeCover: String = "",
-        val seasonCover: String = "",
-        val durationMs: Long = 0L,
-    )
 
-    private data class SeasonEpisode(
-        val episodeId: Long,
-        val seasonId: Long,
-        val aid: Long,
-        val cid: Long,
-        val bvid: String,
-        val title: String,
-        val longTitle: String,
-        val cover: String,
-        val durationMs: Long,
-    )
 }
 
 /** Structured failure that keeps the UI message separate from network diagnostics. */
 /** Minimal ISO-BMFF PSSH reader. Returns the complete Widevine PSSH atom. */
-private fun JsonObject.array(name: String): JsonArray? =
+internal fun JsonObject.array(name: String): JsonArray? =
     get(name)?.takeIf { it.isJsonArray }?.asJsonArray
 
-private fun JsonObject.string(name: String): String =
+internal fun JsonObject.string(name: String): String =
     runCatching { get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty() }.getOrDefault("")
 
-private fun JsonObject.long(name: String, fallback: Long): Long =
+internal fun JsonObject.long(name: String, fallback: Long): Long =
     runCatching { get(name)?.takeUnless { it.isJsonNull }?.asLong ?: fallback }.getOrDefault(fallback)
 
-private fun JsonObject.int(name: String, fallback: Int): Int =
+internal fun JsonObject.int(name: String, fallback: Int): Int =
     runCatching { get(name)?.takeUnless { it.isJsonNull }?.asInt ?: fallback }.getOrDefault(fallback)
 
 private fun JsonObject.bool(name: String): Boolean {
@@ -637,8 +387,8 @@ private fun JsonObject.intArray(name: String): List<Int> = array(name)
     ?.mapNotNull { element -> runCatching { element.asInt }.getOrNull() }
     .orEmpty()
 
-private fun JsonArray.asObjectOrNull(): JsonObject? =
+internal fun JsonArray.asObjectOrNull(): JsonObject? =
     firstOrNull()?.takeIf { it.isJsonObject }?.asJsonObject
 
-private fun JsonElement.asObjectOrNull(): JsonObject? =
+internal fun JsonElement.asObjectOrNull(): JsonObject? =
     takeIf { it.isJsonObject }?.asJsonObject

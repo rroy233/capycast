@@ -80,6 +80,8 @@ import com.roy233.tvcast.core.danmaku.DanmakuSettings
 import com.roy233.tvcast.core.danmaku.DfmDanmakuEngine
 import com.roy233.tvcast.core.danmaku.LiveDanmakuController
 import com.roy233.tvcast.core.danmaku.MediaClock
+import com.roy233.tvcast.data.bili.danmaku.DanmakuApi
+import com.roy233.tvcast.data.bili.danmaku.DanmakuRepository
 import com.roy233.tvcast.feature.history.PlaybackHistoryContent
 import com.roy233.tvcast.feature.update.UpdateChannel
 import com.roy233.tvcast.feature.account.AccountUiState
@@ -848,7 +850,10 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         }.onSuccess { host ->
             playbackEngineHost = host
             danmakuEngine = DfmDanmakuEngine(danmakuView, danmakuClock)
-            danmakuController = DanmakuController(scope, danmakuEngine, danmakuClock)
+            danmakuController = DanmakuController(
+                scope, danmakuEngine, danmakuClock,
+                DanmakuRepository(DanmakuApi(authTokenStore)),
+            )
             liveDanmakuController = LiveDanmakuController(this, scope, danmakuEngine, danmakuClock)
             danmakuController.applySettings(danmakuSettings)
             liveDanmakuController.applySettings(danmakuSettings)

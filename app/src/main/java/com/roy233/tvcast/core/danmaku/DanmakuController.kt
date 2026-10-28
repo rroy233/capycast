@@ -21,7 +21,7 @@ class DanmakuController(
     private val scope: CoroutineScope,
     private val engine: DfmDanmakuEngine,
     private val clock: MediaClock = MediaClock(),
-    private val repository: DanmakuRepository = DanmakuRepository(),
+    private val repository: DanmakuRepository,
 ) {
 
     private var aid = 0L

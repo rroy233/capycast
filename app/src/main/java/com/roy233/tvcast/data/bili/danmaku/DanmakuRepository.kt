@@ -7,7 +7,7 @@ package com.roy233.tvcast.data.bili.danmaku
  * 网络请求在锁外执行，避免预取阻塞当前段读取。
  */
 class DanmakuRepository(
-    private val api: DanmakuApi = DanmakuApi(),
+    private val api: DanmakuApi,
 ) {
 
     private val segmentCache = LinkedHashMap<Int, DmSegment>(8, 0.75f, true)

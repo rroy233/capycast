@@ -8,6 +8,7 @@ import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
 /** B 站普通视频与 PGC 协议的播放请求 adapter。 */
 class BiliPlaybackResolver(
     sessionReader: BiliSessionReader,
+    private val videoRepository: BiliVideoRepository = BiliVideoRepository(sessionReader),
     private val pgcResolver: PgcPlaybackResolver = PgcPlaybackResolver(cookieProvider = sessionReader::cookie),
 ) : PlaybackResolver {
     override suspend fun resolveVod(
@@ -21,7 +22,7 @@ class BiliPlaybackResolver(
         val response = if (epId > 0L || seasonId > 0L) {
             pgcResolver.resolve(epId, seasonId, cid, aid, bvid, title)
         } else {
-            BiliApi.resolveByAidCid(aid, cid, title, bvid)
+            videoRepository.resolveByAidCid(aid, cid, title, bvid)
         }
         return BiliPlaybackMapper.map(response)
     }
