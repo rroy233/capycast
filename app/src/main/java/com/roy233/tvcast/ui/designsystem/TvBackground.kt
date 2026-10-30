@@ -21,7 +21,7 @@ import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.TileMode
 
-/** 绘制电视端环境背景和动态光晕。 */
+/** 绘制低饱和影院式环境背景。 */
 @Composable
 fun TvBackground(modifier: Modifier = Modifier) {
     val reduceMotion = rememberReduceMotion()
@@ -43,50 +43,17 @@ fun TvBackground(modifier: Modifier = Modifier) {
     }
 
     androidx.compose.foundation.Canvas(modifier.fillMaxSize()) {
-        drawRect(Color(0xFF06060A))
+        drawRect(Color(0xFF090C10))
 
-        val pinkCenter = Offset(size.width * (0.10f + 0.05f * t), size.height * 0.10f)
+        // A quiet pool of light gives the empty state depth without coloring the glass.
+        val spot = Offset(size.width * (0.68f + 0.02f * t), size.height * 0.20f)
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(Color(0x59FB7299), Color(0x22FB7299), Color.Transparent),
-                center = pinkCenter,
-                radius = size.maxDimension * 0.95f,
-            ),
-            radius = size.maxDimension * 0.95f,
-            center = pinkCenter,
-        )
-
-        val blueCenter = Offset(size.width * (0.92f - 0.04f * t), size.height * 0.84f)
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color(0x4D00A1D6), Color(0x1A00A1D6), Color.Transparent),
-                center = blueCenter,
-                radius = size.maxDimension * 0.72f,
-            ),
-            radius = size.maxDimension * 0.72f,
-            center = blueCenter,
-        )
-
-        val violetCenter = Offset(size.width * 0.58f, size.height * (0.28f + 0.08f * t))
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color(0x338B5CF6), Color.Transparent),
-                center = violetCenter,
-                radius = size.maxDimension * 0.55f,
-            ),
-            radius = size.maxDimension * 0.55f,
-            center = violetCenter,
-        )
-
-        // A soft cinematic spotlight behind the casting card.
-        val spot = Offset(size.width * 0.72f, size.height * 0.18f)
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.White.copy(alpha = 0.06f), Color.Transparent),
+                colors = listOf(Color(0xFF8FA6B5).copy(alpha = 0.12f), Color.Transparent),
                 center = spot,
-                radius = size.maxDimension * 0.42f,
+                radius = size.maxDimension * 0.48f,
             ),
-            radius = size.maxDimension * 0.42f,
+            radius = size.maxDimension * 0.48f,
             center = spot,
         )
 

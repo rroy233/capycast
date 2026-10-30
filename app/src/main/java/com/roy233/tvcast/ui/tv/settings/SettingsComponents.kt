@@ -185,7 +185,7 @@ internal fun SettingsToggleRow(
                 .width(62.dp)
                 .height(34.dp)
                 .clip(CircleShape)
-                .background(if (checked) TvColors.pink else Color.White.copy(alpha = 0.20f)),
+                .background(if (checked) TvColors.accent else Color.White.copy(alpha = 0.20f)),
         ) {
             Box(
                 modifier = Modifier

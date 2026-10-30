@@ -149,14 +149,8 @@ internal fun HelpSheet(state: TvUiState, actions: TvActions) {
                 .widthIn(max = 640.dp)
                 .fillMaxWidth(0.76f)
                 .pointerInput(Unit) {},
-            tint = Color(0xD90B0B0F),
-            borderAlpha = 0.36f,
-            highlightAlpha = 0.30f,
-            shadow = 44.dp,
-            useBackdrop = true,
-            blurRadius = 36.dp,
-            lensHeight = 12.dp,
-            lensAmount = 18.dp,
+            material = GlassMaterial.Panel,
+            size = GlassSize.Large,
         ) {
             Column(
                 Modifier.padding(horizontal = 30.dp, vertical = 26.dp),
@@ -187,7 +181,7 @@ private fun HelpStep(number: String, text: String) {
     ) {
         BasicText(
             text = number,
-            style = TvType.bodyMedium.copy(color = TvColors.pink, fontSize = 20.sp),
+            style = TvType.bodyMedium.copy(color = TvColors.accent, fontSize = 20.sp),
         )
         BasicText(
             text = text,
@@ -243,10 +237,8 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                     .fillMaxWidth(0.80f)
                     .heightIn(max = panelMaxHeight)
                     .align(Alignment.Center),
-                tint = Color(0xF20B0B0F),
-                borderAlpha = 0.30f,
-                highlightAlpha = 0.24f,
-                shadow = 38.dp,
+                material = GlassMaterial.Panel,
+                size = GlassSize.Large,
             ) {
                 Column(
                     Modifier

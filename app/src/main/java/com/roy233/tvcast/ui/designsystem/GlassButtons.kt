@@ -42,7 +42,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -85,16 +84,6 @@ fun GlassButton(
         label = "glass-button-scale",
     )
     val shape = RoundedCornerShape(50)
-    val bg = when {
-        destructive -> Brush.linearGradient(
-            listOf(TvColors.error, Color(0xFFB52B22))
-        )
-        primary -> Brush.linearGradient(
-            listOf(TvColors.pink, Color(0xFFE84A8A), TvColors.violet)
-        )
-        else -> null
-    }
-
     GlassSurface(
         modifier = modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
@@ -110,17 +99,15 @@ fun GlassButton(
             )
             .height(if (compact) 50.dp else TvDimens.buttonHeight)
             .defaultMinSize(minWidth = minWidth),
+        material = GlassMaterial.Control,
+        size = if (compact) GlassSize.Compact else GlassSize.Standard,
         shape = shape,
-        tint = if (primary || destructive) Color.Transparent else TvColors.glassTint,
-        borderAlpha = when {
-            focused -> 0.85f
-            primary -> 0.50f
-            else -> 0.26f
+        accentColor = when {
+            destructive -> TvColors.error
+            primary -> TvColors.accent
+            else -> null
         },
-        highlightAlpha = if (focused) 0.70f else 0.42f,
-        shadow = if (focused) 26.dp else 10.dp,
-        shadowColor = if (focused) Color.White.copy(alpha = 0.16f) else Color.Black,
-        backgroundBrush = bg,
+        emphasized = focused || primary || destructive,
         contentAlignment = Alignment.Center,
     ) {
         Row(
@@ -159,7 +146,7 @@ fun GlassIconButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     selected: Boolean = false,
-    selectedColor: Color = TvColors.pink,
+    selectedColor: Color = TvColors.accent,
     size: Dp = TvDimens.iconButtonSize,
     focusRequester: FocusRequester? = null,
 ) {
@@ -195,24 +182,11 @@ fun GlassIconButton(
                 role = Role.Button,
                 onClick = onClick,
             ),
+        material = GlassMaterial.Control,
+        size = GlassSize.Compact,
         shape = CircleShape,
-        tint = if (selected) selectedColor.copy(alpha = 0.30f) else Color(0x33000000),
-        borderAlpha = when {
-            focused -> 0.95f
-            selected -> 0.72f
-            else -> 0.28f
-        },
-        highlightAlpha = when {
-            focused -> 0.75f
-            selected -> 0.60f
-            else -> 0.44f
-        },
-        shadow = if (focused) 26.dp else 10.dp,
-        shadowColor = when {
-            focused -> Color.White.copy(alpha = 0.20f)
-            selected -> selectedColor.copy(alpha = 0.34f)
-            else -> Color.Black
-        },
+        accentColor = if (selected) selectedColor else null,
+        emphasized = focused || selected,
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -269,7 +243,7 @@ fun PrimaryPlayButton(
             .background(Color.White)
             .border(
                 width = 2.dp,
-                color = if (focused) TvColors.pink.copy(alpha = 0.95f) else Color.Transparent,
+                color = if (focused) TvColors.accent.copy(alpha = 0.95f) else Color.Transparent,
                 shape = CircleShape,
             )
             .semantics { contentDescription = if (isPlaying) "暂停" else "播放" }

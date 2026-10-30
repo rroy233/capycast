@@ -39,12 +39,10 @@ import androidx.compose.ui.unit.DpOffset
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.highlight.HighlightStyle
 import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
 
 /** 判断系统是否要求减少动画。 */
 @Composable
@@ -81,28 +79,90 @@ internal fun rememberNoiseBitmap(): ImageBitmap {
 /** 提供当前界面可复用的背景模糊源。 */
 val LocalGlassBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
+/** 统一液态玻璃的使用场景，页面仅选择材质而不自行拼装渲染参数。 */
+enum class GlassMaterial {
+    /** 悬浮导航与侧边菜单。 */
+    Navigation,
+    /** 弹窗、登录卡片和设置面板。 */
+    Panel,
+    /** 按钮、胶囊和轻量操作控件。 */
+    Control,
+    /** 播放 HUD；不尝试采样独立的视频 Surface。 */
+    Hud,
+}
+
+/** 按控件短边缩放玻璃的模糊和透镜强度。 */
+enum class GlassSize(val effectScale: Float) {
+    Compact(0.72f),
+    Standard(1f),
+    Large(1.22f),
+}
+
+private data class GlassMaterialSpec(
+    val tint: Color,
+    val borderAlpha: Float,
+    val highlightAlpha: Float,
+    val shadow: Dp,
+    val blurRadius: Dp,
+    val supportsBackdrop: Boolean,
+)
+
+private fun GlassMaterial.specification(): GlassMaterialSpec = when (this) {
+    GlassMaterial.Navigation -> GlassMaterialSpec(
+        tint = Color(0x66151D26),
+        borderAlpha = 0.32f,
+        highlightAlpha = 0.32f,
+        shadow = 20.dp,
+        blurRadius = 26.dp,
+        supportsBackdrop = true,
+    )
+    GlassMaterial.Panel -> GlassMaterialSpec(
+        tint = Color(0x70151D26),
+        borderAlpha = 0.32f,
+        highlightAlpha = 0.34f,
+        shadow = 24.dp,
+        blurRadius = 26.dp,
+        supportsBackdrop = true,
+    )
+    GlassMaterial.Control -> GlassMaterialSpec(
+        tint = Color(0x35E7EBF5),
+        borderAlpha = 0.24f,
+        highlightAlpha = 0.28f,
+        shadow = 8.dp,
+        blurRadius = 16.dp,
+        supportsBackdrop = true,
+    )
+    GlassMaterial.Hud -> GlassMaterialSpec(
+        // Video is composed on a separate Surface; use a translucent dark frost for white controls.
+        tint = Color(0x5C18202C),
+        borderAlpha = 0.36f,
+        highlightAlpha = 0.38f,
+        shadow = 30.dp,
+        blurRadius = 0.dp,
+        supportsBackdrop = false,
+    )
+}
+
 /** 绘制带有玻璃材质、边框、高光和可选背景模糊的容器。 */
 @Composable
 fun GlassSurface(
     modifier: Modifier = Modifier,
+    material: GlassMaterial = GlassMaterial.Control,
+    size: GlassSize = GlassSize.Standard,
     shape: Shape = RoundedCornerShape(TvDimens.cardCorner),
-    tint: Color = TvColors.glassTint,
-    borderAlpha: Float = 0.28f,
-    highlightAlpha: Float = 0.42f,
-    shadow: Dp = 24.dp,
-    shadowColor: Color = Color.Black,
-    backgroundBrush: Brush? = null,
-    useBackdrop: Boolean = false,
-    drawBackdropHighlight: Boolean = true,
-    blurRadius: Dp = 26.dp,
-    lensHeight: Dp = 14.dp,
-    lensAmount: Dp = 22.dp,
+    accentColor: Color? = null,
+    emphasized: Boolean = false,
     contentAlignment: Alignment = Alignment.TopStart,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val noise = rememberNoiseBitmap()
     val backdrop = LocalGlassBackdrop.current
-    val canUseBackdrop = useBackdrop &&
+    val spec = material.specification()
+    val tint = accentColor?.copy(alpha = if (emphasized) 0.18f else 0.12f) ?: spec.tint
+    val borderAlpha = if (emphasized) (spec.borderAlpha + 0.22f).coerceAtMost(0.70f) else spec.borderAlpha
+    val highlightAlpha = if (emphasized) (spec.highlightAlpha + 0.18f).coerceAtMost(0.60f) else spec.highlightAlpha
+    val shadow = if (emphasized) spec.shadow + 5.dp else spec.shadow
+    val canUseBackdrop = spec.supportsBackdrop &&
         backdrop != null &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
@@ -111,8 +171,8 @@ fun GlassSurface(
             elevation = shadow,
             shape = shape,
             clip = false,
-            ambientColor = shadowColor,
-            spotColor = shadowColor,
+            ambientColor = Color.Black,
+            spotColor = Color.Black,
         )
         .clip(shape)
 
@@ -122,53 +182,22 @@ fun GlassSurface(
             shape = { shape },
             effects = {
                 vibrancy()
-                blur(blurRadius.toPx())
-                lens(
-                    refractionHeight = lensHeight.toPx(),
-                    refractionAmount = lensAmount.toPx(),
-                    depthEffect = true,
-                    chromaticAberration = true,
-                )
+                blur((spec.blurRadius * size.effectScale).toPx())
             },
-            highlight = if (drawBackdropHighlight) {
-                {
-                    Highlight(
-                        width = 0.7.dp,
-                        alpha = 0.72f,
-                        style = HighlightStyle.Ambient,
-                    )
-                }
-            } else {
-                null
+            highlight = {
+                Highlight(width = 0.7.dp, alpha = highlightAlpha, style = HighlightStyle.Ambient)
             },
-            shadow = if (drawBackdropHighlight) {
-                {
-                    Shadow(
-                        radius = shadow,
-                        color = Color.Black.copy(alpha = 0.32f),
-                    )
-                }
-            } else {
-                null
-            },
-            innerShadow = if (drawBackdropHighlight) {
-                {
-                    InnerShadow(
-                        radius = 18.dp,
-                        offset = DpOffset(0.dp, 6.dp),
-                        color = Color.Black.copy(alpha = 0.20f),
-                    )
-                }
-            } else {
-                null
+            shadow = null,
+            innerShadow = {
+                InnerShadow(radius = 12.dp, offset = DpOffset(0.dp, 3.dp), color = Color.Black.copy(alpha = 0.08f))
             },
             onDrawSurface = {
-                drawGlassSurface(tint, highlightAlpha, noise, backgroundBrush)
+                drawGlassSurface(tint, highlightAlpha, noise)
             },
         )
     } else {
         base.drawWithContent {
-            drawGlassSurface(tint, highlightAlpha, noise, backgroundBrush)
+            drawGlassSurface(tint, highlightAlpha, noise)
             drawContent()
             drawGlassBorder(shape, borderAlpha)
         }
@@ -186,27 +215,22 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGlassSurface(
     tint: Color,
     highlightAlpha: Float,
     noise: ImageBitmap,
-    backgroundBrush: Brush?,
 ) {
-    if (backgroundBrush != null) {
-        drawRect(backgroundBrush)
-    } else {
-        drawRect(tint)
-    }
+    drawRect(tint)
 
     drawRect(
         Brush.verticalGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.13f),
-                Color.White.copy(alpha = 0.035f),
-                Color.White.copy(alpha = 0.015f),
+                Color.White.copy(alpha = 0.055f),
+                Color.White.copy(alpha = 0.012f),
+                Color.Transparent,
             )
         )
     )
     drawRect(
         Brush.linearGradient(
             colors = listOf(
-                Color.White.copy(alpha = highlightAlpha * 0.22f),
+                Color.White.copy(alpha = highlightAlpha * 0.12f),
                 Color.Transparent,
             ),
             start = Offset.Zero,
@@ -217,11 +241,11 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGlassSurface(
         brush = ShaderBrush(
             ImageShader(noise, TileMode.Repeated, TileMode.Repeated)
         ),
-        alpha = 0.045f,
+        alpha = 0.018f,
     )
     drawRect(
         Brush.verticalGradient(
-            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.28f)),
+            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.07f)),
             startY = size.height * 0.45f,
         )
     )

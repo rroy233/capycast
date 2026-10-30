@@ -53,6 +53,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -96,6 +97,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -136,26 +138,27 @@ internal fun Sidebar(
         }
     }
 
-    GlassSurface(
-        modifier = Modifier
-            .fillMaxHeight()
-            .width(208.dp)
-            .tvFocusRegion(),
-        shape = RoundedCornerShape(0.dp),
-        tint = Color(0xB30B0B0F),
-        borderAlpha = 0f,
-        highlightAlpha = 0.10f,
-        shadow = 0.dp,
-        useBackdrop = true,
-        drawBackdropHighlight = false,
-        blurRadius = 40.dp,
-        lensHeight = 8.dp,
-        lensAmount = 12.dp,
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.CenterStart,
     ) {
+        GlassSurface(
+            modifier = Modifier
+                .padding(start = 48.dp)
+                .width(272.dp)
+                .heightIn(max = 420.dp)
+                .wrapContentHeight()
+                .testTag("sidebar-panel")
+                .tvFocusRegion(),
+            material = GlassMaterial.Navigation,
+            size = GlassSize.Large,
+            shape = RoundedCornerShape(36.dp),
+        ) {
         Column(
             Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 24.dp),
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -203,7 +206,7 @@ internal fun Sidebar(
                 }
             }
 
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.height(16.dp))
 
             SidebarItem(
                 title = "Bilibili 投屏",
@@ -218,7 +221,6 @@ internal fun Sidebar(
                 },
                 focusRequester = homeFocus,
             )
-            Spacer(Modifier.height(4.dp))
             SidebarItem(
                 title = "设置",
                 icon = Icons.Rounded.Settings,
@@ -233,17 +235,8 @@ internal fun Sidebar(
                 focusRequester = settingsFocus,
                 badge = state.update.availableUpdate != null,
             )
-
-            Spacer(Modifier.weight(1f))
+            }
         }
-
-        Box(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .width(1.dp)
-                .background(Color.White.copy(alpha = 0.06f))
-        )
     }
 }
 
@@ -265,64 +258,70 @@ private fun SidebarItem(
         animationSpec = spring(dampingRatio = 0.85f, stiffness = 420f),
         label = "sidebar-item",
     )
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(20.dp)
 
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(46.dp)
+            .height(56.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .focusRequester(focusRequester)
             .clip(shape)
             .background(
-                when {
-                    selected -> Brush.linearGradient(listOf(TvColors.pink, TvColors.pinkDeep))
-                    focused -> Brush.linearGradient(
-                        listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.05f))
-                    )
-                    else -> Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
-                }
+                Color.White.copy(
+                    alpha = when {
+                        focused -> 0.16f
+                        selected -> 0.10f
+                        else -> 0.03f
+                    }
+                )
             )
             .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White.copy(alpha = 0.75f) else Color.Transparent,
-                shape = shape,
+                1.dp,
+                Color.White.copy(alpha = if (focused) 0.48f else if (selected) 0.18f else 0.06f),
+                shape,
             )
+            .focusRequester(focusRequester)
             .clickable(
                 interactionSource = interaction,
                 indication = null,
                 role = Role.Button,
                 onClick = onClick,
-            )
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (selected) Color.White else Color.White.copy(alpha = 0.70f),
-            modifier = Modifier.size(20.dp),
-        )
-        BasicText(
-            text = title,
-            style = TvType.bodyMedium.copy(
-                color = if (selected || focused) Color.White else TvColors.textSecondary,
-                fontSize = 20.sp,
             ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (badge) {
-            Spacer(Modifier.weight(1f))
-            Box(
-                modifier = Modifier
-                    .size(9.dp)
-                    .clip(CircleShape)
-                    .background(TvColors.error)
-                    .border(1.dp, Color.White.copy(alpha = 0.9f), CircleShape)
-                    .semantics { contentDescription = "有新版本" },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) Color.White else Color.White.copy(alpha = 0.78f),
+                modifier = Modifier.size(22.dp),
             )
+            BasicText(
+                text = title,
+                style = TvType.bodyMedium.copy(
+                    color = if (selected || focused) Color.White else TvColors.textSecondary,
+                    fontSize = 20.sp,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (badge) {
+                Spacer(Modifier.weight(1f))
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(TvColors.error)
+                        .border(1.dp, Color.White.copy(alpha = 0.9f), CircleShape)
+                        .semantics { contentDescription = "有新版本" },
+                )
+            }
         }
     }
 }

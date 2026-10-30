@@ -156,8 +156,6 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
         }
         val metaSize = if (compact) 17.sp else 23.sp
 
-        HomeBackdrop(featured, compact)
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -170,7 +168,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                PulseDot(if (state.loggedIn) TvColors.pink else TvColors.warning, 7.dp)
+                PulseDot(if (state.loggedIn) TvColors.accent else TvColors.warning, 7.dp)
                 BasicText(
                     text = if (state.loggedIn) "等待手机投屏" else "访客模式",
                     style = TvType.caption.copy(
@@ -254,8 +252,8 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
 
 /** 根据当前推荐内容绘制首页背景。 */
 @Composable
-private fun HomeBackdrop(featured: RecentCast?, compact: Boolean) {
-    Box(Modifier.fillMaxSize()) {
+internal fun HomeBackdrop(featured: RecentCast?, compact: Boolean, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxSize()) {
         if (featured != null && featured.cover.isNotBlank()) {
             AsyncImage(
                 model = featured.cover,
@@ -284,8 +282,8 @@ private fun HomeBackdrop(featured: RecentCast?, compact: Boolean) {
                 .fillMaxSize()
                 .background(
                     Brush.horizontalGradient(
-                        0f to Color.Black.copy(alpha = 0.88f),
-                        0.52f to Color.Black.copy(alpha = 0.55f),
+                        0f to Color.Black.copy(alpha = 0.62f),
+                        0.52f to Color.Black.copy(alpha = 0.34f),
                         0.82f to Color.Transparent,
                     )
                 )
@@ -304,24 +302,15 @@ private fun HeroArtwork(compact: Boolean) {
         val corner = CornerRadius(if (compact) 18.dp.toPx() else 26.dp.toPx())
         val inset = if (compact) 6.dp.toPx() else 9.dp.toPx()
 
-        // Light spilling from behind the screen.
+        // A single diffuse reflection keeps the illustration subordinate to the content.
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(TvColors.pink.copy(alpha = 0.20f), Color.Transparent),
+                colors = listOf(Color(0xFF9BB8CC).copy(alpha = 0.10f), Color.Transparent),
                 center = Offset(tvLeft + tvW * 0.36f, tvTop + tvH * 0.32f),
                 radius = tvW * 0.72f,
             ),
             radius = tvW * 0.72f,
             center = Offset(tvLeft + tvW * 0.36f, tvTop + tvH * 0.32f),
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(TvColors.blue.copy(alpha = 0.18f), Color.Transparent),
-                center = Offset(tvLeft + tvW * 0.78f, tvTop + tvH * 0.74f),
-                radius = tvW * 0.62f,
-            ),
-            radius = tvW * 0.62f,
-            center = Offset(tvLeft + tvW * 0.78f, tvTop + tvH * 0.74f),
         )
 
         // Soft shadow / bezel.
@@ -332,9 +321,7 @@ private fun HeroArtwork(compact: Boolean) {
             cornerRadius = corner,
         )
         drawRoundRect(
-            brush = Brush.linearGradient(
-                listOf(Color(0xFF151018), Color(0xFF070A10))
-            ),
+            color = Color(0xFF151B22),
             topLeft = Offset(tvLeft, tvTop),
             size = Size(tvW, tvH),
             cornerRadius = corner,
@@ -346,29 +333,18 @@ private fun HeroArtwork(compact: Boolean) {
         val sh = tvH - inset * 2
         clipRect(sx, sy, sx + sw, sy + sh) {
             drawRect(
-                brush = Brush.linearGradient(
-                    listOf(Color(0xFF250B18), Color(0xFF0A1220))
-                ),
+                color = Color(0xFF101923),
                 topLeft = Offset(sx, sy),
                 size = Size(sw, sh),
             )
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(TvColors.pink.copy(alpha = 0.42f), Color.Transparent),
-                    center = Offset(sx + sw * 0.24f, sy + sh * 0.38f),
-                    radius = sw * 0.52f,
+                    colors = listOf(Color(0xFF829AAA).copy(alpha = 0.18f), Color.Transparent),
+                    center = Offset(sx + sw * 0.55f, sy + sh * 0.40f),
+                    radius = sw * 0.60f,
                 ),
-                radius = sw * 0.52f,
-                center = Offset(sx + sw * 0.24f, sy + sh * 0.38f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(TvColors.blue.copy(alpha = 0.36f), Color.Transparent),
-                    center = Offset(sx + sw * 0.80f, sy + sh * 0.70f),
-                    radius = sw * 0.52f,
-                ),
-                radius = sw * 0.52f,
-                center = Offset(sx + sw * 0.80f, sy + sh * 0.70f),
+                radius = sw * 0.60f,
+                center = Offset(sx + sw * 0.55f, sy + sh * 0.40f),
             )
 
             // A restrained play glyph in the screen, not a logo.
@@ -443,9 +419,7 @@ private fun HeroArtwork(compact: Boolean) {
             cornerRadius = CornerRadius(9.dp.toPx()),
         )
         drawRoundRect(
-            brush = Brush.linearGradient(
-                listOf(TvColors.pink.copy(alpha = 0.55f), TvColors.violet.copy(alpha = 0.35f))
-            ),
+            color = Color(0xFF344654),
             topLeft = Offset(phoneLeft + 3.dp.toPx(), phoneTop + 8.dp.toPx()),
             size = Size(phoneW - 6.dp.toPx(), phoneH - 16.dp.toPx()),
             cornerRadius = CornerRadius(6.dp.toPx()),
@@ -486,50 +460,13 @@ internal fun WhiteButton(
     focusRequester: FocusRequester,
     compact: Boolean = false,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val interactionFocused by interaction.collectIsFocusedAsState()
-    var focusObserved by remember { mutableStateOf(false) }
-    val focused = interactionFocused || focusObserved
-    val scale by animateFloatAsState(
-        targetValue = if (focused) 1.05f else 1f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
-        label = "white-button",
+    GlassButton(
+        text = text,
+        onClick = onClick,
+        primary = true,
+        compact = compact,
+        focusRequester = focusRequester,
     )
-
-    Box(
-        modifier = Modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .focusRequester(focusRequester)
-            .onFocusChanged { focusObserved = it.isFocused }
-            .shadow(18.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
-            .clip(CircleShape)
-            .background(Color.White)
-            .border(
-                width = 3.dp,
-                color = if (focused) TvColors.pink else Color.Transparent,
-                shape = CircleShape,
-            )
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .height(if (compact) 52.dp else 62.dp)
-            .padding(horizontal = if (compact) 24.dp else 30.dp)
-            .semantics { contentDescription = text },
-        contentAlignment = Alignment.Center,
-    ) {
-        BasicText(
-            text = text,
-            style = TvType.button.copy(
-                color = Color.Black,
-                fontSize = if (compact) 18.sp else 22.sp,
-                fontWeight = FontWeight.SemiBold,
-            ),
-            maxLines = 1,
-        )
-    }
 }
 
 /** 显示最近投屏记录横向列表。 */
@@ -586,11 +523,7 @@ private fun RecentCard(recent: RecentCast, actions: TvActions) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .background(
-                    Brush.linearGradient(
-                        listOf(TvColors.pink.copy(alpha = 0.35f), TvColors.blue.copy(alpha = 0.3f))
-                    )
-                ),
+                .background(Color(0xFF19232C)),
         ) {
             if (recent.cover.isNotBlank()) {
                 AsyncImage(

@@ -52,11 +52,10 @@ fun GlassPill(
 ) {
     GlassSurface(
         modifier = modifier,
+        material = GlassMaterial.Control,
+        size = GlassSize.Compact,
         shape = CircleShape,
-        tint = if (emphasized) Color(0x4D000000) else Color(0x26000000),
-        borderAlpha = if (emphasized) 0.42f else 0.20f,
-        highlightAlpha = 0.30f,
-        shadow = 6.dp,
+        emphasized = emphasized,
         contentAlignment = Alignment.Center,
     ) {
         Row(
@@ -113,14 +112,8 @@ fun GlassAlert(
             modifier = Modifier
                 .widthIn(max = 640.dp)
                 .fillMaxWidth(0.82f),
-            tint = Color(0xB30B0B0F),
-            borderAlpha = 0.48f,
-            highlightAlpha = 0.50f,
-            shadow = 40.dp,
-            useBackdrop = true,
-            blurRadius = 30.dp,
-            lensHeight = 12.dp,
-            lensAmount = 18.dp,
+            material = GlassMaterial.Panel,
+            size = GlassSize.Large,
         ) {
             Column(
                 Modifier.padding(horizontal = 32.dp, vertical = 28.dp),
@@ -195,7 +188,7 @@ fun QrCodeImage(
 /** 绘制带有呼吸动画的状态圆点。 */
 @Composable
 fun PulseDot(
-    color: Color = TvColors.pink,
+    color: Color = TvColors.accent,
     size: Dp = 7.dp,
 ) {
     val reduceMotion = rememberReduceMotion()

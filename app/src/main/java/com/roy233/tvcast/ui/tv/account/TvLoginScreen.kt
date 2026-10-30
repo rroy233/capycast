@@ -196,14 +196,8 @@ internal fun LoginPage(state: TvUiState, actions: TvActions) {
                 modifier = Modifier
                     .width(if (compact) 300.dp else 380.dp)
                     .height(if (compact) 340.dp else 440.dp),
-                tint = Color(0xB30B0B0F),
-                borderAlpha = 0.30f,
-                highlightAlpha = 0.30f,
-                shadow = 36.dp,
-                useBackdrop = true,
-                blurRadius = 36.dp,
-                lensHeight = 12.dp,
-                lensAmount = 18.dp,
+                material = GlassMaterial.Panel,
+                size = GlassSize.Large,
             ) {
                 Column(
                     Modifier

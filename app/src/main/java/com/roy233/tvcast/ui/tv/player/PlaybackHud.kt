@@ -100,11 +100,9 @@ internal fun PlaybackHud(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 148.dp, max = 160.dp),
+                        material = GlassMaterial.Hud,
+                        size = GlassSize.Large,
                         shape = RoundedCornerShape(28.dp),
-                        tint = Color(0x59000000),
-                        borderAlpha = 0.36f,
-                        highlightAlpha = 0.40f,
-                        shadow = 36.dp,
                     ) {
                         Column(
                             modifier = Modifier

@@ -140,7 +140,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                     .background(if (focused) Color.White.copy(alpha = 0.10f) else Color.Transparent)
                     .border(
                         width = 2.dp,
-                        color = if (focused) TvColors.pink else Color.Transparent,
+                        color = if (focused) TvColors.accent else Color.Transparent,
                         shape = shape,
                     )
                     .focusRequester(headerFocus)
@@ -152,7 +152,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                 Icon(
                     imageVector = Icons.Rounded.SystemUpdate,
                     contentDescription = null,
-                    tint = TvColors.pink,
+                    tint = TvColors.accent,
                 )
                 Spacer(Modifier.width(14.dp))
                 BasicText(
@@ -269,17 +269,17 @@ private fun UpdateOptionTile(
             .clip(shape)
             .background(
                 when {
-                    focused && selected -> TvColors.pink.copy(alpha = 0.30f)
+                    focused && selected -> TvColors.accent.copy(alpha = 0.30f)
                     focused -> Color.White.copy(alpha = 0.16f)
-                    selected -> TvColors.pink.copy(alpha = 0.16f)
+                    selected -> TvColors.accent.copy(alpha = 0.16f)
                     else -> Color.White.copy(alpha = 0.07f)
                 }
             )
             .border(
                 width = 2.dp,
                 color = when {
-                    focused -> TvColors.pink
-                    selected -> TvColors.pink.copy(alpha = 0.72f)
+                    focused -> TvColors.accent
+                    selected -> TvColors.accent.copy(alpha = 0.72f)
                     else -> Color.White.copy(alpha = 0.08f)
                 },
                 shape = shape,
@@ -304,7 +304,7 @@ private fun UpdateOptionTile(
                 Icon(
                     imageVector = Icons.Rounded.CheckCircle,
                     contentDescription = null,
-                    tint = TvColors.pink,
+                    tint = TvColors.accent,
                 )
             }
         }
@@ -317,7 +317,7 @@ private fun UpdateOptionTile(
         if (selected) {
             BasicText(
                 text = "已选中",
-                style = TvType.caption.copy(color = TvColors.pink, fontSize = 14.sp),
+                style = TvType.caption.copy(color = TvColors.accent, fontSize = 14.sp),
             )
         }
     }
@@ -342,7 +342,7 @@ private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
             .background(accent.copy(alpha = if (focused) 0.17f else 0.10f))
             .border(
                 width = if (focused) 3.dp else 1.dp,
-                color = if (focused) TvColors.pink else accent.copy(alpha = 0.38f),
+                color = if (focused) TvColors.accent else accent.copy(alpha = 0.38f),
                 shape = RoundedCornerShape(18.dp),
             )
             .focusable(interactionSource = interaction)
@@ -448,7 +448,7 @@ private fun ReleaseNotesEntry(notes: String, onClick: () -> Unit) {
             )
             .border(
                 width = 2.dp,
-                color = if (focused) TvColors.pink else Color.White.copy(alpha = 0.08f),
+                color = if (focused) TvColors.accent else Color.White.copy(alpha = 0.08f),
                 shape = shape,
             )
             .clickable(
@@ -465,7 +465,7 @@ private fun ReleaseNotesEntry(notes: String, onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Rounded.Description,
             contentDescription = null,
-            tint = if (focused) TvColors.pink else TvColors.textSecondary,
+            tint = if (focused) TvColors.accent else TvColors.textSecondary,
             modifier = Modifier.size(24.dp),
         )
         Column(
@@ -488,7 +488,7 @@ private fun ReleaseNotesEntry(notes: String, onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Rounded.ChevronRight,
             contentDescription = null,
-            tint = if (focused) TvColors.pink else TvColors.textTertiary,
+            tint = if (focused) TvColors.accent else TvColors.textTertiary,
         )
     }
 }
@@ -532,7 +532,7 @@ private fun updateAccent(status: UpdateStatus): Color = when (status) {
     UpdateStatus.IDLE -> TvColors.blue
     UpdateStatus.CHECKING -> TvColors.blue
     UpdateStatus.UP_TO_DATE -> TvColors.success
-    UpdateStatus.AVAILABLE -> TvColors.pink
+    UpdateStatus.AVAILABLE -> TvColors.accent
     UpdateStatus.DOWNLOADING -> TvColors.violet
     UpdateStatus.VERIFYING -> TvColors.warning
     UpdateStatus.READY_TO_INSTALL -> TvColors.success

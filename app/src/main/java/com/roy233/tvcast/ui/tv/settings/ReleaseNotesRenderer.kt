@@ -133,7 +133,7 @@ internal fun ReleaseNoteBlock(block: ReleaseNote, focusRequester: FocusRequester
     ) {
         when (block.kind) {
             ReleaseNoteKind.BULLET -> {
-                BasicText("•", style = TvType.body.copy(color = TvColors.pink))
+                BasicText("•", style = TvType.body.copy(color = TvColors.accent))
                 BasicText(
                     text = block.text,
                     style = TvType.body.copy(color = TvColors.textSecondary),
@@ -142,7 +142,7 @@ internal fun ReleaseNoteBlock(block: ReleaseNote, focusRequester: FocusRequester
             }
 
             ReleaseNoteKind.ORDERED -> {
-                BasicText(block.prefix, style = TvType.body.copy(color = TvColors.pink))
+                BasicText(block.prefix, style = TvType.body.copy(color = TvColors.accent))
                 BasicText(
                     text = block.text,
                     style = TvType.body.copy(color = TvColors.textSecondary),
@@ -213,7 +213,7 @@ internal fun renderInlineMarkdown(source: String): AnnotatedString = buildAnnota
             source[index] == '`' -> {
                 val end = source.indexOf('`', index + 1)
                 if (end > index + 1) {
-                    pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, color = TvColors.pink))
+                    pushStyle(SpanStyle(fontFamily = FontFamily.Monospace, color = TvColors.accent))
                     append(source.substring(index + 1, end))
                     pop()
                     index = end + 1
@@ -228,7 +228,7 @@ internal fun renderInlineMarkdown(source: String): AnnotatedString = buildAnnota
                 if (labelEnd > index + 1 && urlEnd > labelEnd + 2) {
                     pushStyle(
                         SpanStyle(
-                            color = TvColors.pink,
+                            color = TvColors.accent,
                             textDecoration = TextDecoration.Underline,
                         )
                     )

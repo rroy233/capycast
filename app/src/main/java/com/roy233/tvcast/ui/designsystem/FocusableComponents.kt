@@ -133,7 +133,7 @@ fun FocusableRow(
             Icon(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = null,
-                tint = TvColors.pink,
+                tint = TvColors.accent,
                 modifier = Modifier
                     .padding(start = 10.dp)
                     .size(20.dp),

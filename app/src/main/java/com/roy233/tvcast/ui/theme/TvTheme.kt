@@ -31,10 +31,8 @@ object TvColors {
     /** 禁用状态文本颜色。 */
     val textDisabled = Color(0x4DFFFFFF)
 
-    /** 品牌粉色。 */
-    val pink = Color(0xFFFB7299)
-    /** 品牌深粉色。 */
-    val pinkDeep = Color(0xFFF25D8A)
+    /** 焦点与主操作使用的低饱和冰蓝色。 */
+    val accent = Color(0xFF9BB8CC)
     /** 品牌蓝色。 */
     val blue = Color(0xFF00A1D6)
     /** 辅助紫色。 */

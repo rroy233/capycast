@@ -1,6 +1,7 @@
 package com.roy233.tvcast.ui.tv
 
 import com.roy233.tvcast.ui.tv.home.HomeScreen
+import com.roy233.tvcast.ui.tv.home.HomeBackdrop
 import com.roy233.tvcast.ui.tv.navigation.Sidebar
 import com.roy233.tvcast.ui.tv.overlay.HelpSheet
 import com.roy233.tvcast.ui.tv.overlay.QuickPanel
@@ -139,6 +140,16 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
     val seekAccelerator = remember { PlaybackSeekAccelerator() }
     val density = LocalDensity.current
     val swipeThreshold = with(density) { 72.dp.toPx() }
+    val sidebarDepth by animateFloatAsState(
+        targetValue = if (state.mode == TvMode.IDLE && state.sidebarVisible) 1f else 0f,
+        animationSpec = tween(260),
+        label = "sidebar-depth",
+    )
+    val recede = Modifier.graphicsLayer {
+        scaleX = 1f - 0.035f * sidebarDepth
+        scaleY = 1f - 0.035f * sidebarDepth
+        translationX = 16.dp.toPx() * sidebarDepth
+    }
     // tvOS-style quiet auto-collapse after switching to Bilibili.
     LaunchedEffect(state.mode, state.destination, state.sidebarVisible) {
         if (state.mode == TvMode.IDLE &&
@@ -197,39 +208,62 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                 }
         ) {
             if (ambient) {
-                TvBackground(
-                    Modifier
-                        .matchParentSize()
-                        .layerBackdrop(backdrop)
-                )
+                // Record only visual background content. Glass surfaces render in later siblings,
+                // so the recorded layer cannot contain a consumer of itself.
+                if (state.destination == TvDestination.HOME && (state.loggedIn || state.loginSkipped)) {
+                    BoxWithConstraints(Modifier.matchParentSize()) {
+                        HomeBackdrop(
+                            featured = if (state.showContinue) state.recents.firstOrNull() else null,
+                            compact = maxHeight < 500.dp,
+                            modifier = recede.layerBackdrop(backdrop),
+                        )
+                    }
+                } else {
+                    TvBackground(Modifier.matchParentSize().then(recede).layerBackdrop(backdrop))
+                }
             } else if (state.mode == TvMode.ERROR && !state.castActive) {
                 TvBackground(Modifier.matchParentSize())
             }
 
             when (state.mode) {
-                TvMode.IDLE -> Row(Modifier.fillMaxSize()) {
+                TvMode.IDLE -> {
+                    Crossfade(
+                        targetState = state.destination,
+                        animationSpec = tween(220),
+                        label = "tab",
+                        modifier = recede,
+                    ) { destination ->
+                        when (destination) {
+                            TvDestination.HOME -> HomeScreen(state, actions)
+                            TvDestination.SETTINGS -> SettingsScreen(state, actions)
+                        }
+                    }
                     AnimatedVisibility(
                         visible = state.sidebarVisible,
-                        enter = expandHorizontally(tween(220), Alignment.Start) + fadeIn(tween(180)),
-                        exit = shrinkHorizontally(tween(200), Alignment.Start) + fadeOut(tween(160)),
+                        enter = fadeIn(tween(180)),
+                        exit = fadeOut(tween(160)),
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.28f))
+                                .pointerInput(Unit) {
+                                    detectTapGestures { actions.onCloseSidebar() }
+                                }
+                        )
+                    }
+                    AnimatedVisibility(
+                        visible = state.sidebarVisible,
+                        enter = slideInHorizontally(
+                            initialOffsetX = { width -> -width },
+                            animationSpec = tween(240),
+                        ) + fadeIn(tween(180)),
+                        exit = slideOutHorizontally(
+                            targetOffsetX = { width -> -width },
+                            animationSpec = tween(200),
+                        ) + fadeOut(tween(160)),
                     ) {
                         Sidebar(state, actions)
-                    }
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                    ) {
-                        Crossfade(
-                            targetState = state.destination,
-                            animationSpec = tween(220),
-                            label = "tab",
-                        ) { destination ->
-                            when (destination) {
-                                TvDestination.HOME -> HomeScreen(state, actions)
-                                TvDestination.SETTINGS -> SettingsScreen(state, actions)
-                            }
-                        }
                     }
                 }
 
