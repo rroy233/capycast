@@ -9,6 +9,7 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
  * 聚合电视界面向宿主发送的用户操作回调。
  *
  * @property onLogin 请求开始登录。
+ * @property onCloseLogin 关闭扫码登录弹窗。
  * @property onSkipLogin 跳过登录流程。
  * @property onOpenSidebar 打开侧边栏。
  * @property onCloseSidebar 关闭侧边栏。
@@ -53,6 +54,7 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
  */
 class TvActions(
     val onLogin: () -> Unit = {},
+    val onCloseLogin: () -> Unit = {},
     val onSkipLogin: () -> Unit = {},
     val onOpenSidebar: () -> Unit = {},
     val onCloseSidebar: () -> Unit = {},

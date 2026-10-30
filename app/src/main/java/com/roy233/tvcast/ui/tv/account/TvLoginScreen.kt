@@ -13,6 +13,7 @@ import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.designsystem.*
+import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
@@ -27,6 +28,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -102,6 +104,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -117,128 +120,122 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
 
 /**
- * 显示二维码登录页面和登录状态。
+ * 在首页之上显示扫码登录弹窗和登录状态。
  *
  * @param state 当前登录相关界面状态。
  * @param actions 登录页面可执行的操作回调。
  */
 @Composable
-internal fun LoginPage(state: TvUiState, actions: TvActions) {
-    val skipFocus = remember { FocusRequester() }
+internal fun LoginDialog(state: TvUiState, actions: TvActions) {
+    val closeFocus = remember { FocusRequester() }
+    val closeInteraction = remember { MutableInteractionSource() }
+    val closeFocused by closeInteraction.collectIsFocusedAsState()
     val view = LocalView.current
-    val focusManager = LocalFocusManager.current
-    LaunchedEffect(state.sidebarVisible) {
-        if (!state.sidebarVisible) {
-            var guard = 0
-            while (!view.hasFocus() && guard++ < 15) delay(100)
-            delay(220)
-            var requested = false
-            for (i in 0 until 8) {
-                if (runCatching { skipFocus.requestFocus() }.getOrDefault(false)) {
-                    requested = true
-                    break
-                }
-                delay(180)
+    LaunchedEffect(Unit) {
+        var guard = 0
+        while (!view.hasFocus() && guard++ < 15) delay(100)
+        delay(220)
+        for (i in 0 until 8) {
+            if (runCatching { closeFocus.requestFocus() }.getOrDefault(false)) {
+                break
             }
-            if (!requested) {
-                runCatching { focusManager.moveFocus(FocusDirection.Down) }
-            }
+            delay(180)
         }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize().tvModalFocusRegion(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(Color.Black.copy(alpha = 0.52f))
+                .pointerInput(Unit) { detectTapGestures { actions.onCloseLogin() } }
+        )
         val compact = maxHeight < 500.dp
-        val hPad = if (compact) 32.dp else 64.dp
-        val vPad = if (compact) 20.dp else 40.dp
-        val titleSize = if (compact) 34.sp else 50.sp
-        val titleLine = if (compact) 40.sp else 58.sp
+        val horizontalInset = if (compact) 24.dp else 48.dp
+        val cardWidth = minOf(if (compact) 360.dp else 420.dp, maxWidth - horizontalInset * 2)
+        val qrSize = if (compact) 200.dp else 252.dp
 
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = hPad, vertical = vPad),
-            verticalAlignment = Alignment.CenterVertically,
+        GlassSurface(
+            modifier = Modifier.width(cardWidth),
+            material = GlassMaterial.Panel,
+            size = GlassSize.Large,
         ) {
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 28.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 22.dp, vertical = if (compact) 18.dp else 26.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                BasicText(
-                    text = "登录 B 站账号",
-                    style = TvType.hero.copy(
-                        fontSize = titleSize,
-                        lineHeight = titleLine,
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(10.dp))
-                BasicText(
-                    text = "扫码后按账号权益播放。",
-                    style = TvType.body.copy(
-                        color = TvColors.textSecondary,
-                        fontSize = if (compact) 17.sp else 23.sp,
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(22.dp))
-                GlassButton(
-                    text = "先不登录",
-                    onClick = actions.onSkipLogin,
-                    compact = true,
-                    focusRequester = skipFocus,
-                )
-            }
-
-            GlassSurface(
-                modifier = Modifier
-                    .width(if (compact) 300.dp else 380.dp)
-                    .height(if (compact) 340.dp else 440.dp),
-                material = GlassMaterial.Panel,
-                size = GlassSize.Large,
-            ) {
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp, vertical = 22.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val qr = state.loginQr
-                    if (qr != null) {
-                        QrCodeImage(
-                            bitmap = qr,
-                            modifier = Modifier.size(if (compact) 180.dp else 240.dp),
-                        )
-                    } else {
-                        LoadingSpinner(Modifier.padding(vertical = 48.dp))
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    BasicText(
-                        text = state.loginStatus,
-                        style = TvType.caption.copy(
-                            color = if (state.loginStatus.contains("失败") ||
-                                state.loginStatus.contains("异常")
-                            ) TvColors.warning else TvColors.textSecondary,
-                            fontSize = 14.sp,
-                            textAlign = TextAlign.Center,
-                        ),
-                        maxLines = 2,
+                    Image(
+                        painter = painterResource(com.roy233.tvcast.R.drawable.bilibili_logo),
+                        contentDescription = null,
+                        modifier = Modifier.size(if (compact) 32.dp else 36.dp),
                     )
-                    if (state.loginStatus.contains("失败") ||
-                        state.loginStatus.contains("异常")
+                    Spacer(Modifier.width(10.dp))
+                    BasicText(
+                        text = "打开bilibili客户端扫码",
+                        style = TvType.bodyMedium.copy(fontSize = if (compact) 18.sp else 22.sp),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = if (closeFocused) 0.18f else 0.06f))
+                            .border(
+                                1.dp,
+                                Color.White.copy(alpha = if (closeFocused) 0.52f else 0.12f),
+                                CircleShape,
+                            )
+                            .focusRequester(closeFocus)
+                            .semantics { contentDescription = "关闭登录" }
+                            .clickable(
+                                interactionSource = closeInteraction,
+                                indication = null,
+                                role = Role.Button,
+                                onClick = actions.onCloseLogin,
+                            ),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Spacer(Modifier.height(10.dp))
-                        GlassButton(
-                            text = "重试",
-                            onClick = actions.onLogin,
-                            primary = true,
-                            compact = true,
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
                         )
                     }
                 }
+                Spacer(Modifier.height(if (compact) 14.dp else 18.dp))
+                val qr = state.loginQr
+                Box(Modifier.size(qrSize), contentAlignment = Alignment.Center) {
+                    if (qr != null) {
+                        QrCodeImage(bitmap = qr, modifier = Modifier.fillMaxSize())
+                    } else {
+                        LoadingSpinner()
+                    }
+                }
+                Spacer(Modifier.height(if (compact) 12.dp else 16.dp))
+                BasicText(
+                    text = state.loginStatus,
+                    style = TvType.caption.copy(
+                        color = if (state.loginStatus.contains("失败") ||
+                            state.loginStatus.contains("异常")
+                        ) TvColors.warning else TvColors.textSecondary,
+                        fontSize = if (compact) 16.sp else 18.sp,
+                        textAlign = TextAlign.Center,
+                    ),
+                    maxLines = 2,
+                )
             }
         }
     }

@@ -18,6 +18,7 @@ import com.roy233.tvcast.ui.model.TvMode
  */
 interface TvActionHost {
     fun requestLogin()
+    fun requestCloseLogin()
     fun requestSkipLogin()
     fun requestLogout()
     fun openUpdateSettings()
@@ -68,7 +69,17 @@ class TvActionDispatcher(
 
     /** 提供给电视界面的操作回调集合；实例在构造期固定，避免重组时重建。 */
     val actions: TvActions = TvActions(
-        onLogin = { host.requestLogin() },
+        onLogin = {
+            val state = stateHolder.read()
+            if (state.mode == TvMode.IDLE && !state.loggedIn) {
+                stateHolder.set(state.copy(loginDialogVisible = true, sidebarVisible = false))
+                host.requestLogin()
+            }
+        },
+        onCloseLogin = {
+            stateHolder.set(stateHolder.read().copy(loginDialogVisible = false))
+            host.requestCloseLogin()
+        },
         onSkipLogin = { host.requestSkipLogin() },
         onOpenSidebar = {
             stateHolder.set(stateHolder.read().copy(sidebarVisible = true))

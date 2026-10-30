@@ -40,6 +40,7 @@ import com.roy233.tvcast.feature.update.UpdateUiState
  * @property error 当前待展示的错误信息。
  * @property loginQr 登录二维码位图。
  * @property loginStatus 登录流程状态文本。
+ * @property loginDialogVisible 是否显示扫码登录弹窗。
  * @property loginSkipped 是否跳过登录。
  * @property helpVisible 是否显示投屏帮助。
  * @property tracks 可选的视频清晰度列表。
@@ -61,7 +62,7 @@ data class TvUiState(
     val mode: TvMode = TvMode.IDLE,
     val destination: TvDestination = TvDestination.HOME,
     val settingsPage: SettingsPage = SettingsPage.ROOT,
-    val sidebarVisible: Boolean = true,
+    val sidebarVisible: Boolean = false,
     val loggedIn: Boolean = false,
     val accountName: String = "未登录",
     val mid: Long = 0L,
@@ -108,7 +109,8 @@ data class TvUiState(
     val stopCastConfirm: Boolean = false,
     val error: TvError? = null,
     val loginQr: Bitmap? = null,
-    val loginStatus: String = "正在获取二维码…",
+    val loginStatus: String = "",
+    val loginDialogVisible: Boolean = false,
     val loginSkipped: Boolean = false,
     val helpVisible: Boolean = false,
     val tracks: List<TrackOption> = emptyList(),

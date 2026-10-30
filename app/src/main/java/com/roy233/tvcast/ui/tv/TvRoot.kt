@@ -1,6 +1,7 @@
 package com.roy233.tvcast.ui.tv
 
 import com.roy233.tvcast.ui.tv.home.HomeScreen
+import com.roy233.tvcast.ui.tv.account.LoginDialog
 import com.roy233.tvcast.ui.tv.home.HomeBackdrop
 import com.roy233.tvcast.ui.tv.navigation.Sidebar
 import com.roy233.tvcast.ui.tv.overlay.HelpSheet
@@ -135,7 +136,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
     val backdrop = rememberLayerBackdrop()
     val ambient = state.mode == TvMode.IDLE
     val modal = state.panel != null || state.error != null ||
-        state.stopCastConfirm || state.helpVisible
+        state.stopCastConfirm || state.helpVisible || state.loginDialogVisible
     val focusManager = LocalFocusManager.current
     val seekAccelerator = remember { PlaybackSeekAccelerator() }
     val density = LocalDensity.current
@@ -159,6 +160,9 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
             delay(5000)
             actions.onCloseSidebar()
         }
+    }
+    LaunchedEffect(state.mode, state.loginDialogVisible) {
+        if (state.loginDialogVisible && state.mode != TvMode.IDLE) actions.onCloseLogin()
     }
 
     CompositionLocalProvider(
@@ -210,7 +214,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
             if (ambient) {
                 // Record only visual background content. Glass surfaces render in later siblings,
                 // so the recorded layer cannot contain a consumer of itself.
-                if (state.destination == TvDestination.HOME && (state.loggedIn || state.loginSkipped)) {
+                if (state.destination == TvDestination.HOME) {
                     BoxWithConstraints(Modifier.matchParentSize()) {
                         HomeBackdrop(
                             featured = if (state.showContinue) state.recents.firstOrNull() else null,
@@ -284,6 +288,14 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                         seekAccelerator = seekAccelerator,
                     )
                 }
+            }
+
+            AnimatedVisibility(
+                visible = state.mode == TvMode.IDLE && state.loginDialogVisible,
+                enter = fadeIn(tween(180)),
+                exit = fadeOut(tween(160)),
+            ) {
+                LoginDialog(state, actions)
             }
 
             if (state.helpVisible) HelpSheet(state, actions)

@@ -21,6 +21,7 @@ internal enum class TvBackAction {
     BACK_PANEL,
     CLOSE_PANEL,
     CLOSE_HELP,
+    CLOSE_LOGIN,
     CLOSE_UPDATE_NOTES,
     CLOSE_UPDATE_SETTINGS,
     NAVIGATE_HOME,
@@ -58,6 +59,7 @@ object TvKeyHandler {
         state.panel != null && state.panel != PanelKind.ROOT -> TvBackAction.BACK_PANEL
         state.panel == PanelKind.ROOT -> TvBackAction.CLOSE_PANEL
         state.helpVisible -> TvBackAction.CLOSE_HELP
+        state.loginDialogVisible -> TvBackAction.CLOSE_LOGIN
         state.mode == TvMode.PLAYING || (state.mode == TvMode.LOADING && state.castActive) ->
             TvBackAction.REQUEST_STOP_CAST
         state.destination == TvDestination.SETTINGS &&
@@ -77,6 +79,7 @@ object TvKeyHandler {
             TvBackAction.BACK_PANEL -> actions.onOpenPanel(PanelKind.ROOT)
             TvBackAction.CLOSE_PANEL -> actions.onClosePanel()
             TvBackAction.CLOSE_HELP -> actions.onCloseHelp()
+            TvBackAction.CLOSE_LOGIN -> actions.onCloseLogin()
             TvBackAction.CLOSE_UPDATE_NOTES -> actions.onCloseUpdateNotes()
             TvBackAction.CLOSE_UPDATE_SETTINGS -> actions.onCloseUpdateSettings()
             TvBackAction.NAVIGATE_HOME -> actions.onNavigateHome()
@@ -118,6 +121,7 @@ object TvKeyHandler {
         if (event.key == Key.Menu) {
             when {
                 state.helpVisible -> actions.onCloseHelp()
+                state.loginDialogVisible -> actions.onCloseLogin()
                 state.panel != null -> actions.onClosePanel()
                 state.error != null -> actions.onDismissError()
                 state.mode == TvMode.IDLE ->

@@ -1,7 +1,5 @@
 package com.roy233.tvcast.ui.tv.home
 
-import com.roy233.tvcast.ui.tv.account.LoginPage
-
 import android.graphics.Bitmap
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
@@ -123,8 +121,8 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
     val featured = if (state.showContinue) state.recents.firstOrNull() else null
 
     val view = LocalView.current
-    LaunchedEffect(state.sidebarVisible, state.helpVisible, state.showContinue) {
-        if (!state.sidebarVisible && !state.helpVisible) {
+    LaunchedEffect(state.sidebarVisible, state.helpVisible, state.loginDialogVisible, state.showContinue) {
+        if (!state.sidebarVisible && !state.helpVisible && !state.loginDialogVisible) {
             var guard = 0
             while (!view.hasFocus() && guard++ < 15) delay(100)
             delay(220)
@@ -133,11 +131,6 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                 delay(180)
             }
         }
-    }
-
-    if (!state.loggedIn && !state.loginSkipped) {
-        LoginPage(state, actions)
-        return
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -212,7 +205,21 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
             Spacer(Modifier.height(if (compact) 14.dp else 22.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (featured != null) {
+                if (!state.loggedIn) {
+                    WhiteButton(
+                        text = "扫码登录",
+                        onClick = actions.onLogin,
+                        focusRequester = primaryFocus,
+                        compact = compact,
+                    )
+                    if (featured != null) {
+                        GlassButton(
+                            text = "继续播放",
+                            onClick = { actions.onRecast(featured) },
+                            compact = compact,
+                        )
+                    }
+                } else if (featured != null) {
                     WhiteButton(
                         text = "继续播放",
                         onClick = { actions.onRecast(featured) },
@@ -222,13 +229,6 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     GlassButton(
                         text = "返回",
                         onClick = actions.onDismissContinue,
-                        compact = compact,
-                    )
-                } else if (!state.loggedIn) {
-                    WhiteButton(
-                        text = "扫码登录",
-                        onClick = actions.onLogin,
-                        focusRequester = primaryFocus,
                         compact = compact,
                     )
                 } else {

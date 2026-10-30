@@ -210,6 +210,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                     loginQr = account.loginQr,
                     loginStatus = account.loginStatus,
                     loginSkipped = account.loginSkipped,
+                    loginDialogVisible = ui.loginDialogVisible && !account.loggedIn,
                 )
             },
             readUpdateState = { ui.update },
@@ -217,7 +218,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             onLogoutUi = {
                 ui = ui.copy(
                     destination = TvDestination.HOME,
-                    sidebarVisible = true,
+                    sidebarVisible = false,
+                    loginDialogVisible = false,
                     showContinue = ui.rememberPlaybackContent,
                 )
             },
@@ -316,6 +318,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private val actions = actionDispatcher.actions
 
     override fun requestLogin() = startQrLogin()
+
+    override fun requestCloseLogin() = loginCoordinator.dismissQrLogin()
 
     override fun requestSkipLogin() = skipLogin()
 

@@ -46,7 +46,7 @@ class AccountLoginCoordinator(
     /** 当前二维码登录任务。 */
     private var loginJob: Job? = null
 
-    /** 读取已有令牌或启动新的二维码登录流程。 */
+    /** 读取已有令牌；扫码任务由用户打开登录弹窗时启动。 */
     fun startOrLogin() {
         val token = sessionStore.load()
         LogHub.i(TAG, "startOrLogin token=${token != null}")
@@ -71,11 +71,10 @@ class AccountLoginCoordinator(
                 loggedIn = false,
                 accountName = "未登录",
                 loginQr = null,
-                loginStatus = "正在获取二维码…",
+                loginStatus = "",
                 loginSkipped = false,
             )
         }
-        startQrLogin()
     }
 
     /** 启动二维码申请和状态轮询任务。 */
@@ -194,6 +193,14 @@ class AccountLoginCoordinator(
         }
     }
 
+    /** 关闭扫码弹窗时取消轮询并丢弃已显示的二维码。 */
+    fun dismissQrLogin() {
+        cancel()
+        LogHub.setQrPending(false)
+        LogHub.setQrUrl("")
+        update { it.copy(loginQr = null, loginStatus = "") }
+    }
+
     /** 清除登录凭据并重新进入登录准备状态。 */
     fun logout() {
         loginJob?.cancel()
@@ -216,7 +223,6 @@ class AccountLoginCoordinator(
         }
         onLogoutUi()
         onToast("已退出登录")
-        startQrLogin()
     }
 
     /** 取消当前登录协程。 */

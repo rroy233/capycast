@@ -92,11 +92,19 @@ class TvBackNavigationTest {
     fun homeSidebarClosesBeforeHomeExitAction() {
         val home = TvUiState(destination = TvDestination.HOME)
 
-        assertEquals(TvBackAction.CLOSE_SIDEBAR, TvKeyHandler.resolveBackAction(home))
+        assertEquals(TvBackAction.HOME_BACK, TvKeyHandler.resolveBackAction(home))
         assertEquals(
-            TvBackAction.HOME_BACK,
-            TvKeyHandler.resolveBackAction(home.copy(sidebarVisible = false)),
+            TvBackAction.CLOSE_SIDEBAR,
+            TvKeyHandler.resolveBackAction(home.copy(sidebarVisible = true)),
         )
+    }
+
+    @Test
+    fun loginDialogClosesBeforeHomeNavigation() {
+        val home = TvUiState(loginDialogVisible = true)
+
+        assertEquals(TvBackAction.CLOSE_LOGIN, TvKeyHandler.resolveBackAction(home))
+        assertEquals(TvBackAction.HOME_BACK, TvKeyHandler.resolveBackAction(home.copy(loginDialogVisible = false)))
     }
 
     @Test
