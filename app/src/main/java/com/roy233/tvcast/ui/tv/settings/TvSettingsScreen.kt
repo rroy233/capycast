@@ -4,6 +4,7 @@ import com.roy233.tvcast.ui.tv.home.WhiteButton
 
 import android.graphics.Bitmap
 import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.model.AudioOption
 import com.roy233.tvcast.ui.model.PanelKind
@@ -152,8 +153,10 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
 
         LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = hPad, vertical = vPad)
+                .width((maxWidth - hPad * 2).coerceAtMost(TvDimens.pageMaxWidth))
+                .fillMaxHeight()
+                .align(Alignment.Center)
+                .padding(vertical = vPad)
                 .tvFocusRegion(),
         ) {
             item {

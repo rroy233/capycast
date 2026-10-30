@@ -2,6 +2,7 @@ package com.roy233.tvcast.ui.tv.home
 
 import android.graphics.Bitmap
 import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.model.AudioOption
 import com.roy233.tvcast.ui.model.PanelKind
@@ -151,8 +152,10 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = hPad, vertical = vPad),
+                .width((maxWidth - hPad * 2).coerceAtMost(TvDimens.pageMaxWidth))
+                .fillMaxHeight()
+                .align(Alignment.Center)
+                .padding(vertical = vPad),
             verticalArrangement = Arrangement.Bottom,
         ) {
             Spacer(Modifier.weight(1f))

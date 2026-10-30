@@ -10,11 +10,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -70,6 +72,7 @@ import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.tvFocusRegion
@@ -89,65 +92,69 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
             if (firstFocusable >= 0) firstFocus.requestFocus() else backFocus.requestFocus()
         }
     }
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 80.dp, vertical = 52.dp)
-            .tvFocusRegion(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    BasicText(
-                        text = "更新日志",
-                        style = TvType.title.copy(fontSize = 48.sp),
-                    )
-                    available?.let {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .width((maxWidth - 160.dp).coerceAtMost(TvDimens.pageMaxWidth))
+                .fillMaxHeight()
+                .align(Alignment.Center)
+                .padding(vertical = 52.dp)
+                .tvFocusRegion(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
                         BasicText(
-                            text = "v${it.versionName}",
-                            style = TvType.caption.copy(
-                                color = TvColors.textSecondary,
-                                fontSize = 18.sp,
-                            ),
+                            text = "更新日志",
+                            style = TvType.title.copy(fontSize = 48.sp),
+                        )
+                        available?.let {
+                            BasicText(
+                                text = "v${it.versionName}",
+                                style = TvType.caption.copy(
+                                    color = TvColors.textSecondary,
+                                    fontSize = 18.sp,
+                                ),
+                            )
+                        }
+                    }
+                    WhiteButton(
+                        text = "返回",
+                        onClick = actions.onCloseUpdateNotes,
+                        focusRequester = backFocus,
+                        compact = true,
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
+            }
+            if (blocks.isEmpty()) {
+                item {
+                    BasicText(
+                        text = "此版本未提供更新说明。",
+                        style = TvType.body.copy(color = TvColors.textSecondary),
+                    )
+                }
+            } else {
+                blocks.forEachIndexed { index, block ->
+                    item(key = index) {
+                        ReleaseNoteBlock(
+                            block = block,
+                            focusRequester = if (index == firstFocusable) firstFocus else null,
                         )
                     }
                 }
-                WhiteButton(
-                    text = "返回",
-                    onClick = actions.onCloseUpdateNotes,
-                    focusRequester = backFocus,
-                    compact = true,
-                )
             }
-            Spacer(Modifier.height(18.dp))
-        }
-        if (blocks.isEmpty()) {
             item {
+                Spacer(Modifier.height(20.dp))
                 BasicText(
-                    text = "此版本未提供更新说明。",
-                    style = TvType.body.copy(color = TvColors.textSecondary),
+                    text = "按返回键回到更新页面",
+                    style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 15.sp),
                 )
             }
-        } else {
-            blocks.forEachIndexed { index, block ->
-                item(key = index) {
-                    ReleaseNoteBlock(
-                        block = block,
-                        focusRequester = if (index == firstFocusable) firstFocus else null,
-                    )
-                }
-            }
-        }
-        item {
-            Spacer(Modifier.height(20.dp))
-            BasicText(
-                text = "按返回键回到更新页面",
-                style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 15.sp),
-            )
         }
     }
 }

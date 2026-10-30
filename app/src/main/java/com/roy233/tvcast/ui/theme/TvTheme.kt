@@ -137,6 +137,8 @@ object TvType {
 
 /** 电视界面使用的尺寸常量集合。 */
 object TvDimens {
+    /** 大屏页面内容的最大宽度，避免信息分散到两侧。 */
+    val pageMaxWidth = 760.dp
     /** 水平方向的安全区域边距，约为 960dp 电视布局宽度的 5%。 */
     val safeHorizontal = 48.dp
     /** 垂直方向的安全区域边距。 */

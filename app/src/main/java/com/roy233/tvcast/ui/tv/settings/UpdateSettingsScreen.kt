@@ -10,11 +10,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -70,6 +72,7 @@ import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.tvFocusRegion
@@ -122,109 +125,113 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
         UpdateStatus.VERIFYING, UpdateStatus.CHECKING -> ({})
         UpdateStatus.IDLE, UpdateStatus.UP_TO_DATE -> actions.onCheckForUpdates
     }
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 80.dp, vertical = 52.dp)
-            .tvFocusRegion(),
-    ) {
-        item {
-            val interaction = remember { MutableInteractionSource() }
-            val focused = interaction.collectIsFocusedAsState().value
-            val shape = RoundedCornerShape(14.dp)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(shape)
-                    .background(if (focused) Color.White.copy(alpha = 0.10f) else Color.Transparent)
-                    .border(
-                        width = 2.dp,
-                        color = if (focused) TvColors.accent else Color.Transparent,
-                        shape = shape,
-                    )
-                    .focusRequester(headerFocus)
-                    .focusable(interactionSource = interaction)
-                    .semantics(mergeDescendants = true) { }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.SystemUpdate,
-                    contentDescription = null,
-                    tint = TvColors.accent,
-                )
-                Spacer(Modifier.width(14.dp))
-                BasicText(
-                    text = "应用更新",
-                    style = TvType.title.copy(fontSize = 48.sp),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Spacer(Modifier.height(26.dp))
-        }
-
-        item {
-            UpdateStatusCard(update, state.version)
-            Spacer(Modifier.height(22.dp))
-        }
-
-        if (releaseNotes.isNotBlank()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .width((maxWidth - 160.dp).coerceAtMost(TvDimens.pageMaxWidth))
+                .fillMaxHeight()
+                .align(Alignment.Center)
+                .padding(vertical = 52.dp)
+                .tvFocusRegion(),
+        ) {
             item {
-                ReleaseNotesEntry(releaseNotes, actions.onOpenUpdateNotes)
-                Spacer(Modifier.height(14.dp))
+                val interaction = remember { MutableInteractionSource() }
+                val focused = interaction.collectIsFocusedAsState().value
+                val shape = RoundedCornerShape(14.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(shape)
+                        .background(if (focused) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+                        .border(
+                            width = 2.dp,
+                            color = if (focused) TvColors.accent else Color.Transparent,
+                            shape = shape,
+                        )
+                        .focusRequester(headerFocus)
+                        .focusable(interactionSource = interaction)
+                        .semantics(mergeDescendants = true) { }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.SystemUpdate,
+                        contentDescription = null,
+                        tint = TvColors.accent,
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    BasicText(
+                        text = "应用更新",
+                        style = TvType.title.copy(fontSize = 48.sp),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Spacer(Modifier.height(26.dp))
             }
-        }
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().tvFocusRegion(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                BasicText(
-                    text = "当前版本 ${state.version}",
-                    style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 18.sp),
-                    modifier = Modifier.weight(1f),
-                )
-                WhiteButton(
-                    text = primaryActionText,
-                    onClick = primaryAction,
-                    focusRequester = primaryActionFocus,
-                )
+            item {
+                UpdateStatusCard(update, state.version)
+                Spacer(Modifier.height(22.dp))
             }
-            Spacer(Modifier.height(10.dp))
-        }
 
-        item {
-            UpdateChoiceGroup("更新通道") {
-                UpdateOptionTile(
-                    title = "正式版",
-                    description = "推荐日常使用",
-                    selected = update.channel == UpdateChannel.STABLE,
-                    onClick = { actions.onSelectUpdateChannel(UpdateChannel.STABLE) },
-                    modifier = Modifier.weight(1f),
-                )
-                UpdateOptionTile(
-                    title = "Beta 版",
-                    description = "公开测试版本",
-                    selected = update.channel == UpdateChannel.BETA,
-                    onClick = { actions.onSelectUpdateChannel(UpdateChannel.BETA) },
-                    modifier = Modifier.weight(1f),
-                )
+            if (releaseNotes.isNotBlank()) {
+                item {
+                    ReleaseNotesEntry(releaseNotes, actions.onOpenUpdateNotes)
+                    Spacer(Modifier.height(14.dp))
+                }
             }
-            Spacer(Modifier.height(16.dp))
-        }
 
-        item {
-            SettingsSection("自动检查更新") {
-                SettingsToggleRow(
-                    title = "启动应用时自动检查",
-                    checked = update.automaticCheck,
-                    onCheckedChange = actions.onSetAutoUpdateCheck,
-                )
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().tvFocusRegion(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    BasicText(
+                        text = "当前版本 ${state.version}",
+                        style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 18.sp),
+                        modifier = Modifier.weight(1f),
+                    )
+                    WhiteButton(
+                        text = primaryActionText,
+                        onClick = primaryAction,
+                        focusRequester = primaryActionFocus,
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
             }
-            Spacer(Modifier.height(18.dp))
+
+            item {
+                UpdateChoiceGroup("更新通道") {
+                    UpdateOptionTile(
+                        title = "正式版",
+                        description = "推荐日常使用",
+                        selected = update.channel == UpdateChannel.STABLE,
+                        onClick = { actions.onSelectUpdateChannel(UpdateChannel.STABLE) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    UpdateOptionTile(
+                        title = "Beta 版",
+                        description = "公开测试版本",
+                        selected = update.channel == UpdateChannel.BETA,
+                        onClick = { actions.onSelectUpdateChannel(UpdateChannel.BETA) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
+            item {
+                SettingsSection("自动检查更新") {
+                    SettingsToggleRow(
+                        title = "启动应用时自动检查",
+                        checked = update.automaticCheck,
+                        onCheckedChange = actions.onSetAutoUpdateCheck,
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
+            }
         }
     }
 }
