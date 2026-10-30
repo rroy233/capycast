@@ -11,7 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.roy233.tvcast.feature.update.UpdateChannel
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.feature.update.AppUpdateInfo
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
