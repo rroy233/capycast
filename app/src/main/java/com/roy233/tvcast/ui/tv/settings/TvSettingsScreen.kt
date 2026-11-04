@@ -1,7 +1,5 @@
 package com.roy233.tvcast.ui.tv.settings
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -20,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -27,7 +26,6 @@ import androidx.compose.material.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,7 +36,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -50,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.roy233.tvcast.ui.designsystem.BilibiliTvLogo
 import com.roy233.tvcast.ui.designsystem.FocusableRow
 import com.roy233.tvcast.ui.model.SettingsPage
+import com.roy233.tvcast.ui.model.SettingsFocusAnchor
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors
@@ -69,16 +67,8 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
     val platformFocus = remember { FocusRequester() }
     val loginFocus = remember { FocusRequester() }
     val updateEntryFocus = remember { FocusRequester() }
+    val rootListState = rememberLazyListState()
     var selectedPlatform by remember { mutableStateOf(AccountPlatform.BILIBILI) }
-    var previousPage by remember { mutableStateOf(state.settingsPage) }
-
-    LaunchedEffect(state.settingsPage, state.sidebarVisible) {
-        if (state.settingsPage == SettingsPage.ROOT && !state.sidebarVisible) {
-            val requester = if (previousPage == SettingsPage.UPDATE) updateEntryFocus else platformFocus
-            runCatching { requester.requestFocus() }
-        }
-        previousPage = state.settingsPage
-    }
 
     when (state.settingsPage) {
         SettingsPage.UPDATE -> {
@@ -94,6 +84,23 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
         SettingsPage.ROOT -> Unit
     }
 
+    RestoreSettingsFocus(
+        request = state.settingsNavigation.focusRequest,
+        listState = rootListState,
+        bindings = listOf(
+            SettingsFocusBinding(
+                anchor = SettingsFocusAnchor.ROOT_PLATFORM,
+                itemIndex = ACCOUNT_INFO_ITEM_INDEX,
+                requester = platformFocus,
+            ),
+            SettingsFocusBinding(
+                anchor = SettingsFocusAnchor.ROOT_UPDATE_ENTRY,
+                itemIndex = SOFTWARE_INFO_ITEM_INDEX,
+                requester = updateEntryFocus,
+            ),
+        ),
+    )
+
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < 500.dp
         val horizontalPadding = if (compact) 32.dp else 80.dp
@@ -101,6 +108,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
         val sectionGap = if (compact) 14.dp else 20.dp
 
         LazyColumn(
+            state = rootListState,
             modifier = Modifier
                 .width((maxWidth - horizontalPadding * 2).coerceAtMost(TvDimens.pageMaxWidth))
                 .fillMaxHeight()
@@ -206,20 +214,17 @@ private fun PlatformTile(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (focused) 1.035f else 1f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
-        label = "platform-tile-scale",
-    )
     val shape = RoundedCornerShape(if (compact) 16.dp else 18.dp)
     val cardColor = when {
+        focused && loggedIn -> Color.White.copy(alpha = 0.14f)
+        focused -> Color.White.copy(alpha = 0.16f)
         !loggedIn && selected -> Color.White.copy(alpha = 0.12f)
         !loggedIn -> Color.White.copy(alpha = 0.055f)
         selected -> TvColors.blue.copy(alpha = 0.20f)
         else -> Color.White.copy(alpha = 0.065f)
     }
     val borderColor = when {
-        focused -> Color.White.copy(alpha = 0.92f)
+        focused -> TvColors.accent
         selected && loggedIn -> TvColors.accent.copy(alpha = 0.82f)
         selected -> Color.White.copy(alpha = 0.34f)
         else -> Color.White.copy(alpha = 0.10f)
@@ -231,7 +236,6 @@ private fun PlatformTile(
             .width(if (compact) 136.dp else 164.dp)
             .height(if (compact) 82.dp else 96.dp)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
             .background(cardColor)
             .border(if (focused) 2.dp else 1.dp, borderColor, shape)
@@ -339,3 +343,6 @@ private fun BilibiliAccountSettings(
 /** 将语义版本与 Android version code 作为同一条软件版本信息呈现。 */
 private fun versionDisplay(state: TvUiState): String =
     "${state.version.ifBlank { "未知版本" }} (${state.versionCode})"
+
+private const val ACCOUNT_INFO_ITEM_INDEX = 0
+private const val SOFTWARE_INFO_ITEM_INDEX = 1

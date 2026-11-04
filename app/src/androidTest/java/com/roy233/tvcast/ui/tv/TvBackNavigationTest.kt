@@ -3,6 +3,7 @@ package com.roy233.tvcast.ui.tv
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.SettingsPage
+import com.roy233.tvcast.ui.model.SettingsNavigationState
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvActions
@@ -19,40 +20,56 @@ class TvBackNavigationTest {
     fun nestedUpdatePagesReturnOneLevelAtATime() {
         val settings = TvUiState(
             destination = TvDestination.SETTINGS,
-            settingsPage = SettingsPage.UPDATE_NOTES,
+            settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE_NOTES),
         )
 
-        assertEquals(TvBackAction.CLOSE_UPDATE_NOTES, TvKeyHandler.resolveBackAction(settings))
+        assertEquals(TvBackAction.NAVIGATE_SETTINGS_BACK, TvKeyHandler.resolveBackAction(settings))
         assertEquals(
-            TvBackAction.CLOSE_UPDATE_SETTINGS,
-            TvKeyHandler.resolveBackAction(settings.copy(settingsPage = SettingsPage.UPDATE)),
+            TvBackAction.NAVIGATE_SETTINGS_BACK,
+            TvKeyHandler.resolveBackAction(
+                settings.copy(settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE)),
+            ),
         )
         assertEquals(
-            TvBackAction.NAVIGATE_HOME,
-            TvKeyHandler.resolveBackAction(settings.copy(settingsPage = SettingsPage.ROOT)),
+            TvBackAction.OPEN_SIDEBAR,
+            TvKeyHandler.resolveBackAction(
+                settings.copy(settingsNavigation = SettingsNavigationState()),
+            ),
         )
     }
 
     @Test
-    fun backOnUpdatePageDispatchesTheReturnToSettingsAction() {
-        var closedUpdateSettings = false
+    fun backOnUpdatePagePopsTheSettingsRoute() {
+        var navigatedBack = false
 
         TvKeyHandler.dispatchBack(
             state = TvUiState(
                 destination = TvDestination.SETTINGS,
-                settingsPage = SettingsPage.UPDATE,
+                settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE),
             ),
-            actions = TvActions(onCloseUpdateSettings = { closedUpdateSettings = true }),
+            actions = TvActions(onNavigateSettingsBack = { navigatedBack = true }),
         )
 
-        assertEquals(true, closedUpdateSettings)
+        assertEquals(true, navigatedBack)
+    }
+
+    @Test
+    fun backOnSettingsRootOpensTheSidebar() {
+        var openedSidebar = false
+
+        TvKeyHandler.dispatchBack(
+            state = TvUiState(destination = TvDestination.SETTINGS),
+            actions = TvActions(onOpenSidebar = { openedSidebar = true }),
+        )
+
+        assertEquals(true, openedSidebar)
     }
 
     @Test
     fun topmostOverlayClosesBeforeUnderlyingPage() {
         val state = TvUiState(
             destination = TvDestination.SETTINGS,
-            settingsPage = SettingsPage.UPDATE_NOTES,
+            settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE_NOTES),
             panel = PanelKind.QUALITY,
             helpVisible = true,
             error = TvError("错误", "详情"),
@@ -98,7 +115,7 @@ class TvBackNavigationTest {
                 TvUiState(
                     mode = TvMode.PLAYING,
                     destination = TvDestination.SETTINGS,
-                    settingsPage = SettingsPage.UPDATE_NOTES,
+                    settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE_NOTES),
                 ),
             ),
         )
@@ -112,6 +129,12 @@ class TvBackNavigationTest {
         assertEquals(
             TvBackAction.CLOSE_SIDEBAR,
             TvKeyHandler.resolveBackAction(home.copy(sidebarVisible = true)),
+        )
+        assertEquals(
+            TvBackAction.CLOSE_SIDEBAR,
+            TvKeyHandler.resolveBackAction(
+                home.copy(destination = TvDestination.SETTINGS, sidebarVisible = true),
+            ),
         )
     }
 

@@ -10,7 +10,7 @@ import com.roy233.tvcast.feature.update.UpdateUiState
  *
  * @property mode 当前显示模式。
  * @property destination 当前页面。
- * @property settingsPage 设置页面当前打开的层级。
+ * @property settingsNavigation 设置页的路由栈与焦点恢复请求。
  * @property sidebarVisible 侧边栏是否可见。
  * @property loggedIn 是否已登录。
  * @property accountName 当前账号名称。
@@ -62,7 +62,7 @@ import com.roy233.tvcast.feature.update.UpdateUiState
 data class TvUiState(
     val mode: TvMode = TvMode.IDLE,
     val destination: TvDestination = TvDestination.HOME,
-    val settingsPage: SettingsPage = SettingsPage.ROOT,
+    val settingsNavigation: SettingsNavigationState = SettingsNavigationState(),
     val sidebarVisible: Boolean = false,
     val loggedIn: Boolean = false,
     val accountName: String = "未登录",
@@ -129,4 +129,8 @@ data class TvUiState(
     val syncPlaybackHistory: Boolean = true,
     val showContinue: Boolean = true,
     val update: UpdateUiState = UpdateUiState(),
-)
+) {
+    /** 当前设置页面；仅为渲染与既有投影提供只读视图。 */
+    val settingsPage: SettingsPage
+        get() = settingsNavigation.currentPage
+}

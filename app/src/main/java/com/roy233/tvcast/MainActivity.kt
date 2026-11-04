@@ -224,23 +224,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 )
             },
             onToast = { message -> ui = ui.copy(toast = message) },
-            openUpdateSettingsNavigation = {
-                ui = ui.copy(
-                    destination = TvDestination.SETTINGS,
-                    settingsPage = SettingsPage.UPDATE,
-                    sidebarVisible = false,
-                    hudVisible = false,
-                )
-            },
-            closeUpdateSettingsNavigation = {
-                ui = ui.copy(settingsPage = SettingsPage.ROOT)
-            },
-            openUpdateNotesNavigation = {
-                ui = ui.copy(settingsPage = SettingsPage.UPDATE_NOTES)
-            },
-            closeUpdateNotesNavigation = {
-                ui = ui.copy(settingsPage = SettingsPage.UPDATE)
-            },
             isPlaying = { playerIsPlaying() },
             positionMs = { playerPositionMs() },
             durationMs = { playerDurationMs() },
@@ -324,14 +307,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun requestSkipLogin() = skipLogin()
 
     override fun requestLogout() = logout()
-
-    override fun openUpdateSettings() = updateCoordinator.openSettings()
-
-    override fun closeUpdateSettings() = updateCoordinator.closeSettings()
-
-    override fun openUpdateNotes() = updateCoordinator.openNotes()
-
-    override fun closeUpdateNotes() = updateCoordinator.closeNotes()
 
     override fun selectUpdateChannel(channel: UpdateChannel) =
         updateCoordinator.selectChannel(channel)
@@ -1389,7 +1364,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         ui = ui.copy(
             mode = TvMode.IDLE,
             destination = TvDestination.HOME,
-            settingsPage = SettingsPage.ROOT,
+            settingsNavigation = ui.settingsNavigation.reset(),
             sidebarVisible = true,
             panel = null,
             stopCastConfirm = false,

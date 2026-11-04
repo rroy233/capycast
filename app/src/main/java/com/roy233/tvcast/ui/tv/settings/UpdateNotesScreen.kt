@@ -36,7 +36,6 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +70,7 @@ import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.SettingsFocusAnchor
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
@@ -86,14 +86,22 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
     val blocks = remember(notes) { parseReleaseNotes(notes) }
     val firstFocus = remember { FocusRequester() }
     val backFocus = remember { FocusRequester() }
+    val listState = rememberLazyListState()
     val firstFocusable = blocks.indexOfFirst { it.kind != ReleaseNoteKind.DIVIDER }
-    LaunchedEffect(firstFocusable) {
-        runCatching {
-            if (firstFocusable >= 0) firstFocus.requestFocus() else backFocus.requestFocus()
-        }
-    }
+    RestoreSettingsFocus(
+        request = state.settingsNavigation.focusRequest,
+        listState = listState,
+        bindings = listOf(
+            SettingsFocusBinding(
+                anchor = SettingsFocusAnchor.UPDATE_NOTES_INITIAL,
+                itemIndex = if (firstFocusable >= 0) firstFocusable + 1 else 0,
+                requester = if (firstFocusable >= 0) firstFocus else backFocus,
+            ),
+        ),
+    )
     BoxWithConstraints(Modifier.fillMaxSize()) {
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .width((maxWidth - 160.dp).coerceAtMost(TvDimens.pageMaxWidth))
                 .fillMaxHeight()
@@ -124,7 +132,7 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
                     }
                     WhiteButton(
                         text = "返回",
-                        onClick = actions.onCloseUpdateNotes,
+                        onClick = actions.onNavigateSettingsBack,
                         focusRequester = backFocus,
                         compact = true,
                     )

@@ -16,9 +16,8 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
  * @property onNavigateHome 导航到首页。
  * @property onNavigateSettings 导航到设置页。
  * @property onOpenUpdateSettings 打开应用更新二级页面。
- * @property onCloseUpdateSettings 返回设置主页。
+ * @property onNavigateSettingsBack 弹出当前设置子页面并恢复父页焦点。
  * @property onOpenUpdateNotes 打开当前更新的更新日志。
- * @property onCloseUpdateNotes 从更新日志返回应用更新页面。
  * @property onSelectUpdateChannel 选择更新通道。
  * @property onSetAutoUpdateCheck 设置是否自动检查更新。
  * @property onCheckForUpdates 手动检查更新。
@@ -61,9 +60,8 @@ class TvActions(
     val onNavigateHome: () -> Unit = {},
     val onNavigateSettings: () -> Unit = {},
     val onOpenUpdateSettings: () -> Unit = {},
-    val onCloseUpdateSettings: () -> Unit = {},
+    val onNavigateSettingsBack: () -> Unit = {},
     val onOpenUpdateNotes: () -> Unit = {},
-    val onCloseUpdateNotes: () -> Unit = {},
     val onSelectUpdateChannel: (UpdateChannel) -> Unit = {},
     val onSetAutoUpdateCheck: (Boolean) -> Unit = {},
     val onCheckForUpdates: () -> Unit = {},

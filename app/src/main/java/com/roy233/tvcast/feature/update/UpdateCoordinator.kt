@@ -33,10 +33,6 @@ class UpdateCoordinator(
     private val scope: CoroutineScope,
     private val readUpdateState: () -> UpdateUiState,
     private val writeUpdateState: (UpdateUiState) -> Unit,
-    private val openSettingsNavigation: () -> Unit,
-    private val closeSettingsNavigation: () -> Unit,
-    private val openNotesNavigation: () -> Unit,
-    private val closeNotesNavigation: () -> Unit,
     private val onToast: (String) -> Unit,
     private val preferences: UpdatePreferences = UpdatePreferences(context),
     private val repository: ReleaseRepository = ReleaseRepository(),
@@ -61,27 +57,6 @@ class UpdateCoordinator(
                 automaticCheck = preferences.automaticCheckEnabled,
             )
         }
-    }
-
-    /** 打开应用更新二级页面。 */
-    fun openSettings() {
-        openSettingsNavigation()
-    }
-
-    /** 返回设置主页。 */
-    fun closeSettings() {
-        closeSettingsNavigation()
-    }
-
-    /** 打开当前可用更新的更新日志页面。 */
-    fun openNotes() {
-        if (readUpdateState().availableUpdate == null) return
-        openNotesNavigation()
-    }
-
-    /** 从更新日志返回应用更新页面。 */
-    fun closeNotes() {
-        closeNotesNavigation()
     }
 
     /** 切换更新发布通道并清除当前查询结果。 */

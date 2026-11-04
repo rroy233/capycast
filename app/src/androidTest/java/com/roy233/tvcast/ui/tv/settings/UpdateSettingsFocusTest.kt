@@ -2,7 +2,11 @@ package com.roy233.tvcast.ui.tv.settings
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
@@ -20,6 +24,7 @@ import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.SettingsPage
+import com.roy233.tvcast.ui.model.SettingsNavigationState
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvUiState
 import org.junit.Assert.assertEquals
@@ -75,17 +80,17 @@ class UpdateSettingsFocusTest {
     }
 
     @Test
-    fun updatePageReturnButtonClosesUpdateSettings() {
-        var closed = false
+    fun updatePageReturnButtonNavigatesBack() {
+        var navigatedBack = false
         composeRule.setContent {
             UpdateSettingsScreen(
                 state = TvUiState(),
-                actions = TvActions(onCloseUpdateSettings = { closed = true }),
+                actions = TvActions(onNavigateSettingsBack = { navigatedBack = true }),
             )
         }
 
         composeRule.onNodeWithText("返回").performClick()
-        composeRule.runOnIdle { assertTrue(closed) }
+        composeRule.runOnIdle { assertTrue(navigatedBack) }
     }
 
     @Test
@@ -95,22 +100,29 @@ class UpdateSettingsFocusTest {
                 mutableStateOf(
                     TvUiState(
                         destination = TvDestination.SETTINGS,
-                        settingsPage = SettingsPage.UPDATE,
+                        settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE),
+                        loggedIn = true,
+                        accountName = "tv-user",
                     ),
                 )
             }
-            SettingsScreen(
-                state = uiState.value,
-                actions = TvActions(
-                    onCloseUpdateSettings = {
-                        uiState.value = uiState.value.copy(settingsPage = SettingsPage.ROOT)
-                    },
-                ),
-            )
+            Box(Modifier.size(width = 960.dp, height = 540.dp)) {
+                SettingsScreen(
+                    state = uiState.value,
+                    actions = TvActions(
+                        onNavigateSettingsBack = {
+                            uiState.value = uiState.value.copy(
+                                settingsNavigation = uiState.value.settingsNavigation.pop(),
+                            )
+                        },
+                    ),
+                )
+            }
         }
 
         composeRule.onNodeWithText("返回").performClick()
         composeRule.onNodeWithText("账号信息").assertExists()
+        composeRule.onNodeWithText("检查更新").assertIsFocused()
     }
 
     @Test

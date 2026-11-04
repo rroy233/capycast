@@ -6,7 +6,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import com.roy233.tvcast.ui.model.PanelKind
-import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
@@ -22,9 +21,8 @@ internal enum class TvBackAction {
     CLOSE_PANEL,
     CLOSE_HELP,
     CLOSE_LOGIN,
-    CLOSE_UPDATE_NOTES,
-    CLOSE_UPDATE_SETTINGS,
-    NAVIGATE_HOME,
+    NAVIGATE_SETTINGS_BACK,
+    OPEN_SIDEBAR,
     REQUEST_STOP_CAST,
     CLOSE_SIDEBAR,
     HOME_BACK,
@@ -62,12 +60,10 @@ object TvKeyHandler {
         state.loginDialogVisible -> TvBackAction.CLOSE_LOGIN
         state.mode == TvMode.PLAYING || (state.mode == TvMode.LOADING && state.castActive) ->
             TvBackAction.REQUEST_STOP_CAST
+        state.sidebarVisible -> TvBackAction.CLOSE_SIDEBAR
         state.destination == TvDestination.SETTINGS &&
-            state.settingsPage == SettingsPage.UPDATE_NOTES -> TvBackAction.CLOSE_UPDATE_NOTES
-        state.destination == TvDestination.SETTINGS &&
-            state.settingsPage == SettingsPage.UPDATE -> TvBackAction.CLOSE_UPDATE_SETTINGS
-        state.destination == TvDestination.SETTINGS -> TvBackAction.NAVIGATE_HOME
-        state.destination == TvDestination.HOME && state.sidebarVisible -> TvBackAction.CLOSE_SIDEBAR
+            state.settingsNavigation.canNavigateBack -> TvBackAction.NAVIGATE_SETTINGS_BACK
+        state.destination == TvDestination.SETTINGS -> TvBackAction.OPEN_SIDEBAR
         else -> TvBackAction.HOME_BACK
     }
 
@@ -80,9 +76,8 @@ object TvKeyHandler {
             TvBackAction.CLOSE_PANEL -> actions.onClosePanel()
             TvBackAction.CLOSE_HELP -> actions.onCloseHelp()
             TvBackAction.CLOSE_LOGIN -> actions.onCloseLogin()
-            TvBackAction.CLOSE_UPDATE_NOTES -> actions.onCloseUpdateNotes()
-            TvBackAction.CLOSE_UPDATE_SETTINGS -> actions.onCloseUpdateSettings()
-            TvBackAction.NAVIGATE_HOME -> actions.onNavigateHome()
+            TvBackAction.NAVIGATE_SETTINGS_BACK -> actions.onNavigateSettingsBack()
+            TvBackAction.OPEN_SIDEBAR -> actions.onOpenSidebar()
             TvBackAction.REQUEST_STOP_CAST -> actions.onRequestStopCast()
             TvBackAction.CLOSE_SIDEBAR -> actions.onCloseSidebar()
             TvBackAction.HOME_BACK -> actions.onHomeBack()

@@ -5,6 +5,7 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.feature.cast.domain.RecentCast
+import com.roy233.tvcast.ui.model.SettingsFocusAnchor
 import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
@@ -21,10 +22,6 @@ interface TvActionHost {
     fun requestCloseLogin()
     fun requestSkipLogin()
     fun requestLogout()
-    fun openUpdateSettings()
-    fun closeUpdateSettings()
-    fun openUpdateNotes()
-    fun closeUpdateNotes()
     fun selectUpdateChannel(channel: UpdateChannel)
     fun setAutomaticUpdateCheck(enabled: Boolean)
     fun checkForUpdates()
@@ -85,33 +82,73 @@ class TvActionDispatcher(
             stateHolder.set(stateHolder.read().copy(sidebarVisible = true))
         },
         onCloseSidebar = {
-            stateHolder.set(stateHolder.read().copy(sidebarVisible = false))
+            val state = stateHolder.read()
+            stateHolder.set(
+                state.copy(
+                    sidebarVisible = false,
+                    settingsNavigation = if (state.destination == TvDestination.SETTINGS) {
+                        state.settingsNavigation.requestCurrentFocus()
+                    } else {
+                        state.settingsNavigation
+                    },
+                ),
+            )
         },
         onNavigateHome = {
             val state = stateHolder.read()
             stateHolder.set(
                 state.copy(
                     destination = TvDestination.HOME,
-                    settingsPage = SettingsPage.ROOT,
-                    sidebarVisible = true,
+                    settingsNavigation = state.settingsNavigation.reset(),
+                    sidebarVisible = false,
                     hudVisible = state.mode == TvMode.PLAYING,
                 ),
             )
         },
         onNavigateSettings = {
+            val state = stateHolder.read()
             stateHolder.set(
-                stateHolder.read().copy(
+                state.copy(
                     destination = TvDestination.SETTINGS,
-                    settingsPage = SettingsPage.ROOT,
-                    sidebarVisible = true,
+                    settingsNavigation = state.settingsNavigation.reset(),
+                    sidebarVisible = false,
                     hudVisible = false,
                 ),
             )
         },
-        onOpenUpdateSettings = { host.openUpdateSettings() },
-        onCloseUpdateSettings = { host.closeUpdateSettings() },
-        onOpenUpdateNotes = { host.openUpdateNotes() },
-        onCloseUpdateNotes = { host.closeUpdateNotes() },
+        onOpenUpdateSettings = {
+            val state = stateHolder.read()
+            stateHolder.set(
+                state.copy(
+                    destination = TvDestination.SETTINGS,
+                    sidebarVisible = false,
+                    hudVisible = false,
+                    settingsNavigation = state.settingsNavigation.push(
+                        page = SettingsPage.UPDATE,
+                        entryFocus = SettingsFocusAnchor.UPDATE_BACK,
+                        returnFocus = SettingsFocusAnchor.ROOT_UPDATE_ENTRY,
+                    ),
+                ),
+            )
+        },
+        onNavigateSettingsBack = {
+            val state = stateHolder.read()
+            stateHolder.set(state.copy(settingsNavigation = state.settingsNavigation.pop()))
+        },
+        onOpenUpdateNotes = {
+            val state = stateHolder.read()
+            if (state.update.availableUpdate != null) {
+                stateHolder.set(
+                    state.copy(
+                        settingsNavigation = state.settingsNavigation.push(
+                            page = SettingsPage.UPDATE_NOTES,
+                            entryFocus = SettingsFocusAnchor.UPDATE_NOTES_INITIAL,
+                            returnFocus = SettingsFocusAnchor.UPDATE_RELEASE_NOTES,
+                        ),
+                    ),
+                )
+            }
+        },
         onSelectUpdateChannel = { channel -> host.selectUpdateChannel(channel) },
         onSetAutoUpdateCheck = { enabled -> host.setAutomaticUpdateCheck(enabled) },
         onCheckForUpdates = { host.checkForUpdates() },

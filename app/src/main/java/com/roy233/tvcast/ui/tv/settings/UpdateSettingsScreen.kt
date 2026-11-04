@@ -36,7 +36,6 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +70,7 @@ import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.SettingsFocusAnchor
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
@@ -89,12 +89,20 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
     val update = state.update
     val releaseNotes = update.availableUpdate?.releaseNotes.orEmpty()
     val backFocus = remember { FocusRequester() }
+    val releaseNotesFocus = remember { FocusRequester() }
     val primaryActionFocus = remember { FocusRequester() }
     val listState = rememberLazyListState()
-    LaunchedEffect(Unit) {
-        listState.scrollToItem(0)
-        backFocus.requestFocus()
+    val focusBindings = buildList {
+        add(SettingsFocusBinding(SettingsFocusAnchor.UPDATE_BACK, 0, backFocus))
+        if (releaseNotes.isNotBlank()) {
+            add(SettingsFocusBinding(SettingsFocusAnchor.UPDATE_RELEASE_NOTES, 2, releaseNotesFocus))
+        }
     }
+    RestoreSettingsFocus(
+        request = state.settingsNavigation.focusRequest,
+        listState = listState,
+        bindings = focusBindings,
+    )
     val progress = if (update.totalBytes > 0L) {
         (update.downloadedBytes.toFloat() / update.totalBytes.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -159,7 +167,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                     }
                     WhiteButton(
                         text = "返回",
-                        onClick = actions.onCloseUpdateSettings,
+                        onClick = actions.onNavigateSettingsBack,
                         focusRequester = backFocus,
                         compact = true,
                     )
@@ -174,7 +182,11 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
 
             if (releaseNotes.isNotBlank()) {
                 item {
-                    ReleaseNotesEntry(releaseNotes, actions.onOpenUpdateNotes)
+                    ReleaseNotesEntry(
+                        notes = releaseNotes,
+                        onClick = actions.onOpenUpdateNotes,
+                        focusRequester = releaseNotesFocus,
+                    )
                     Spacer(Modifier.height(14.dp))
                 }
             }
@@ -438,7 +450,11 @@ private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
 
 /** 显示可聚焦的更新日志入口。 */
 @Composable
-private fun ReleaseNotesEntry(notes: String, onClick: () -> Unit) {
+private fun ReleaseNotesEntry(
+    notes: String,
+    onClick: () -> Unit,
+    focusRequester: FocusRequester,
+) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.collectIsFocusedAsState().value
     val shape = RoundedCornerShape(16.dp)
@@ -446,6 +462,7 @@ private fun ReleaseNotesEntry(notes: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .focusRequester(focusRequester)
             .clip(shape)
             .background(
                 if (focused) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.06f)
