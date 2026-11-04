@@ -6,6 +6,9 @@
 - Before changing Android behaviour, read the **Current Architecture** section below. Then read the task-specific reference selected by `.agents/skills/capycast-architecture/SKILL.md`.
 - Keep changes focused on the requested outcome. Do not mix unrelated cleanup, refactoring, or formatting with functional changes.
 - Preserve and respect existing user changes in the working tree.
+- Every behaviour has one owning mechanism. A fix extends that owner so the whole category of defect becomes impossible; a change that only removes the current symptom leaves the mechanism wrong.
+- A defect that returns has already been patched. Its second occurrence is the signal to replace the local fix with the general mechanism, because local fixes accumulate into unmaintainable code regardless of their individual size.
+- Design the mechanism before writing the repair. State has one owner, each transition has one place, and a new case is a declaration against that mechanism rather than new repair logic.
 - When requirements, scope, or destructive effects are unclear, explain the risk and ask for confirmation before proceeding.
 
 ## Branches and Git
