@@ -104,7 +104,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -173,10 +172,9 @@ internal fun LoginDialog(state: TvUiState, actions: TvActions) {
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Image(
-                        painter = painterResource(com.roy233.tvcast.R.drawable.bilibili_logo),
-                        contentDescription = null,
+                    BilibiliTvLogo(
                         modifier = Modifier.size(if (compact) 32.dp else 36.dp),
+                        color = TvColors.blue,
                     )
                     Spacer(Modifier.width(10.dp))
                     BasicText(

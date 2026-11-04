@@ -109,11 +109,11 @@ private data class GlassMaterialSpec(
 
 private fun GlassMaterial.specification(): GlassMaterialSpec = when (this) {
     GlassMaterial.Navigation -> GlassMaterialSpec(
-        tint = Color(0x66151D26),
-        borderAlpha = 0.32f,
-        highlightAlpha = 0.32f,
-        shadow = 20.dp,
-        blurRadius = 26.dp,
+        tint = Color(0xD6151D26),
+        borderAlpha = 0.38f,
+        highlightAlpha = 0.24f,
+        shadow = 30.dp,
+        blurRadius = 42.dp,
         supportsBackdrop = true,
     )
     GlassMaterial.Panel -> GlassMaterialSpec(

@@ -12,7 +12,7 @@ import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
-import com.roy233.tvcast.ui.tv.tvFocusRegion
+import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import com.roy233.tvcast.ui.designsystem.*
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -92,7 +92,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -107,7 +106,15 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import kotlinx.coroutines.delay
+
+private val COMPACT_SCREEN_WIDTH = 720.dp
+private val SIDEBAR_MIN_WIDTH = 248.dp
+private val SIDEBAR_MAX_WIDTH = 300.dp
+
+private fun sidebarWidthFor(maxWidth: Dp): Dp = when {
+    maxWidth < COMPACT_SCREEN_WIDTH -> maxWidth * 0.42f
+    else -> maxWidth * 0.285f
+}.coerceIn(SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH)
 
 /**
  * 显示电视端主导航侧边栏。
@@ -124,129 +131,132 @@ internal fun Sidebar(
     val homeFocus = remember { FocusRequester() }
     val settingsFocus = remember { FocusRequester() }
 
-    val view = LocalView.current
-    LaunchedEffect(state.destination) {
-        var guard = 0
-        while (!view.hasFocus() && guard++ < 15) delay(100)
-        delay(340)
-        runCatching {
-            if (state.destination == TvDestination.SETTINGS) {
-                settingsFocus.requestFocus()
-            } else {
-                homeFocus.requestFocus()
+    LaunchedEffect(state.sidebarVisible, state.destination) {
+        if (state.sidebarVisible) {
+            runCatching {
+                if (state.destination == TvDestination.SETTINGS) {
+                    settingsFocus.requestFocus()
+                } else {
+                    homeFocus.requestFocus()
+                }
             }
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.CenterStart,
     ) {
+        val compact = maxWidth < COMPACT_SCREEN_WIDTH || maxHeight < 500.dp
+        val sidebarWidth = sidebarWidthFor(maxWidth)
+
         GlassSurface(
             modifier = Modifier
-                .padding(start = 48.dp)
-                .width(272.dp)
+                .padding(start = if (compact) 24.dp else 48.dp)
+                .width(sidebarWidth)
                 .heightIn(max = 420.dp)
                 .wrapContentHeight()
                 .testTag("sidebar-panel")
-                .tvFocusRegion(),
+                .then(if (state.sidebarVisible) Modifier.tvModalFocusRegion() else Modifier),
             material = GlassMaterial.Navigation,
             size = GlassSize.Large,
-            shape = RoundedCornerShape(36.dp),
+            shape = RoundedCornerShape(if (compact) 28.dp else 36.dp),
         ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 22.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 20.dp,
+                        vertical = 22.dp,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .border(
-                            width = 1.dp,
-                            color = Color.White.copy(alpha = 0.16f),
-                            shape = RoundedCornerShape(11.dp),
-                        ),
-                    contentAlignment = Alignment.Center,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Image(
-                        painter = painterResource(com.roy233.tvcast.R.mipmap.ic_launcher),
-                        contentDescription = "CapyCast Logo",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(0.dp),
-                ) {
-                    BasicText(
-                        text = "CapyCast",
-                        style = TvType.bodyMedium.copy(
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    BasicText(
-                        text = "v${state.version}",
-                        style = TvType.caption.copy(
-                            color = TvColors.textTertiary,
-                            fontSize = 12.sp,
-                        ),
-                        modifier = Modifier.align(Alignment.End),
-                        maxLines = 1,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            SidebarItem(
-                title = "Bilibili 投屏",
-                icon = { tint ->
-                    BilibiliTvLogo(
-                        modifier = Modifier.size(22.dp),
-                        color = tint,
-                    )
-                },
-                selected = state.destination == TvDestination.HOME,
-                onClick = {
-                    if (state.destination == TvDestination.HOME) {
-                        actions.onCloseSidebar()
-                    } else {
-                        actions.onNavigateHome()
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(11.dp))
+                            .border(
+                                width = 1.dp,
+                                color = Color.White.copy(alpha = 0.16f),
+                                shape = RoundedCornerShape(11.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(com.roy233.tvcast.R.drawable.capycast_brandmark),
+                            contentDescription = "CapyCast Logo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
-                },
-                focusRequester = homeFocus,
-            )
-            SidebarItem(
-                title = "设置",
-                icon = { tint ->
-                    Icon(
-                        imageVector = Icons.Rounded.Settings,
-                        contentDescription = null,
-                        tint = tint,
-                        modifier = Modifier.size(22.dp),
-                    )
-                },
-                selected = state.destination == TvDestination.SETTINGS,
-                onClick = {
-                    if (state.destination == TvDestination.SETTINGS) {
-                        actions.onCloseSidebar()
-                    } else {
-                        actions.onNavigateSettings()
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        BasicText(
+                            text = "CapyCast",
+                            style = TvType.bodyMedium.copy(
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        BasicText(
+                            text = "v${state.version}",
+                            style = TvType.caption.copy(
+                                color = TvColors.textTertiary,
+                                fontSize = 12.sp,
+                            ),
+                            maxLines = 1,
+                        )
                     }
-                },
-                focusRequester = settingsFocus,
-                badge = state.update.availableUpdate != null,
-            )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                SidebarItem(
+                    title = "Bilibili 投屏",
+                    icon = { tint ->
+                        BilibiliTvLogo(
+                            modifier = Modifier.size(30.dp),
+                            color = tint,
+                        )
+                    },
+                    selected = state.destination == TvDestination.HOME,
+                    onClick = {
+                        if (state.destination == TvDestination.HOME) {
+                            actions.onCloseSidebar()
+                        } else {
+                            actions.onNavigateHome()
+                        }
+                    },
+                    focusRequester = homeFocus,
+                )
+                SidebarItem(
+                    title = "设置",
+                    icon = { tint ->
+                        Icon(
+                            imageVector = Icons.Rounded.Settings,
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(30.dp),
+                        )
+                    },
+                    selected = state.destination == TvDestination.SETTINGS,
+                    onClick = {
+                        if (state.destination == TvDestination.SETTINGS) {
+                            actions.onCloseSidebar()
+                        } else {
+                            actions.onNavigateSettings()
+                        }
+                    },
+                    focusRequester = settingsFocus,
+                    badge = state.update.availableUpdate != null,
+                )
             }
         }
     }

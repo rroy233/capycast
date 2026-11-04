@@ -8,6 +8,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -22,6 +23,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ShaderBrush
@@ -33,6 +35,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import com.roy233.tvcast.R
 
 private val HOME_BACKGROUND = Color(0xFF09141B)
@@ -267,30 +270,12 @@ internal fun BilibiliTvLogo(
     modifier: Modifier = Modifier,
     color: Color = TV_WATERMARK,
 ) {
-    val context = LocalContext.current
-    val logo = remember(context) { context.readSvgVector(R.raw.bilibili_tv_logo) }
-
-    androidx.compose.foundation.Canvas(modifier.aspectRatio(logo.aspectRatio)) {
-        withTransform({
-            scale(
-                scaleX = size.width / logo.viewBoxWidth,
-                scaleY = size.height / logo.viewBoxHeight,
-                pivot = Offset.Zero,
-            )
-        }) {
-            logo.paths.forEach { svgPath ->
-                drawPath(
-                    path = svgPath.path,
-                    color = color,
-                    style = Stroke(
-                        width = svgPath.strokeWidth ?: 1.5f,
-                        cap = StrokeCap.Round,
-                        join = StrokeJoin.Round,
-                    ),
-                )
-            }
-        }
-    }
+    Image(
+        painter = painterResource(R.drawable.bilibili_tv_logo),
+        contentDescription = null,
+        colorFilter = ColorFilter.tint(color),
+        modifier = modifier,
+    )
 }
 
 private fun Context.readSvgVector(rawResource: Int): SvgVector {

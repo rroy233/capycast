@@ -135,7 +135,7 @@ import kotlinx.coroutines.delay
 fun TvRoot(state: TvUiState, actions: TvActions) {
     val backdrop = rememberLayerBackdrop()
     val ambient = state.mode == TvMode.IDLE
-    val modal = state.panel != null || state.error != null ||
+    val modal = state.panel != null || state.error != null || state.sidebarVisible ||
         state.stopCastConfirm || state.helpVisible || state.loginDialogVisible
     val focusManager = LocalFocusManager.current
     val seekAccelerator = remember { PlaybackSeekAccelerator() }
@@ -150,16 +150,6 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
         scaleX = 1f - 0.035f * sidebarDepth
         scaleY = 1f - 0.035f * sidebarDepth
         translationX = 16.dp.toPx() * sidebarDepth
-    }
-    // tvOS-style quiet auto-collapse after switching to Bilibili.
-    LaunchedEffect(state.mode, state.destination, state.sidebarVisible) {
-        if (state.mode == TvMode.IDLE &&
-            state.destination == TvDestination.HOME &&
-            state.sidebarVisible
-        ) {
-            delay(5000)
-            actions.onCloseSidebar()
-        }
     }
     LaunchedEffect(state.mode, state.loginDialogVisible) {
         if (state.loginDialogVisible && state.mode != TvMode.IDLE) actions.onCloseLogin()
@@ -203,6 +193,8 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                         if (focusManager.moveFocus(FocusDirection.Left)) {
                             true
                         } else {
+                            // Nothing to the left means the destination is exhausted:
+                            // opening navigation is the single edge behaviour for every page.
                             actions.onOpenSidebar()
                             true
                         }
@@ -249,7 +241,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                         Box(
                             Modifier
                                 .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.28f))
+                                .background(Color.Black.copy(alpha = 0.56f))
                                 .pointerInput(Unit) {
                                     detectTapGestures { actions.onCloseSidebar() }
                                 }
