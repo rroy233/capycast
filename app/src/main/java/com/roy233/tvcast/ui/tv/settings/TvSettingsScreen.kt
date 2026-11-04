@@ -56,6 +56,7 @@ import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 
@@ -241,6 +242,7 @@ private fun PlatformTile(
             .width(if (compact) 136.dp else 164.dp)
             .height(if (compact) 82.dp else 96.dp)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusTrace("platform:${platform.label}")
             .clip(shape)
             .background(cardColor)
             .border(if (focused) 2.dp else 1.dp, borderColor, shape)

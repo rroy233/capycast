@@ -160,6 +160,26 @@ object TvKeyHandler {
         seekAccelerator: PlaybackSeekAccelerator,
     ): Boolean {
         if (event.type != KeyEventType.KeyDown) return false
+        val surface = resolveKeySurface(state)
+        val handled = handleKeyDown(event, state, actions, modal, seekAccelerator, surface)
+        FocusDiagnostics.keyRouted(
+            state = state,
+            surface = surface,
+            key = FocusDiagnostics.keyName(event.nativeKeyEvent.keyCode),
+            handled = handled,
+        )
+        return handled
+    }
+
+    /** [handle] 的按键处理主体；日志与归属解析由调用方统一负责。 */
+    private fun handleKeyDown(
+        event: KeyEvent,
+        state: TvUiState,
+        actions: TvActions,
+        modal: Boolean,
+        seekAccelerator: PlaybackSeekAccelerator,
+        surface: KeySurface,
+    ): Boolean {
 
         // Back is dispatched by Activity's OnBackPressedDispatcher. Handling it
         // here as well can count one remote press twice (KeyDown + system Back).
@@ -184,9 +204,13 @@ object TvKeyHandler {
             return true
         }
 
-        if (resolveKeySurface(state) == KeySurface.MENU) {
+        if (surface == KeySurface.MENU) {
             val action = resolveMenuKeyAction(event)
-            FocusDiagnostics.menuKey(event.key.toString(), action, state.focusRequest.anchor)
+            FocusDiagnostics.menuKey(
+                key = FocusDiagnostics.keyName(event.nativeKeyEvent.keyCode),
+                action = action,
+                focused = state.focusRequest.anchor,
+            )
             when (action) {
                 MenuKeyAction.FOCUS_PREVIOUS -> actions.onMenuFocusMove(-1)
                 MenuKeyAction.FOCUS_NEXT -> actions.onMenuFocusMove(1)

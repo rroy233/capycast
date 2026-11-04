@@ -151,6 +151,20 @@ data class TvUiState(
         get() = settingsNavigation.currentPage
 
     /**
+     * 打开左侧菜单：菜单成为栈顶，焦点落在当前目的页对应的条目上。
+     *
+     * 菜单可见与栈顶锚点必须同时成立，因此打开动作只能经由这里，
+     * 调用点不再单独写 `sidebarVisible = true`。
+     */
+    fun withMenuOpen(): TvUiState = copy(
+        sidebarVisible = true,
+        focusRequest = focusRequest.moveTo(menuEntryFor(destination).anchor),
+    )
+
+    /** 收起左侧菜单：焦点交还给当前页面的顶层锚点。 */
+    fun withMenuClosed(): TvUiState = copy(sidebarVisible = false).focusCurrentPage()
+
+    /**
      * 把栈顶焦点指向当前页面的顶层锚点。
      *
      * 设置页的顶层由它的路由栈决定（可能停在某个子页），其余目的页用自身锚点，

@@ -26,7 +26,6 @@ import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
-import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.model.CastPlaybackStateProjector
 import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.app.CapyCastContainer
@@ -222,7 +221,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                     sidebarVisible = false,
                     loginDialogVisible = false,
                     showContinue = ui.rememberPlaybackContent,
-                )
+                ).focusCurrentPage()
             },
             onToast = { message -> ui = ui.copy(toast = message) },
             isPlaying = { playerIsPlaying() },
@@ -976,7 +975,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         ui = ui.copy(
             mode = TvMode.IDLE,
             destination = TvDestination.HOME,
-            sidebarVisible = true,
             castTitle = "",
             qualityLabel = "",
             qualityDetail = "",
@@ -995,7 +993,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             audios = emptyList(),
             toast = "播放结束",
             showContinue = ui.rememberPlaybackContent,
-        )
+        ).withMenuClosed()
     }
     override fun updateVideoSize(width: Int, height: Int) {
         videoWidth = width
@@ -1366,8 +1364,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             mode = TvMode.IDLE,
             destination = TvDestination.HOME,
             settingsNavigation = ui.settingsNavigation.reset(),
-            sidebarVisible = true,
-            focusRequest = ui.focusRequest.moveTo(UiFocusAnchor.MENU_HOME),
             panel = null,
             stopCastConfirm = false,
             error = null,
@@ -1389,7 +1385,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             audios = emptyList(),
             showContinue = ui.rememberPlaybackContent,
             toast = "投屏已停止",
-        )
+        ).withMenuClosed()
     }
     override fun showErrorState(title: String, message: String, code: String, canRetry: Boolean) {
         ui = ui.copy(
@@ -1404,7 +1400,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             liveBackupCount = 0,
             panel = null,
             stopCastConfirm = false,
-        )
+        ).withMenuClosed()
     }
     override fun flushHistoryPosition() {
         playbackHistoryCoordinator.onPosition(
@@ -1418,7 +1414,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         ui = ui.copy(
             mode = TvMode.IDLE,
             destination = TvDestination.HOME,
-            sidebarVisible = true,
             castTitle = "",
             qualityLabel = "",
             qualityDetail = "",

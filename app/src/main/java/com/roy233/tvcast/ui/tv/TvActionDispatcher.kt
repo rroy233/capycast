@@ -84,26 +84,25 @@ class TvActionDispatcher(
         onSkipLogin = { host.requestSkipLogin() },
         onOpenSidebar = {
             val state = stateHolder.read()
-            val entry = menuEntryFor(state.destination)
-            stateHolder.set(
-                state.copy(
-                    sidebarVisible = true,
-                    focusRequest = state.focusRequest.moveTo(entry.anchor),
-                ),
+            stateHolder.set(state.withMenuOpen())
+            FocusDiagnostics.menuOpened(
+                entry = menuEntryFor(state.destination),
+                destination = state.destination.name,
+                anchor = stateHolder.read().focusRequest.anchor,
             )
-            FocusDiagnostics.menuOpened(entry, state.destination.name, entry.anchor)
         },
         onCloseSidebar = {
-            // 菜单是路由栈顶；收起后栈顶回到当前页面自身的锚点。
-            stateHolder.set(stateHolder.read().copy(sidebarVisible = false).focusCurrentPage())
+            stateHolder.set(stateHolder.read().withMenuClosed())
             FocusDiagnostics.pageFocusReclaimed(stateHolder.read())
         },
         onMenuFocusMove = { step ->
             val state = stateHolder.read()
-            val current = menuEntryOf(state.focusRequest.anchor)
-            if (state.sidebarVisible && current != null) {
+            if (state.sidebarVisible) {
+                // 栈顶若不是菜单条目，说明打开菜单的路径漏了锚点；从当前目的页条目重新起步。
+                val current = menuEntryOf(state.focusRequest.anchor)
+                    ?: menuEntryFor(state.destination)
                 val target = current.moved(step)
-                if (target != current) {
+                if (target != current || current.anchor != state.focusRequest.anchor) {
                     stateHolder.set(
                         state.copy(focusRequest = state.focusRequest.moveTo(target.anchor)),
                     )

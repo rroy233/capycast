@@ -16,6 +16,7 @@ import com.roy233.tvcast.ui.model.MENU_ENTRIES
 import com.roy233.tvcast.ui.model.MenuEntry
 import com.roy233.tvcast.ui.tv.FocusBinding
 import com.roy233.tvcast.ui.tv.FocusDiagnostics
+import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.RestoreFocus
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -289,6 +290,7 @@ private fun SidebarItem(
                 shape,
             )
             .focusRequester(focusRequester)
+            .focusTrace("menu:${entry.title}")
             .clickable(
                 interactionSource = interaction,
                 indication = null,

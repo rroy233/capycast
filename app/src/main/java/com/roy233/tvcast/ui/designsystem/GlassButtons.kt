@@ -42,6 +42,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import com.roy233.tvcast.ui.tv.focusTrace
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -90,6 +91,7 @@ fun GlassButton(
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .focusProperties { canFocus = enabled }
             .onFocusChanged { focusObserved = it.isFocused }
+            .focusTrace("button:$text")
             .clickable(
                 interactionSource = interaction,
                 indication = null,

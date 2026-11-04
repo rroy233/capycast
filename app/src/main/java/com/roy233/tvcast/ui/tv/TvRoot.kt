@@ -158,9 +158,15 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
     LaunchedEffect(state.mode, state.loginDialogVisible) {
         if (state.loginDialogVisible && state.mode != TvMode.IDLE) actions.onCloseLogin()
     }
-    // 浮层全部关闭后，焦点交还给当前页面；页面自己决定落在哪个锚点。
-    LaunchedEffect(modal, state.mode) {
-        if (!modal && state.mode == TvMode.IDLE) actions.onReclaimPageFocus()
+    // 只有浮层会夺走焦点而不改栈顶锚点，因此“浮层全部关闭”才需要交还焦点；
+    // 菜单有自己的收起动作，已经在收起时把栈顶交还给页面。
+    var overlayWasVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(state.topOverlay, state.mode) {
+        val overlayVisible = state.topOverlay != null
+        if (overlayWasVisible && !overlayVisible && state.mode == TvMode.IDLE) {
+            actions.onReclaimPageFocus()
+        }
+        overlayWasVisible = overlayVisible
     }
 
     val surface = TvKeyHandler.resolveKeySurface(state)
@@ -170,6 +176,16 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
             FocusDiagnostics.surfaceChanged(previousSurface, surface)
             previousSurface = surface
         }
+    }
+    // 层级（目的页、路由、浮层、菜单、栈顶锚点）变化时输出一次快照。
+    LaunchedEffect(
+        state.destination,
+        state.settingsNavigation,
+        state.overlayStack,
+        state.sidebarVisible,
+        state.focusRequest,
+    ) {
+        FocusDiagnostics.stackChanged(state, reason = "hierarchy")
     }
 
     CompositionLocalProvider(

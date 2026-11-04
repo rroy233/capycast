@@ -77,6 +77,7 @@ import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 import kotlinx.coroutines.launch
@@ -317,6 +318,7 @@ private fun UpdateOptionTile(
                 },
                 shape = shape,
             )
+            .focusTrace("tile:$title")
             .selectable(
                 selected = selected,
                 interactionSource = interaction,
@@ -489,6 +491,7 @@ private fun ReleaseNotesEntry(
                 color = if (focused) TvColors.accent else Color.White.copy(alpha = 0.08f),
                 shape = shape,
             )
+            .focusTrace("row:更新日志")
             .clickable(
                 interactionSource = interaction,
                 indication = null,

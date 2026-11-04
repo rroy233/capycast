@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.roy233.tvcast.ui.tv.focusTrace
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -79,6 +80,7 @@ fun FocusableRow(
             .fillMaxWidth()
             .height(rowHeight)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusTrace("row:$title")
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
             .background(

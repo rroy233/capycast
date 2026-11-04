@@ -100,6 +100,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.RestoreFocus
 
 /**
@@ -327,6 +328,7 @@ private fun RecentCard(recent: RecentCast, actions: TvActions) {
                 color = if (focused) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.10f),
                 shape = RoundedCornerShape(18.dp),
             )
+            .focusTrace("card:${recent.title}")
             .clickable(
                 interactionSource = interaction,
                 indication = null,
