@@ -69,12 +69,15 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
+import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvUiState
-import com.roy233.tvcast.ui.model.SettingsFocusAnchor
+import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
+import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 import kotlinx.coroutines.launch
 
@@ -88,16 +91,17 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
     val backFocus = remember { FocusRequester() }
     val listState = rememberLazyListState()
     val firstFocusable = blocks.indexOfFirst { it.kind != ReleaseNoteKind.DIVIDER }
-    RestoreSettingsFocus(
-        request = state.settingsNavigation.focusRequest,
+    RestoreFocus(
+        request = state.focusRequest,
         listState = listState,
         bindings = listOf(
-            SettingsFocusBinding(
-                anchor = SettingsFocusAnchor.UPDATE_NOTES_INITIAL,
+            FocusBinding(
+                anchor = UiFocusAnchor.SETTINGS_UPDATE_NOTES_INITIAL,
                 itemIndex = if (firstFocusable >= 0) firstFocusable + 1 else 0,
                 requester = if (firstFocusable >= 0) firstFocus else backFocus,
             ),
         ),
+        contentKey = firstFocusable,
     )
     BoxWithConstraints(Modifier.fillMaxSize()) {
         LazyColumn(

@@ -26,6 +26,7 @@ import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.model.CastPlaybackStateProjector
 import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.app.CapyCastContainer
@@ -1366,6 +1367,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             destination = TvDestination.HOME,
             settingsNavigation = ui.settingsNavigation.reset(),
             sidebarVisible = true,
+            focusRequest = ui.focusRequest.moveTo(UiFocusAnchor.MENU_HOME),
             panel = null,
             stopCastConfirm = false,
             error = null,

@@ -69,12 +69,15 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
+import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvUiState
-import com.roy233.tvcast.ui.model.SettingsFocusAnchor
+import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
+import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 import kotlinx.coroutines.launch
 
@@ -93,15 +96,29 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
     val primaryActionFocus = remember { FocusRequester() }
     val listState = rememberLazyListState()
     val focusBindings = buildList {
-        add(SettingsFocusBinding(SettingsFocusAnchor.UPDATE_BACK, 0, backFocus))
+        add(
+            FocusBinding(
+                anchor = UiFocusAnchor.SETTINGS_UPDATE_BACK,
+                itemIndex = UPDATE_HEADER_ITEM_INDEX,
+                requester = backFocus,
+            ),
+        )
         if (releaseNotes.isNotBlank()) {
-            add(SettingsFocusBinding(SettingsFocusAnchor.UPDATE_RELEASE_NOTES, 2, releaseNotesFocus))
+            add(
+                FocusBinding(
+                    anchor = UiFocusAnchor.SETTINGS_UPDATE_RELEASE_NOTES,
+                    itemIndex = UPDATE_RELEASE_NOTES_ITEM_INDEX,
+                    requester = releaseNotesFocus,
+                ),
+            )
         }
     }
-    RestoreSettingsFocus(
-        request = state.settingsNavigation.focusRequest,
+    RestoreFocus(
+        request = state.focusRequest,
         listState = listState,
         bindings = focusBindings,
+        // 更新日志入口只在有说明时存在，条目数量变化后需要重新取回焦点。
+        contentKey = focusBindings.size,
     )
     val progress = if (update.totalBytes > 0L) {
         (update.downloadedBytes.toFloat() / update.totalBytes.toFloat()).coerceIn(0f, 1f)
@@ -568,3 +585,7 @@ private fun formatBytes(bytes: Long): String = when {
     else -> "${"%.1f".format(bytes / (1024f * 1024f))} MB"
 }
 
+
+/** 更新页懒列表的条目下标：标题、状态卡、更新日志入口。 */
+private const val UPDATE_HEADER_ITEM_INDEX = 0
+private const val UPDATE_RELEASE_NOTES_ITEM_INDEX = 2

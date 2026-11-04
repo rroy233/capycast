@@ -11,7 +11,8 @@ import com.roy233.tvcast.feature.update.UpdateUiState
  * @property mode 当前显示模式。
  * @property destination 当前页面。
  * @property settingsNavigation 设置页的路由栈与焦点恢复请求。
- * @property sidebarVisible 侧边栏是否可见。
+ * @property sidebarVisible 左侧导航菜单是否可见。
+ * @property focusRequest 栈顶焦点请求；路由栈每次变化都写入新的栈顶锚点。
  * @property loggedIn 是否已登录。
  * @property accountName 当前账号名称。
  * @property mid 当前账号标识。
@@ -64,6 +65,7 @@ data class TvUiState(
     val destination: TvDestination = TvDestination.HOME,
     val settingsNavigation: SettingsNavigationState = SettingsNavigationState(),
     val sidebarVisible: Boolean = false,
+    val focusRequest: FocusRequest = FocusRequest(UiFocusAnchor.HOME_PRIMARY),
     val loggedIn: Boolean = false,
     val accountName: String = "未登录",
     val mid: Long = 0L,
@@ -130,7 +132,37 @@ data class TvUiState(
     val showContinue: Boolean = true,
     val update: UpdateUiState = UpdateUiState(),
 ) {
+    /** 当前叠在目的页之上的浮层，按优先级从高到低排列。 */
+    val overlayStack: List<UiOverlay>
+        get() = buildList {
+            if (stopCastConfirm) add(UiOverlay.STOP_CAST_CONFIRM)
+            if (error != null) add(UiOverlay.ERROR)
+            if (panel != null) add(UiOverlay.PANEL)
+            if (helpVisible) add(UiOverlay.HELP)
+            if (loginDialogVisible) add(UiOverlay.LOGIN_DIALOG)
+        }
+
+    /** 当前拥有按键与焦点的浮层；为 null 表示栈顶是目的页。 */
+    val topOverlay: UiOverlay?
+        get() = overlayStack.firstOrNull()
+
     /** 当前设置页面；仅为渲染与既有投影提供只读视图。 */
     val settingsPage: SettingsPage
         get() = settingsNavigation.currentPage
+
+    /**
+     * 把栈顶焦点指向当前页面的顶层锚点。
+     *
+     * 设置页的顶层由它的路由栈决定（可能停在某个子页），其余目的页用自身锚点，
+     * 因此“栈顶 = 当前页面”这一条规则在模型里只写这一次。
+     */
+    fun focusCurrentPage(): TvUiState = copy(
+        focusRequest = focusRequest.moveTo(
+            if (destination == TvDestination.SETTINGS) {
+                settingsNavigation.topAnchor
+            } else {
+                pageAnchorFor(destination)
+            },
+        ),
+    )
 }

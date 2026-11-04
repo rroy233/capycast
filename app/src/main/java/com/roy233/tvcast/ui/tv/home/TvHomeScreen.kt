@@ -8,7 +8,6 @@ import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.TrackOption
 import com.roy233.tvcast.ui.model.TvActions
-import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
@@ -66,7 +65,6 @@ import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,7 +86,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -101,7 +98,9 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import kotlinx.coroutines.delay
+import com.roy233.tvcast.ui.model.UiFocusAnchor
+import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.RestoreFocus
 
 /**
  * 显示首页内容、登录入口和最近投屏记录。
@@ -114,18 +113,15 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
     val primaryFocus = remember { FocusRequester() }
     val featured = if (state.showContinue) state.recents.firstOrNull() else null
 
-    val view = LocalView.current
-    LaunchedEffect(state.sidebarVisible, state.helpVisible, state.loginDialogVisible, state.showContinue) {
-        if (!state.sidebarVisible && !state.helpVisible && !state.loginDialogVisible) {
-            var guard = 0
-            while (!view.hasFocus() && guard++ < 15) delay(100)
-            delay(220)
-            for (i in 0 until 8) {
-                if (runCatching { primaryFocus.requestFocus() }.getOrDefault(false)) break
-                delay(180)
-            }
-        }
-    }
+    // 首页只声明自己能接的锚点；何时请求由统一恢复入口决定。
+    RestoreFocus(
+        request = state.focusRequest,
+        bindings = listOf(
+            FocusBinding(anchor = UiFocusAnchor.HOME_PRIMARY, requester = primaryFocus),
+        ),
+        // 主入口在扫码登录、继续播放、投屏帮助之间切换；按钮被替换后必须重新取回焦点。
+        contentKey = listOf(state.loggedIn, featured != null, state.helpVisible),
+    )
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < 500.dp

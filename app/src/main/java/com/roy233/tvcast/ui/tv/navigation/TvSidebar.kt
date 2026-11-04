@@ -8,12 +8,15 @@ import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.TrackOption
 import com.roy233.tvcast.ui.model.TvActions
-import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
-import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import com.roy233.tvcast.ui.designsystem.*
+import com.roy233.tvcast.ui.model.MENU_ENTRIES
+import com.roy233.tvcast.ui.model.MenuEntry
+import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.FocusDiagnostics
+import com.roy233.tvcast.ui.tv.RestoreFocus
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
@@ -69,7 +72,6 @@ import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -130,18 +132,20 @@ internal fun Sidebar(
 ) {
     val homeFocus = remember { FocusRequester() }
     val settingsFocus = remember { FocusRequester() }
-
-    LaunchedEffect(state.sidebarVisible, state.destination) {
-        if (state.sidebarVisible) {
-            runCatching {
-                if (state.destination == TvDestination.SETTINGS) {
-                    settingsFocus.requestFocus()
-                } else {
-                    homeFocus.requestFocus()
-                }
-            }
-        }
+    val entryRequesters = remember(homeFocus, settingsFocus) {
+        mapOf(
+            MenuEntry.HOME to homeFocus,
+            MenuEntry.SETTINGS to settingsFocus,
+        )
     }
+
+    // 菜单只声明条目与锚点，焦点时机由统一的恢复入口负责。
+    RestoreFocus(
+        request = state.focusRequest,
+        bindings = MENU_ENTRIES.map { entry ->
+            FocusBinding(anchor = entry.anchor, requester = entryRequesters.getValue(entry))
+        },
+    )
 
     BoxWithConstraints(
         modifier = Modifier.fillMaxSize(),
@@ -156,8 +160,7 @@ internal fun Sidebar(
                 .width(sidebarWidth)
                 .heightIn(max = 420.dp)
                 .wrapContentHeight()
-                .testTag("sidebar-panel")
-                .then(if (state.sidebarVisible) Modifier.tvModalFocusRegion() else Modifier),
+                .testTag("sidebar-panel"),
             material = GlassMaterial.Navigation,
             size = GlassSize.Large,
             shape = RoundedCornerShape(if (compact) 28.dp else 36.dp),
@@ -218,55 +221,38 @@ internal fun Sidebar(
 
                 Spacer(Modifier.height(16.dp))
 
-                SidebarItem(
-                    title = "Bilibili 投屏",
-                    icon = { tint ->
-                        BilibiliTvLogo(
-                            modifier = Modifier.size(30.dp),
-                            color = tint,
-                        )
-                    },
-                    selected = state.destination == TvDestination.HOME,
-                    onClick = {
-                        if (state.destination == TvDestination.HOME) {
-                            actions.onCloseSidebar()
-                        } else {
-                            actions.onNavigateHome()
-                        }
-                    },
-                    focusRequester = homeFocus,
-                )
-                SidebarItem(
-                    title = "设置",
-                    icon = { tint ->
-                        Icon(
-                            imageVector = Icons.Rounded.Settings,
-                            contentDescription = null,
-                            tint = tint,
-                            modifier = Modifier.size(30.dp),
-                        )
-                    },
-                    selected = state.destination == TvDestination.SETTINGS,
-                    onClick = {
-                        if (state.destination == TvDestination.SETTINGS) {
-                            actions.onCloseSidebar()
-                        } else {
-                            actions.onNavigateSettings()
-                        }
-                    },
-                    focusRequester = settingsFocus,
-                    badge = state.update.availableUpdate != null,
-                )
+                MENU_ENTRIES.forEach { entry ->
+                    SidebarItem(
+                        entry = entry,
+                        selected = state.destination == entry.destination,
+                        onClick = {
+                            FocusDiagnostics.menuItemActivated(entry, state.destination.name)
+                            if (state.destination == entry.destination) {
+                                actions.onCloseSidebar()
+                            } else {
+                                entry.navigate(actions)
+                            }
+                        },
+                        focusRequester = entryRequesters.getValue(entry),
+                        badge = entry == MenuEntry.SETTINGS &&
+                            state.update.availableUpdate != null,
+                    )
+                }
             }
         }
     }
 }
 
+/** 把菜单条目映射到目的页导航命令。 */
+private fun MenuEntry.navigate(actions: TvActions) = when (this) {
+    MenuEntry.HOME -> actions.onNavigateHome()
+    MenuEntry.SETTINGS -> actions.onNavigateSettings()
+}
+
 /** 绘制单个侧边栏导航项。 */
 @Composable
 private fun SidebarItem(
-    title: String,
-    icon: @Composable (Color) -> Unit,
+    entry: MenuEntry,
     selected: Boolean,
     onClick: () -> Unit,
     focusRequester: FocusRequester,
@@ -318,9 +304,9 @@ private fun SidebarItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            icon(if (selected) Color.White else Color.White.copy(alpha = 0.78f))
+            MenuEntryIcon(entry, if (selected) Color.White else Color.White.copy(alpha = 0.78f))
             BasicText(
-                text = title,
+                text = entry.title,
                 style = TvType.bodyMedium.copy(
                     color = if (selected || focused) Color.White else TvColors.textSecondary,
                     fontSize = 20.sp,
@@ -343,3 +329,20 @@ private fun SidebarItem(
     }
 }
 
+/** 绘制菜单条目的图标；图标是条目的展示细节，与焦点和跳转无关。 */
+@Composable
+private fun MenuEntryIcon(entry: MenuEntry, tint: Color) {
+    when (entry) {
+        MenuEntry.HOME -> BilibiliTvLogo(
+            modifier = Modifier.size(30.dp),
+            color = tint,
+        )
+
+        MenuEntry.SETTINGS -> Icon(
+            imageVector = Icons.Rounded.Settings,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(30.dp),
+        )
+    }
+}

@@ -10,6 +10,7 @@ import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.UiOverlay
 import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
 import com.roy233.tvcast.ui.tv.player.handlePlaybackSeekKey
 
@@ -47,8 +48,66 @@ internal object HomeBackExitTiming {
     const val EXIT_WINDOW_MS = 5_000L
 }
 
+/** 同一时刻唯一拥有按键的界面表面。 */
+internal enum class KeySurface {
+    STOP_CAST_CONFIRM,
+    ERROR,
+    PANEL,
+    HELP,
+    LOGIN_DIALOG,
+    MENU,
+    PAGE,
+}
+
+/** 菜单显示期间允许的方向键动作；其余按键一律吞掉，下层页面不可操作。 */
+internal enum class MenuKeyAction {
+    FOCUS_PREVIOUS,
+    FOCUS_NEXT,
+    CLOSE_MENU,
+
+    /** 确认类按键交给已获焦点的菜单条目自己响应。 */
+    ACTIVATE_FOCUSED,
+
+    SWALLOW,
+}
+
 /** 处理电视遥控器按键并将其转换为界面操作。 */
 object TvKeyHandler {
+
+    /** 解析当前应当接收按键的表面：浮层栈顶 > 导航菜单 > 目的页。 */
+    internal fun resolveKeySurface(state: TvUiState): KeySurface {
+        when (state.topOverlay) {
+            UiOverlay.STOP_CAST_CONFIRM -> return KeySurface.STOP_CAST_CONFIRM
+            UiOverlay.ERROR -> return KeySurface.ERROR
+            UiOverlay.PANEL -> return KeySurface.PANEL
+            UiOverlay.HELP -> return KeySurface.HELP
+            UiOverlay.LOGIN_DIALOG -> return KeySurface.LOGIN_DIALOG
+            null -> Unit
+        }
+        return if (state.sidebarVisible && state.mode == TvMode.IDLE) {
+            KeySurface.MENU
+        } else {
+            KeySurface.PAGE
+        }
+    }
+
+    /** 导航菜单的按键策略：上下移动焦点，向右收起菜单，确认键交给条目。 */
+    internal fun resolveMenuKeyAction(event: KeyEvent): MenuKeyAction = when (event.key) {
+        Key.DirectionUp -> MenuKeyAction.FOCUS_PREVIOUS
+        Key.DirectionDown -> MenuKeyAction.FOCUS_NEXT
+        Key.DirectionRight -> MenuKeyAction.CLOSE_MENU
+        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> MenuKeyAction.ACTIVATE_FOCUSED
+        else -> MenuKeyAction.SWALLOW
+    }
+
+    /**
+     * 左侧是否已到当前页面的边界。
+     *
+     * 边界由调用方用焦点搜索判定；这里只回答“当前表面是否允许打开导航菜单”。
+     */
+    internal fun canOpenMenuFromEdge(state: TvUiState): Boolean =
+        resolveKeySurface(state) == KeySurface.PAGE && state.mode == TvMode.IDLE
+
 
     /** 按照由上到下的界面层级，解析返回键的唯一目标。 */
     internal fun resolveBackAction(state: TvUiState): TvBackAction = when {
@@ -122,6 +181,21 @@ object TvKeyHandler {
                 state.mode == TvMode.IDLE ->
                     if (state.sidebarVisible) actions.onCloseSidebar() else actions.onOpenSidebar()
             }
+            return true
+        }
+
+        if (resolveKeySurface(state) == KeySurface.MENU) {
+            val action = resolveMenuKeyAction(event)
+            FocusDiagnostics.menuKey(event.key.toString(), action, state.focusRequest.anchor)
+            when (action) {
+                MenuKeyAction.FOCUS_PREVIOUS -> actions.onMenuFocusMove(-1)
+                MenuKeyAction.FOCUS_NEXT -> actions.onMenuFocusMove(1)
+                MenuKeyAction.CLOSE_MENU -> actions.onCloseSidebar()
+                // 菜单条目用 clickable 响应确认键，所以这里不能吞掉事件。
+                MenuKeyAction.ACTIVATE_FOCUSED -> return false
+                MenuKeyAction.SWALLOW -> Unit
+            }
+            // 菜单显示期间其余按键不传向页面，避免隔层操作。
             return true
         }
 

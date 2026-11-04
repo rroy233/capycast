@@ -11,8 +11,10 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
  * @property onLogin 请求开始登录。
  * @property onCloseLogin 关闭扫码登录弹窗。
  * @property onSkipLogin 跳过登录流程。
- * @property onOpenSidebar 打开侧边栏。
- * @property onCloseSidebar 关闭侧边栏。
+ * @property onOpenSidebar 打开左侧导航菜单。
+ * @property onCloseSidebar 收起左侧导航菜单并把焦点交还给当前页面。
+ * @property onMenuFocusMove 在菜单条目间移动焦点，正数向下、负数向上。
+ * @property onReclaimPageFocus 腾出的焦点交还给当前页面。
  * @property onNavigateHome 导航到首页。
  * @property onNavigateSettings 导航到设置页。
  * @property onOpenUpdateSettings 打开应用更新二级页面。
@@ -57,6 +59,8 @@ class TvActions(
     val onSkipLogin: () -> Unit = {},
     val onOpenSidebar: () -> Unit = {},
     val onCloseSidebar: () -> Unit = {},
+    val onMenuFocusMove: (Int) -> Unit = {},
+    val onReclaimPageFocus: () -> Unit = {},
     val onNavigateHome: () -> Unit = {},
     val onNavigateSettings: () -> Unit = {},
     val onOpenUpdateSettings: () -> Unit = {},

@@ -82,12 +82,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -135,8 +139,8 @@ import kotlinx.coroutines.delay
 fun TvRoot(state: TvUiState, actions: TvActions) {
     val backdrop = rememberLayerBackdrop()
     val ambient = state.mode == TvMode.IDLE
-    val modal = state.panel != null || state.error != null || state.sidebarVisible ||
-        state.stopCastConfirm || state.helpVisible || state.loginDialogVisible
+    // 浮层与导航菜单共用一条层级：栈顶拥有按键与焦点。
+    val modal = state.topOverlay != null || state.sidebarVisible
     val focusManager = LocalFocusManager.current
     val seekAccelerator = remember { PlaybackSeekAccelerator() }
     val density = LocalDensity.current
@@ -153,6 +157,19 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
     }
     LaunchedEffect(state.mode, state.loginDialogVisible) {
         if (state.loginDialogVisible && state.mode != TvMode.IDLE) actions.onCloseLogin()
+    }
+    // 浮层全部关闭后，焦点交还给当前页面；页面自己决定落在哪个锚点。
+    LaunchedEffect(modal, state.mode) {
+        if (!modal && state.mode == TvMode.IDLE) actions.onReclaimPageFocus()
+    }
+
+    val surface = TvKeyHandler.resolveKeySurface(state)
+    var previousSurface by remember { mutableStateOf(surface) }
+    LaunchedEffect(surface) {
+        if (surface != previousSurface) {
+            FocusDiagnostics.surfaceChanged(previousSurface, surface)
+            previousSurface = surface
+        }
     }
 
     CompositionLocalProvider(
@@ -184,23 +201,8 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                     }
                 )
                 .onPreviewKeyEvent { event ->
-                    if (event.type == KeyEventType.KeyDown &&
-                        event.key == Key.DirectionLeft &&
-                        state.mode == TvMode.IDLE &&
-                        !state.sidebarVisible &&
-                        !modal
-                    ) {
-                        if (focusManager.moveFocus(FocusDirection.Left)) {
-                            true
-                        } else {
-                            // Nothing to the left means the destination is exhausted:
-                            // opening navigation is the single edge behaviour for every page.
-                            actions.onOpenSidebar()
-                            true
-                        }
-                    } else {
-                        TvKeyHandler.handle(event, state, actions, modal, seekAccelerator)
-                    }
+                    TvKeyHandler.handle(event, state, actions, modal, seekAccelerator) ||
+                        handleLeftEdge(event, state, actions, focusManager)
                 }
         ) {
             if (ambient) {
@@ -226,7 +228,8 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                         targetState = state.destination,
                         animationSpec = tween(220),
                         label = "tab",
-                        modifier = recede,
+                        // 菜单显示期间页面整体退出焦点范围，保证隔层不可操作。
+                        modifier = recede.focusProperties { canFocus = !state.sidebarVisible },
                     ) { destination ->
                         when (destination) {
                             TvDestination.HOME -> HomeScreen(state, actions)
@@ -359,4 +362,25 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
             actions.onHideHud()
         }
     }
+}
+
+/**
+ * 处理“左侧已无本页元素”的边界：先让焦点在页面内左移，无目标时才唤出导航菜单。
+ *
+ * 这是所有页面共用的一条边界规则，页面本身不参与判断。
+ */
+private fun handleLeftEdge(
+    event: KeyEvent,
+    state: TvUiState,
+    actions: TvActions,
+    focusManager: FocusManager,
+): Boolean {
+    if (event.type != KeyEventType.KeyDown) return false
+    if (event.key != Key.DirectionLeft) return false
+    if (!TvKeyHandler.canOpenMenuFromEdge(state)) return false
+    val movedInsidePage = focusManager.moveFocus(FocusDirection.Left)
+    FocusDiagnostics.leftEdge(movedInsidePage)
+    if (movedInsidePage) return true
+    actions.onOpenSidebar()
+    return true
 }

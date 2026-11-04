@@ -47,13 +47,16 @@ import androidx.compose.ui.unit.sp
 import com.roy233.tvcast.ui.designsystem.BilibiliTvLogo
 import com.roy233.tvcast.ui.designsystem.FocusableRow
 import com.roy233.tvcast.ui.model.SettingsPage
-import com.roy233.tvcast.ui.model.SettingsFocusAnchor
+import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.model.TvActions
+import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
+import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 
 /** 账号信息中可选的平台；保留枚举以便后续接入其他平台。 */
@@ -84,21 +87,23 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
         SettingsPage.ROOT -> Unit
     }
 
-    RestoreSettingsFocus(
-        request = state.settingsNavigation.focusRequest,
+    RestoreFocus(
+        request = state.focusRequest,
         listState = rootListState,
         bindings = listOf(
-            SettingsFocusBinding(
-                anchor = SettingsFocusAnchor.ROOT_PLATFORM,
+            FocusBinding(
+                anchor = UiFocusAnchor.SETTINGS_PLATFORM,
                 itemIndex = ACCOUNT_INFO_ITEM_INDEX,
                 requester = platformFocus,
             ),
-            SettingsFocusBinding(
-                anchor = SettingsFocusAnchor.ROOT_UPDATE_ENTRY,
+            FocusBinding(
+                anchor = UiFocusAnchor.SETTINGS_UPDATE_ENTRY,
                 itemIndex = SOFTWARE_INFO_ITEM_INDEX,
                 requester = updateEntryFocus,
             ),
         ),
+        // 账号区块在未登录时收起为登录按钮，可聚焦内容随之变化。
+        contentKey = state.loggedIn,
     )
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
