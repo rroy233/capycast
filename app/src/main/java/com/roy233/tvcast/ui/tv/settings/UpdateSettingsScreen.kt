@@ -88,12 +88,12 @@ import kotlinx.coroutines.launch
 internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
     val update = state.update
     val releaseNotes = update.availableUpdate?.releaseNotes.orEmpty()
-    val headerFocus = remember { FocusRequester() }
+    val backFocus = remember { FocusRequester() }
     val primaryActionFocus = remember { FocusRequester() }
     val listState = rememberLazyListState()
     LaunchedEffect(Unit) {
         listState.scrollToItem(0)
-        headerFocus.requestFocus()
+        backFocus.requestFocus()
     }
     val progress = if (update.totalBytes > 0L) {
         (update.downloadedBytes.toFloat() / update.totalBytes.toFloat()).coerceIn(0f, 1f)
@@ -136,35 +136,32 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                 .tvFocusRegion(),
         ) {
             item {
-                val interaction = remember { MutableInteractionSource() }
-                val focused = interaction.collectIsFocusedAsState().value
-                val shape = RoundedCornerShape(14.dp)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(shape)
-                        .background(if (focused) Color.White.copy(alpha = 0.10f) else Color.Transparent)
-                        .border(
-                            width = 2.dp,
-                            color = if (focused) TvColors.accent else Color.Transparent,
-                            shape = shape,
-                        )
-                        .focusRequester(headerFocus)
-                        .focusable(interactionSource = interaction)
-                        .semantics(mergeDescendants = true) { }
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.SystemUpdate,
-                        contentDescription = null,
-                        tint = TvColors.accent,
-                    )
-                    Spacer(Modifier.width(14.dp))
-                    BasicText(
-                        text = "应用更新",
-                        style = TvType.title.copy(fontSize = 48.sp),
+                    Row(
                         modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SystemUpdate,
+                            contentDescription = null,
+                            tint = TvColors.accent,
+                        )
+                        Spacer(Modifier.width(14.dp))
+                        BasicText(
+                            text = "应用更新",
+                            style = TvType.title.copy(fontSize = 48.sp),
+                        )
+                    }
+                    WhiteButton(
+                        text = "返回",
+                        onClick = actions.onCloseUpdateSettings,
+                        focusRequester = backFocus,
+                        compact = true,
                     )
                 }
                 Spacer(Modifier.height(26.dp))

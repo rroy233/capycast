@@ -5,6 +5,7 @@ import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
+import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import org.junit.Assert.assertEquals
@@ -30,6 +31,21 @@ class TvBackNavigationTest {
             TvBackAction.NAVIGATE_HOME,
             TvKeyHandler.resolveBackAction(settings.copy(settingsPage = SettingsPage.ROOT)),
         )
+    }
+
+    @Test
+    fun backOnUpdatePageDispatchesTheReturnToSettingsAction() {
+        var closedUpdateSettings = false
+
+        TvKeyHandler.dispatchBack(
+            state = TvUiState(
+                destination = TvDestination.SETTINGS,
+                settingsPage = SettingsPage.UPDATE,
+            ),
+            actions = TvActions(onCloseUpdateSettings = { closedUpdateSettings = true }),
+        )
+
+        assertEquals(true, closedUpdateSettings)
     }
 
     @Test

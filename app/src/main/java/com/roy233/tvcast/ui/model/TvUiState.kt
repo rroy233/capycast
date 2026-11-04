@@ -50,6 +50,7 @@ import com.roy233.tvcast.feature.update.UpdateUiState
  * @property toast 当前待展示的提示文本。
  * @property dlnaUrl DLNA 描述地址。
  * @property version 应用版本文本。
+ * @property versionCode 应用版本号。
  * @property castActive 当前是否存在活动投屏。
  * @property castMode 当前投屏通道说明。
  * @property recents 最近投屏记录。
@@ -120,6 +121,7 @@ data class TvUiState(
     val toast: String? = null,
     val dlnaUrl: String = "",
     val version: String = "",
+    val versionCode: Long = 0L,
     val castActive: Boolean = false,
     val castMode: String = "DLNA 兼容",
     val recents: List<RecentCast> = emptyList(),

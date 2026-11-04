@@ -860,6 +860,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             network = deviceInfo.wifiName(),
             ip = LogHub.localIp(),
             version = deviceInfo.versionName(),
+            versionCode = deviceInfo.versionCode(),
             dlnaUrl = dlna.descriptionUrl,
             danmakuEnabled = danmakuSettings.enabled,
             danmakuAiShield = danmakuSettings.aiShield,

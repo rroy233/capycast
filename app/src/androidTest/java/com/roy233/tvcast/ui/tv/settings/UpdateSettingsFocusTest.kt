@@ -1,11 +1,14 @@
 package com.roy233.tvcast.ui.tv.settings
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -16,6 +19,8 @@ import com.roy233.tvcast.feature.update.AppUpdateInfo
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
+import com.roy233.tvcast.ui.model.SettingsPage
+import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvUiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -35,8 +40,8 @@ class UpdateSettingsFocusTest {
             UpdateSettingsScreen(state = TvUiState(), actions = TvActions())
         }
 
-        composeRule.onNodeWithText("应用更新").assertIsFocused()
-        composeRule.onNodeWithText("应用更新")
+        composeRule.onNodeWithText("返回").assertIsFocused()
+        composeRule.onNodeWithText("返回")
             .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithText("选择通道后检查更新").assertIsFocused()
         composeRule.onNodeWithText("选择通道后检查更新")
@@ -54,7 +59,7 @@ class UpdateSettingsFocusTest {
             )
         }
 
-        composeRule.onNodeWithText("应用更新")
+        composeRule.onNodeWithText("返回")
             .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithText("选择通道后检查更新")
             .performKeyInput { pressKey(Key.DirectionDown) }
@@ -67,6 +72,45 @@ class UpdateSettingsFocusTest {
         composeRule.runOnIdle {
             assertEquals(UpdateChannel.STABLE, selectedChannel)
         }
+    }
+
+    @Test
+    fun updatePageReturnButtonClosesUpdateSettings() {
+        var closed = false
+        composeRule.setContent {
+            UpdateSettingsScreen(
+                state = TvUiState(),
+                actions = TvActions(onCloseUpdateSettings = { closed = true }),
+            )
+        }
+
+        composeRule.onNodeWithText("返回").performClick()
+        composeRule.runOnIdle { assertTrue(closed) }
+    }
+
+    @Test
+    fun updatePageReturnButtonReturnsToSettingsRoot() {
+        composeRule.setContent {
+            val uiState = remember {
+                mutableStateOf(
+                    TvUiState(
+                        destination = TvDestination.SETTINGS,
+                        settingsPage = SettingsPage.UPDATE,
+                    ),
+                )
+            }
+            SettingsScreen(
+                state = uiState.value,
+                actions = TvActions(
+                    onCloseUpdateSettings = {
+                        uiState.value = uiState.value.copy(settingsPage = SettingsPage.ROOT)
+                    },
+                ),
+            )
+        }
+
+        composeRule.onNodeWithText("返回").performClick()
+        composeRule.onNodeWithText("账号信息").assertExists()
     }
 
     @Test
@@ -188,24 +232,45 @@ class UpdateSettingsFocusTest {
     }
 
     @Test
-    fun settingsInfoRowsCanReceiveFocusWithoutActivationAndToggleRowsAreInteractive() {
+    fun loggedInBilibiliSettingsExposeInteractivePlaybackOptions() {
         var rememberPlaybackContent = true
         composeRule.setContent {
             SettingsScreen(
-                state = TvUiState(accountName = "tv-user"),
+                state = TvUiState(loggedIn = true, accountName = "tv-user"),
                 actions = TvActions(
                     onSetRememberPlaybackContent = { rememberPlaybackContent = it },
                 ),
             )
         }
 
-        composeRule.onNodeWithText("完成").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("platform-bilibili")
+            .assertIsFocused()
+            .assertIsSelected()
+        composeRule.onNodeWithTag("platform-bilibili")
+            .performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithText("tv-user").assertIsFocused()
         composeRule.onNodeWithText("tv-user")
             .performKeyInput { pressKey(Key.DirectionCenter) }
         assertEquals(true, rememberPlaybackContent)
         composeRule.onNodeWithText("记忆播放内容").performClick()
         assertEquals(false, rememberPlaybackContent)
+    }
+
+    @Test
+    fun loggedOutBilibiliPlatformExposesLoginAction() {
+        var loginRequested = false
+        composeRule.setContent {
+            SettingsScreen(
+                state = TvUiState(loggedIn = false),
+                actions = TvActions(onLogin = { loginRequested = true }),
+            )
+        }
+
+        composeRule.onNodeWithTag("platform-bilibili")
+            .assertIsFocused()
+            .assertIsSelected()
+        composeRule.onNodeWithText("扫码登录").performClick()
+        composeRule.runOnIdle { assertTrue(loginRequested) }
     }
 
     @Test

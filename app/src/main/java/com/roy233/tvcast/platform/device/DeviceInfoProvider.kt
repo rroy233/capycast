@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
+import androidx.core.content.pm.PackageInfoCompat
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
@@ -35,6 +36,12 @@ class DeviceInfoProvider(private val context: Context) {
             .getPackageInfo(context.packageName, 0)
             .versionName ?: DEFAULT_VERSION_NAME
     }.getOrDefault(DEFAULT_VERSION_NAME)
+
+    /** 获取当前应用版本号，无法读取时返回默认值。 */
+    fun versionCode(): Long = runCatching {
+        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        PackageInfoCompat.getLongVersionCode(packageInfo)
+    }.getOrDefault(DEFAULT_VERSION_CODE)
 
     /**
      * 为投屏设备名称追加稳定的短设备标识。
@@ -87,5 +94,7 @@ class DeviceInfoProvider(private val context: Context) {
         const val DEFAULT_DEVICE_NAME = "CapyCast"
         /** 无法读取应用信息时使用的语义化版本号。 */
         const val DEFAULT_VERSION_NAME = "0.1.0"
+        /** 无法读取应用信息时使用的版本号。 */
+        const val DEFAULT_VERSION_CODE = 1L
     }
 }
