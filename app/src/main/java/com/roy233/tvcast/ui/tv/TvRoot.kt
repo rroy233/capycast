@@ -125,9 +125,22 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import android.os.Build
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import com.kyant.backdrop.backdrops.layerBackdrop
+import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.ui.designsystem.FrostedBackdrop
+import com.roy233.tvcast.ui.designsystem.LocalFrostedBackdrop
+import com.roy233.tvcast.ui.designsystem.progressiveBlur
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
+
+/** 背景截取前的等待时长：等背景完成一次绘制。 */
+private const val FROST_CAPTURE_DELAY_MS = 160L
 
 /**
  * 渲染电视端根界面并根据状态选择当前页面与全局弹层。
@@ -188,8 +201,42 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
         FocusDiagnostics.stackChanged(state, reason = "hierarchy")
     }
 
+    // Android 12 以下没有背景模糊：把背景录进图层，截成位图后用多级降采样模糊，
+    // 作为 `LocalFrostedBackdrop` 提供给玻璃表面采样。12 以上仍走 RenderEffect。
+    val frostLayer = rememberGraphicsLayer()
+    var frostedBackdrop by remember { mutableStateOf<FrostedBackdrop?>(null) }
+    val frostCapture = remember(frostLayer) {
+        Modifier.drawWithContent {
+            frostLayer.record { this@drawWithContent.drawContent() }
+            drawLayer(frostLayer)
+        }
+    }
+    LaunchedEffect(ambient, state.destination, state.mode, state.recents) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S || !ambient) return@LaunchedEffect
+        // 等背景完成一次布局与绘制，再截取；太早会拿到空图层。
+        delay(FROST_CAPTURE_DELAY_MS)
+        val snapshot = runCatching { frostLayer.toImageBitmap() }.getOrNull()
+        if (snapshot == null || snapshot.width <= 0 || snapshot.height <= 0) {
+            LogHub.w("TvGlass", "frost capture failed for destination=${state.destination}")
+            return@LaunchedEffect
+        }
+        frostedBackdrop = withContext(Dispatchers.Default) {
+            FrostedBackdrop(
+                image = snapshot.progressiveBlur(),
+                windowWidth = snapshot.width,
+                windowHeight = snapshot.height,
+            )
+        }
+        LogHub.d(
+            "TvGlass",
+            "frost ready source=${snapshot.width}x${snapshot.height} " +
+                "blurred=${frostedBackdrop?.image?.width}x${frostedBackdrop?.image?.height}",
+        )
+    }
+
     CompositionLocalProvider(
-        LocalGlassBackdrop provides if (ambient) backdrop else null
+        LocalGlassBackdrop provides if (ambient) backdrop else null,
+        LocalFrostedBackdrop provides frostedBackdrop,
     ) {
         Box(
             Modifier
@@ -225,14 +272,19 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                 // Record only visual background content. Glass surfaces render in later siblings,
                 // so the recorded layer cannot contain a consumer of itself.
                 if (state.destination == TvDestination.HOME) {
-                    BoxWithConstraints(Modifier.matchParentSize()) {
+                    BoxWithConstraints(Modifier.matchParentSize().then(frostCapture)) {
                         HomeBackdrop(
                             compact = maxHeight < 500.dp,
                             modifier = recede.layerBackdrop(backdrop),
                         )
                     }
                 } else {
-                    TvBackground(Modifier.matchParentSize().then(recede).layerBackdrop(backdrop))
+                    TvBackground(
+                        Modifier.matchParentSize()
+                            .then(recede)
+                            .layerBackdrop(backdrop)
+                            .then(frostCapture),
+                    )
                 }
             } else if (state.mode == TvMode.ERROR && !state.castActive) {
                 TvBackground(Modifier.matchParentSize())
