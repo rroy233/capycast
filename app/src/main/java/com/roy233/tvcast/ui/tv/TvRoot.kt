@@ -217,7 +217,6 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                 if (state.destination == TvDestination.HOME) {
                     BoxWithConstraints(Modifier.matchParentSize()) {
                         HomeBackdrop(
-                            featured = if (state.showContinue) state.recents.firstOrNull() else null,
                             compact = maxHeight < 500.dp,
                             modifier = recede.layerBackdrop(backdrop),
                         )

@@ -1,6 +1,5 @@
 package com.roy233.tvcast.ui.tv.home
 
-import android.graphics.Bitmap
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
@@ -28,7 +27,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -51,7 +49,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -82,14 +79,10 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -253,198 +246,20 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
 }
 
 
-/** 根据当前推荐内容绘制首页背景。 */
+/** 绘制具有雾化玻璃与体积光的首页背景。 */
 @Composable
-internal fun HomeBackdrop(featured: RecentCast?, compact: Boolean, modifier: Modifier = Modifier) {
+internal fun HomeBackdrop(compact: Boolean, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize()) {
-        if (featured != null && featured.cover.isNotBlank()) {
-            AsyncImage(
-                model = featured.cover,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            TvBackground(Modifier.matchParentSize())
-            HeroArtwork(compact)
-        }
-
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.28f),
-                        0.45f to Color.Black.copy(alpha = 0.42f),
-                        1f to Color.Black.copy(alpha = 0.94f),
-                    )
+        HomeAmbientBackground(Modifier.matchParentSize())
+        BilibiliLogo(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(
+                    end = if (compact) 36.dp else 72.dp,
+                    bottom = if (compact) 28.dp else 56.dp,
                 )
+                .width(if (compact) 220.dp else 360.dp),
         )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        0f to Color.Black.copy(alpha = 0.62f),
-                        0.52f to Color.Black.copy(alpha = 0.34f),
-                        0.82f to Color.Transparent,
-                    )
-                )
-        )
-    }
-}
-
-/** 绘制无推荐内容时显示的电视与投屏插画。 */
-@Composable
-private fun HeroArtwork(compact: Boolean) {
-    Canvas(Modifier.fillMaxSize()) {
-        val tvW = size.width * if (compact) 0.56f else 0.46f
-        val tvH = tvW * 0.56f
-        val tvLeft = size.width * if (compact) 0.36f else 0.47f
-        val tvTop = size.height * if (compact) 0.15f else 0.11f
-        val corner = CornerRadius(if (compact) 18.dp.toPx() else 26.dp.toPx())
-        val inset = if (compact) 6.dp.toPx() else 9.dp.toPx()
-
-        // A single diffuse reflection keeps the illustration subordinate to the content.
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color(0xFF9BB8CC).copy(alpha = 0.10f), Color.Transparent),
-                center = Offset(tvLeft + tvW * 0.36f, tvTop + tvH * 0.32f),
-                radius = tvW * 0.72f,
-            ),
-            radius = tvW * 0.72f,
-            center = Offset(tvLeft + tvW * 0.36f, tvTop + tvH * 0.32f),
-        )
-
-        // Soft shadow / bezel.
-        drawRoundRect(
-            color = Color.Black.copy(alpha = 0.45f),
-            topLeft = Offset(tvLeft + 12.dp.toPx(), tvTop + 22.dp.toPx()),
-            size = Size(tvW, tvH),
-            cornerRadius = corner,
-        )
-        drawRoundRect(
-            color = Color(0xFF151B22),
-            topLeft = Offset(tvLeft, tvTop),
-            size = Size(tvW, tvH),
-            cornerRadius = corner,
-        )
-
-        val sx = tvLeft + inset
-        val sy = tvTop + inset
-        val sw = tvW - inset * 2
-        val sh = tvH - inset * 2
-        clipRect(sx, sy, sx + sw, sy + sh) {
-            drawRect(
-                color = Color(0xFF101923),
-                topLeft = Offset(sx, sy),
-                size = Size(sw, sh),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0xFF829AAA).copy(alpha = 0.18f), Color.Transparent),
-                    center = Offset(sx + sw * 0.55f, sy + sh * 0.40f),
-                    radius = sw * 0.60f,
-                ),
-                radius = sw * 0.60f,
-                center = Offset(sx + sw * 0.55f, sy + sh * 0.40f),
-            )
-
-            // A restrained play glyph in the screen, not a logo.
-            val cx = sx + sw * 0.53f
-            val cy = sy + sh * 0.48f
-            val ph = sh * 0.16f
-            val path = androidx.compose.ui.graphics.Path().apply {
-                moveTo(cx - ph * 0.45f, cy - ph * 0.55f)
-                lineTo(cx + ph * 0.55f, cy)
-                lineTo(cx - ph * 0.45f, cy + ph * 0.55f)
-                close()
-            }
-            drawPath(path, Color.White.copy(alpha = 0.07f))
-
-            // Glass reflection.
-            drawRect(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.10f),
-                        Color.White.copy(alpha = 0.02f),
-                        Color.Transparent,
-                    ),
-                    start = Offset(sx, sy + sh * 0.10f),
-                    end = Offset(sx + sw, sy + sh * 0.55f),
-                ),
-                topLeft = Offset(sx, sy),
-                size = Size(sw, sh * 0.55f),
-            )
-            for (i in 1..7) {
-                val y = sy + sh * (i / 8f)
-                drawLine(
-                    color = Color.White.copy(alpha = 0.025f),
-                    start = Offset(sx, y),
-                    end = Offset(sx + sw, y),
-                    strokeWidth = 1.dp.toPx(),
-                )
-            }
-        }
-
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.13f),
-            topLeft = Offset(tvLeft, tvTop),
-            size = Size(tvW, tvH),
-            cornerRadius = corner,
-            style = Stroke(1.2.dp.toPx()),
-        )
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.06f),
-            topLeft = Offset(tvLeft + inset, tvTop + inset),
-            size = Size(sw, sh),
-            cornerRadius = CornerRadius((corner.x - inset).coerceAtLeast(0f)),
-            style = Stroke(1.dp.toPx()),
-        )
-
-        // TV stand.
-        drawRoundRect(
-            color = Color(0xFF0B0B10),
-            topLeft = Offset(tvLeft + tvW * 0.38f, tvTop + tvH),
-            size = Size(tvW * 0.24f, 8.dp.toPx()),
-            cornerRadius = CornerRadius(4.dp.toPx()),
-        )
-
-        // Phone casting into the screen, with visible signal arcs.
-        val phoneW = tvW * 0.09f
-        val phoneH = phoneW * 1.85f
-        val phoneLeft = tvLeft + tvW * 0.86f
-        val phoneTop = tvTop + tvH * 0.67f
-        drawRoundRect(
-            color = Color(0xE60A0A0F),
-            topLeft = Offset(phoneLeft, phoneTop),
-            size = Size(phoneW, phoneH),
-            cornerRadius = CornerRadius(9.dp.toPx()),
-        )
-        drawRoundRect(
-            color = Color(0xFF344654),
-            topLeft = Offset(phoneLeft + 3.dp.toPx(), phoneTop + 8.dp.toPx()),
-            size = Size(phoneW - 6.dp.toPx(), phoneH - 16.dp.toPx()),
-            cornerRadius = CornerRadius(6.dp.toPx()),
-        )
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.30f),
-            topLeft = Offset(phoneLeft, phoneTop),
-            size = Size(phoneW, phoneH),
-            cornerRadius = CornerRadius(9.dp.toPx()),
-            style = Stroke(1.dp.toPx()),
-        )
-        for (i in 1..3) {
-            drawArc(
-                color = Color.White.copy(alpha = 0.20f - i * 0.035f),
-                startAngle = 205f,
-                sweepAngle = 70f,
-                useCenter = false,
-                topLeft = Offset(phoneLeft - phoneW * i * 0.9f, phoneTop - phoneH * 0.10f),
-                size = Size(phoneW * i * 1.8f, phoneH * 0.85f),
-                style = Stroke(1.1.dp.toPx()),
-            )
-        }
     }
 }
 

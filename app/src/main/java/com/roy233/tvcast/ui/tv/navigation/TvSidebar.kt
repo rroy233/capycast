@@ -210,7 +210,12 @@ internal fun Sidebar(
 
             SidebarItem(
                 title = "Bilibili 投屏",
-                icon = Icons.Rounded.Cast,
+                icon = { tint ->
+                    BilibiliTvLogo(
+                        modifier = Modifier.size(22.dp),
+                        color = tint,
+                    )
+                },
                 selected = state.destination == TvDestination.HOME,
                 onClick = {
                     if (state.destination == TvDestination.HOME) {
@@ -223,7 +228,14 @@ internal fun Sidebar(
             )
             SidebarItem(
                 title = "设置",
-                icon = Icons.Rounded.Settings,
+                icon = { tint ->
+                    Icon(
+                        imageVector = Icons.Rounded.Settings,
+                        contentDescription = null,
+                        tint = tint,
+                        modifier = Modifier.size(22.dp),
+                    )
+                },
                 selected = state.destination == TvDestination.SETTINGS,
                 onClick = {
                     if (state.destination == TvDestination.SETTINGS) {
@@ -244,7 +256,7 @@ internal fun Sidebar(
 @Composable
 private fun SidebarItem(
     title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: @Composable (Color) -> Unit,
     selected: Boolean,
     onClick: () -> Unit,
     focusRequester: FocusRequester,
@@ -296,12 +308,7 @@ private fun SidebarItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (selected) Color.White else Color.White.copy(alpha = 0.78f),
-                modifier = Modifier.size(22.dp),
-            )
+            icon(if (selected) Color.White else Color.White.copy(alpha = 0.78f))
             BasicText(
                 text = title,
                 style = TvType.bodyMedium.copy(
