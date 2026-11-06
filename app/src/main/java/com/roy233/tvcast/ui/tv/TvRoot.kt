@@ -2,7 +2,6 @@ package com.roy233.tvcast.ui.tv
 
 import com.roy233.tvcast.ui.tv.home.HomeScreen
 import com.roy233.tvcast.ui.tv.account.LoginDialog
-import com.roy233.tvcast.ui.tv.home.HomeBackdrop
 import com.roy233.tvcast.ui.tv.navigation.Sidebar
 import com.roy233.tvcast.ui.tv.overlay.HelpSheet
 import com.roy233.tvcast.ui.tv.overlay.QuickPanel
@@ -49,7 +48,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -126,9 +124,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import android.os.Build
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.ui.designsystem.FrostedBackdrop
@@ -204,16 +199,9 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
         FocusDiagnostics.stackChanged(state, reason = "hierarchy")
     }
 
-    // Android 12 以下没有背景模糊：把背景录进图层，截成位图后用多级降采样模糊，
-    // 作为 `LocalFrostedBackdrop` 提供给玻璃表面采样。12 以上仍走 RenderEffect。
-    val frostLayer = rememberGraphicsLayer()
+    // Android 12 以下从既有 LayerBackdrop 取快照，供玻璃表面生成软件模糊。
+    // 该图层由背景修饰器维护；根节点不再持有第二份会过期的绘制缓存。
     var frostedBackdrop by remember { mutableStateOf<FrostedBackdrop?>(null) }
-    val frostCapture = remember(frostLayer) {
-        Modifier.drawWithContent {
-            frostLayer.record { this@drawWithContent.drawContent() }
-            drawLayer(frostLayer)
-        }
-    }
     LaunchedEffect(
         ambient,
         state.destination,
@@ -224,7 +212,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
         // 等背景完成布局与绘制；封面是异步加载的，所以再多截一次。
         listOf(FROST_CAPTURE_DELAY_MS, FROST_CAPTURE_REFRESH_MS).forEach { wait ->
             delay(wait)
-            val snapshot = runCatching { frostLayer.toImageBitmap() }.getOrNull()
+            val snapshot = runCatching { backdrop.graphicsLayer.toImageBitmap() }.getOrNull()
             if (snapshot == null || snapshot.width <= 0 || snapshot.height <= 0) {
                 LogHub.w("TvGlass", "frost capture failed for destination=${state.destination}")
                 return@forEach
@@ -280,24 +268,13 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                 }
         ) {
             if (ambient) {
-                // Record only visual background content. Glass surfaces render in later siblings,
-                // so the recorded layer cannot contain a consumer of itself.
-                if (state.destination == TvDestination.HOME) {
-                    BoxWithConstraints(Modifier.matchParentSize().then(frostCapture)) {
-                        HomeBackdrop(
-                            featured = state.featuredRecent,
-                            compact = maxHeight < 500.dp,
-                            modifier = recede.layerBackdrop(backdrop),
-                        )
-                    }
-                } else {
-                    TvBackground(
-                        Modifier.matchParentSize()
-                            .then(recede)
-                            .layerBackdrop(backdrop)
-                            .then(frostCapture),
-                    )
-                }
+                // 首页自己的封面背景绘制在页面内，这里只保留玻璃表面采样的背景层。
+                TvBackground(
+                    Modifier
+                        .matchParentSize()
+                        .then(recede)
+                        .layerBackdrop(backdrop),
+                )
             } else if (state.mode == TvMode.ERROR && !state.castActive) {
                 TvBackground(Modifier.matchParentSize())
             }

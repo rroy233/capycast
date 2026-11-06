@@ -4,6 +4,7 @@ import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.ui.model.PanelKind
+import com.roy233.tvcast.ui.model.RecentCastFocus
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.FocusRequest
 import com.roy233.tvcast.ui.model.SettingsPage
@@ -109,10 +110,11 @@ class TvActionDispatcher(
                 }
             }
         },
-        onFocusRecent = { aid ->
+        onFocusRecent = { aid, cid ->
             val state = stateHolder.read()
-            if (state.focusedRecentAid != aid) {
-                stateHolder.set(state.copy(focusedRecentAid = aid))
+            val focusedRecent = RecentCastFocus(aid, cid)
+            if (state.focusedRecent != focusedRecent) {
+                stateHolder.set(state.copy(focusedRecent = focusedRecent))
             }
         },
         onReclaimPageFocus = {
@@ -122,8 +124,8 @@ class TvActionDispatcher(
         },
         onFocusHomeControl = {
             val state = stateHolder.read()
-            if (state.destination == TvDestination.HOME && state.focusedRecentAid != null) {
-                stateHolder.set(state.copy(focusedRecentAid = null))
+            if (state.destination == TvDestination.HOME && state.focusedRecent != null) {
+                stateHolder.set(state.copy(focusedRecent = null))
             }
         },
         onNavigateHome = {

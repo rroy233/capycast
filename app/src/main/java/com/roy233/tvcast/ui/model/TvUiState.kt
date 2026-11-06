@@ -5,6 +5,9 @@ import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.update.UpdateUiState
 
+/** 最近投屏卡片的精确焦点身份；同一稿件的不同分 P 也必须区分。 */
+data class RecentCastFocus(val aid: Long, val cid: Long)
+
 /**
  * 保存电视端页面、登录、投屏和播放控制所需的不可变状态。
  *
@@ -55,7 +58,7 @@ import com.roy233.tvcast.feature.update.UpdateUiState
  * @property castActive 当前是否存在活动投屏。
  * @property castMode 当前投屏通道说明。
  * @property recents 最近投屏记录。
- * @property focusedRecentAid 首页最近投屏中被聚焦的记录，用于切换大标题与背景。
+ * @property focusedRecent 首页最近投屏中被聚焦的记录身份，用于切换大标题与背景。
  * @property rememberPlaybackContent 是否记忆最近投屏内容。
  * @property syncPlaybackHistory 是否同步投屏播放记录到 B 站账号。
  * @property showContinue 是否展示继续投屏入口。
@@ -128,7 +131,7 @@ data class TvUiState(
     val castActive: Boolean = false,
     val castMode: String = "DLNA 兼容",
     val recents: List<RecentCast> = emptyList(),
-    val focusedRecentAid: Long? = null,
+    val focusedRecent: RecentCastFocus? = null,
     val rememberPlaybackContent: Boolean = true,
     val syncPlaybackHistory: Boolean = true,
     val showContinue: Boolean = true,
@@ -157,8 +160,10 @@ data class TvUiState(
     val featuredRecent: RecentCast?
         get() = when {
             !showContinue -> null
-            focusedRecentAid != null ->
-                recents.firstOrNull { it.aid == focusedRecentAid } ?: recents.firstOrNull()
+            focusedRecent != null ->
+                recents.firstOrNull {
+                    it.aid == focusedRecent.aid && it.cid == focusedRecent.cid
+                } ?: recents.firstOrNull()
             else -> recents.firstOrNull()
         }
 
@@ -191,7 +196,7 @@ data class TvUiState(
         destination = TvDestination.HOME,
         settingsNavigation = settingsNavigation.reset(),
         sidebarVisible = false,
-        focusedRecentAid = null,
+        focusedRecent = null,
     ).focusCurrentPage()
 
     /**
@@ -202,7 +207,7 @@ data class TvUiState(
      */
     fun focusCurrentPage(): TvUiState = copy(
         // 首页顶层锚点是主操作；卡片焦点不能跨菜单、浮层或投屏会话保留。
-        focusedRecentAid = if (destination == TvDestination.HOME) null else focusedRecentAid,
+        focusedRecent = if (destination == TvDestination.HOME) null else focusedRecent,
         focusRequest = focusRequest.moveTo(
             if (destination == TvDestination.SETTINGS) {
                 settingsNavigation.topAnchor

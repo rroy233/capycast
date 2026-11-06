@@ -72,6 +72,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -91,7 +92,6 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -104,6 +104,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import java.util.Calendar
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.roy233.tvcast.ui.model.UiFocusAnchor
@@ -172,6 +173,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
             else -> 64.sp
         }
         val metaSize = if (compact) 17.sp else 23.sp
+        HomeBackdrop(featured = featured, compact = compact)
         // 货架是固定槽位：先给它高度，可伸缩的只有上方文字区，焦点目标不会被挤出视口。
         val shelfShown = state.showContinue && visibleRecents.size > 1
         val firstRecentFocus = recentFocusTargets.firstOrNull()
@@ -255,7 +257,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                             Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
                             BasicText(
                                 text = hero?.let {
-                                    listOf(it.quality, "上次投屏")
+                                    listOf(it.quality, it.relativeTimeLabel())
                                         .filter { value -> value.isNotBlank() }
                                         .joinToString(" · ")
                                 } ?: "${state.deviceName} · ${state.roomName}",
@@ -357,22 +359,30 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
  * @param featured 当前展示的最近投屏；为空时退回环境光背景。
  */
 @Composable
-internal fun HomeBackdrop(featured: RecentCast?, compact: Boolean, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize()) {
+internal fun HomeBackdrop(featured: RecentCast?, compact: Boolean) {
+    Box(Modifier.fillMaxSize()) {
         HomeAmbientBackground(Modifier.matchParentSize())
         Crossfade(
-            targetState = featured?.cover?.takeIf { it.isNotBlank() },
+            targetState = featured,
+            modifier = Modifier.fillMaxSize(),
             animationSpec = tween(420),
             label = "home-backdrop-cover",
-        ) { cover ->
+        ) { background ->
+            val current = background ?: return@Crossfade
+            val cover = current.cover.takeIf { it.isNotBlank() }
             if (cover != null) {
-                Box(Modifier.matchParentSize()) {
-                    AsyncImage(
-                        model = cover,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.matchParentSize(),
-                    )
+                // Crossfade 用自己的 Box 测量内容，封面必须参与测量才能占满背景。
+                Box(Modifier.fillMaxSize()) {
+                    key(current.focusKey()) {
+                        AsyncImage(
+                            model = cover,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .matchParentSize()
+                                .testTag("home-backdrop-${current.focusKey()}"),
+                        )
+                    }
                     // 双层压暗：纵向保证底部文字可读，横向保证左侧大标题可读。
                     Box(
                         Modifier
@@ -508,7 +518,7 @@ private fun RecentCard(
     val focused by interaction.collectIsFocusedAsState()
     // 焦点落到卡片即切换大标题与背景；点击才真正开始投屏。
     LaunchedEffect(focused) {
-        if (focused) actions.onFocusRecent(recent.aid)
+        if (focused) actions.onFocusRecent(recent.aid, recent.cid)
     }
     val scale by animateFloatAsState(
         targetValue = if (focused) RECENT_CARD_FOCUS_SCALE else 1f,
@@ -591,4 +601,31 @@ private fun RecentCard(
 }
 
 private fun RecentCast.focusKey(): String = "$aid-$cid"
+
+/** 将最近投屏的记录时间转换为适合十英尺界面的简短相对时间。 */
+internal fun RecentCast.relativeTimeLabel(nowMs: Long = System.currentTimeMillis()): String {
+    if (at <= 0L) return "好久之前"
+    val elapsed = (nowMs - at).coerceAtLeast(0L)
+    when {
+        elapsed < MINUTE_MS -> return "刚刚"
+        elapsed < HOUR_MS -> return "${elapsed / MINUTE_MS}分钟前"
+        isYesterday(at, nowMs) -> return "昨天"
+        elapsed < DAY_MS -> return "${elapsed / HOUR_MS}小时前"
+        elapsed < WEEK_MS -> return "${elapsed / DAY_MS}天前"
+        else -> return "好久之前"
+    }
+}
+
+private fun isYesterday(timestampMs: Long, nowMs: Long): Boolean {
+    val now = Calendar.getInstance().apply { timeInMillis = nowMs }
+    val yesterday = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
+    val timestamp = Calendar.getInstance().apply { timeInMillis = timestampMs }
+    return timestamp.get(Calendar.YEAR) == yesterday.get(Calendar.YEAR) &&
+        timestamp.get(Calendar.DAY_OF_YEAR) == yesterday.get(Calendar.DAY_OF_YEAR)
+}
+
+private const val MINUTE_MS = 60_000L
+private const val HOUR_MS = 60L * MINUTE_MS
+private const val DAY_MS = 24L * HOUR_MS
+private const val WEEK_MS = 7L * DAY_MS
 

@@ -3,6 +3,7 @@ package com.roy233.tvcast.ui.tv
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.model.UiFocusAnchor
+import com.roy233.tvcast.ui.model.RecentCastFocus
 import com.roy233.tvcast.ui.model.menuEntryFor
 import com.roy233.tvcast.ui.model.pageAnchorFor
 import java.lang.reflect.Proxy
@@ -148,7 +149,7 @@ class TvActionDispatcherTest {
 
         assertEquals(1L, stateHolder.read().featuredRecent?.aid)
 
-        actions.onFocusRecent(2L)
+        actions.onFocusRecent(2L, 20L)
         assertEquals("第二条", stateHolder.read().featuredRecent?.title)
 
         // 收起继续投屏时不再展示任何记录。
@@ -157,11 +158,28 @@ class TvActionDispatcherTest {
     }
 
     @Test
+    fun featuredRecentDistinguishesDifferentPartsOfTheSameVideo() {
+        val stateHolder = TvStateHolder(
+            TvUiState(
+                recents = listOf(
+                    recentCast(aid = 9L, title = "第一集"),
+                    recentCast(aid = 9L, title = "第二集").copy(cid = 91L),
+                ),
+            ),
+        )
+        val actions = TvActionDispatcher(stateHolder, noOpHost()).actions
+
+        actions.onFocusRecent(9L, 91L)
+
+        assertEquals("第二集", stateHolder.read().featuredRecent?.title)
+    }
+
+    @Test
     fun featuredRecentFallsBackWhenTheFocusedItemDisappears() {
         val stateHolder = TvStateHolder(
             TvUiState(
                 recents = listOf(recentCast(aid = 7L, title = "仍在列表")),
-                focusedRecentAid = 404L,
+                focusedRecent = RecentCastFocus(aid = 404L, cid = 4040L),
             ),
         )
 
@@ -173,12 +191,12 @@ class TvActionDispatcherTest {
         val returned = TvUiState(
             destination = TvDestination.SETTINGS,
             sidebarVisible = true,
-            focusedRecentAid = 7L,
+            focusedRecent = RecentCastFocus(aid = 7L, cid = 70L),
         ).returnToHomeAfterPlayback()
 
         assertEquals(TvDestination.HOME, returned.destination)
         assertFalse(returned.sidebarVisible)
-        assertEquals(null, returned.focusedRecentAid)
+        assertEquals(null, returned.focusedRecent)
         assertEquals(UiFocusAnchor.HOME_PRIMARY, returned.focusRequest.anchor)
     }
 

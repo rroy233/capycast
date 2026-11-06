@@ -7,14 +7,17 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.TvActions
+import com.roy233.tvcast.ui.model.RecentCastFocus
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.tv.TvRoot
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -127,6 +130,47 @@ class HomeFocusTest {
             .performKeyInput { pressKey(Key.DirectionLeft) }
         composeRule.onNodeWithTag("sidebar-panel").assertExists()
         composeRule.onNodeWithText("Bilibili 投屏").assertIsFocused()
+    }
+
+    @Test
+    fun focusedRecentCardUpdatesTheHomeBackdrop() {
+        composeRule.setContent {
+            val state = remember {
+                mutableStateOf(
+                    TvUiState(
+                        loggedIn = true,
+                        recents = listOf(
+                            recentCast(1).copy(cover = "https://example.com/one.jpg"),
+                            recentCast(2).copy(cover = "https://example.com/two.jpg"),
+                        ),
+                    ),
+                )
+            }
+            HomeScreen(
+                state = state.value,
+                actions = TvActions(
+                    onFocusRecent = { aid, cid ->
+                        state.value = state.value.copy(
+                            focusedRecent = RecentCastFocus(aid, cid),
+                        )
+                    },
+                ),
+            )
+        }
+
+        assertBackdropFillsScreen("home-backdrop-1-10")
+        composeRule.onNodeWithText("继续播放")
+            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("recent-card-1-10")
+            .performKeyInput { pressKey(Key.DirectionRight) }
+        assertBackdropFillsScreen("home-backdrop-2-20")
+    }
+
+    private fun assertBackdropFillsScreen(tag: String) {
+        val viewport = composeRule.onRoot().fetchSemanticsNode().boundsInRoot
+        val cover = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        assertEquals(viewport.width, cover.width, 1f)
+        assertEquals(viewport.height, cover.height, 1f)
     }
 
     private fun recentCast(aid: Long) = RecentCast(

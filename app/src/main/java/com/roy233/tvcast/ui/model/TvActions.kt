@@ -64,7 +64,7 @@ class TvActions(
     val onMenuFocusMove: (Int) -> Unit = {},
     val onReclaimPageFocus: () -> Unit = {},
     val onFocusHomeControl: () -> Unit = {},
-    val onFocusRecent: (Long) -> Unit = {},
+    val onFocusRecent: (Long, Long) -> Unit = { _, _ -> },
     val onNavigateHome: () -> Unit = {},
     val onNavigateSettings: () -> Unit = {},
     val onOpenUpdateSettings: () -> Unit = {},
