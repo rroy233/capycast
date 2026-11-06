@@ -352,12 +352,6 @@ private fun UpdateOptionTile(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (selected) {
-            BasicText(
-                text = "已选中",
-                style = TvType.caption.copy(color = TvColors.accent, fontSize = 14.sp),
-            )
-        }
     }
 }
 
