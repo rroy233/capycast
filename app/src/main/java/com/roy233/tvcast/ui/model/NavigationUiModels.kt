@@ -53,6 +53,7 @@ fun pageAnchorFor(destination: TvDestination): UiFocusAnchor = when (destination
  * 优先级，界面只需要读 [TvUiState.topOverlay]，不再各自维护一套判定链。
  */
 enum class UiOverlay {
+    CALIBRATION,
     STOP_CAST_CONFIRM,
     ERROR,
     PANEL,

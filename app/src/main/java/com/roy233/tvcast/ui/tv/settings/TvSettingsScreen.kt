@@ -166,6 +166,12 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     SettingsInfoRow("网络", state.network)
                     SettingsRowDivider()
                     SettingsInfoRow("IP 地址", state.ip)
+                    SettingsRowDivider()
+                    FocusableRow(
+                        title = "画面校准",
+                        onClick = actions.onStartCalibration,
+                        rowHeight = if (compact) 56.dp else 64.dp,
+                    )
                 }
             }
         }

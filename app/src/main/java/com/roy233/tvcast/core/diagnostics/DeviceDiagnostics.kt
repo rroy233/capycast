@@ -3,6 +3,7 @@ package com.roy233.tvcast.core.diagnostics
 import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Point
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaCodecInfo
@@ -175,14 +176,28 @@ object DeviceDiagnostics {
         }
     }
 
-    /** 读取屏幕尺寸、刷新率和 HDR 支持情况。 */
+    /** 读取 Android 向应用报告的实际画布、显示模式和 HDR 支持情况。 */
     private fun displayInfo(context: Context): JSONObject = JSONObject().apply {
-        val metrics = DisplayMetrics()
+        // 厂商可让 Android 的逻辑模式与硬件合成器输出模式不同；这里标明数据来源。
+        put("measurementSource", "Android Display API")
+        val realMetrics = DisplayMetrics()
         val display = runCatching {
             (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay
         }.getOrNull()
         if (display != null) {
-            runCatching { display.getRealMetrics(metrics) }
+            runCatching { display.getRealMetrics(realMetrics) }
+                .onFailure { put("realMetricsError", LogRedaction.reason(it)) }
+            val appMetrics = DisplayMetrics()
+            runCatching { display.getMetrics(appMetrics) }
+                .onFailure { put("appMetricsError", LogRedaction.reason(it)) }
+            val realSize = Point()
+            runCatching { display.getRealSize(realSize) }
+                .onFailure { put("realSizeError", LogRedaction.reason(it)) }
+            put("displayId", display.displayId)
+            put("appWidthPx", appMetrics.widthPixels)
+            put("appHeightPx", appMetrics.heightPixels)
+            put("realSizeWidthPx", realSize.x)
+            put("realSizeHeightPx", realSize.y)
             put("refreshRate", display.refreshRate)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 put(
@@ -192,6 +207,14 @@ object DeviceDiagnostics {
                             String.format(Locale.US, "%.3f", it.refreshRate)
                     } ?: "(unknown)",
                 )
+                val supportedModes = runCatching {
+                    display.supportedModes.map { mode ->
+                        "${mode.physicalWidth}x${mode.physicalHeight}@" +
+                            String.format(Locale.US, "%.3f", mode.refreshRate)
+                    }
+                }.onFailure { put("supportedModesError", LogRedaction.reason(it)) }
+                    .getOrDefault(emptyList())
+                put("supportedModes", jsonArray(supportedModes))
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 val hdr = runCatching { display.hdrCapabilities }.getOrNull()
@@ -201,10 +224,10 @@ object DeviceDiagnostics {
                 )
             }
         }
-        put("widthPx", metrics.widthPixels)
-        put("heightPx", metrics.heightPixels)
-        put("density", metrics.density)
-        put("densityDpi", metrics.densityDpi)
+        put("widthPx", realMetrics.widthPixels)
+        put("heightPx", realMetrics.heightPixels)
+        put("density", realMetrics.density)
+        put("densityDpi", realMetrics.densityDpi)
         val configuration = context.resources.configuration
         put("screenWidthDp", configuration.screenWidthDp)
         put("screenHeightDp", configuration.screenHeightDp)
@@ -445,7 +468,13 @@ object DeviceDiagnostics {
             "?"
         }
         return buildString {
-            append("display=").append(resolution)
+            append("displayRealMetrics=").append(resolution)
+            append(" realSize=").append(display?.optInt("realSizeWidthPx"))
+                .append("x").append(display?.optInt("realSizeHeightPx"))
+            append(" appMetrics=").append(display?.optInt("appWidthPx"))
+                .append("x").append(display?.optInt("appHeightPx"))
+            append(" reportedMode=").append(display?.optString("mode"))
+            append(" reportedModes=").append(display?.optJSONArray("supportedModes"))
             append(" vlcDecoder=").append(decoder)
             append(" codecs=").append(parts.joinToString(" "))
         }

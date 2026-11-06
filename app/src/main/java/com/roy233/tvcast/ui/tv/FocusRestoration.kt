@@ -101,11 +101,17 @@ internal fun RestoreFocus(
     contentKey: Any? = null,
 ) {
     val matchedBinding = bindings.firstOrNull { it.anchor == request.anchor }
+    var completedRequest by remember { mutableStateOf<Pair<FocusRequest, Any?>?>(null) }
+    val requestKey = request to contentKey
     // 读取这个状态会让 effect 在目标完成布局或被回收时自动重启；没有任何时间假设。
     val targetReady = matchedBinding?.target?.isReady ?: false
     LaunchedEffect(request.revision, request.anchor, contentKey, targetReady) {
         val binding = bindings.firstOrNull { it.anchor == request.anchor } ?: return@LaunchedEffect
         val itemIndex = binding.itemIndex
+        // 只在锚点已滚出懒列表时忽略回收事件。其他节点被重建后仍需恢复焦点。
+        if (completedRequest == requestKey && itemIndex != null && listState != null &&
+            listState.firstVisibleItemIndex > itemIndex
+        ) return@LaunchedEffect
         FocusDiagnostics.focusRequest(request, itemIndex)
         if (itemIndex != null && listState != null) {
             listState.scrollToItem(itemIndex)
@@ -116,6 +122,7 @@ internal fun RestoreFocus(
         }
         val focused = runCatching { binding.target.requester.requestFocus() }.getOrDefault(false)
         FocusDiagnostics.focusResult(request.anchor, focused)
+        if (focused) completedRequest = requestKey
     }
 }
 

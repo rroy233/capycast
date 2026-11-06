@@ -9,6 +9,8 @@ import com.roy233.tvcast.ui.tv.player.LoadingScreen
 import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
 import com.roy233.tvcast.ui.tv.player.PlayingScreen
 import com.roy233.tvcast.ui.tv.settings.SettingsScreen
+import com.roy233.tvcast.ui.tv.settings.CalibrationAdjustScreen
+import com.roy233.tvcast.feature.display.CalibrationPhase
 
 import android.graphics.Bitmap
 import com.roy233.tvcast.ui.theme.TvColors
@@ -148,6 +150,22 @@ private const val FROST_CAPTURE_REFRESH_MS = 900L
  */
 @Composable
 fun TvRoot(state: TvUiState, actions: TvActions) {
+    if (state.calibration.phase == CalibrationPhase.ADJUST || state.calibration.phase == CalibrationPhase.CONFIRM) {
+        Box(Modifier.fillMaxSize()) {
+            CalibrationAdjustScreen(state, actions, interactive = state.calibration.phase == CalibrationPhase.ADJUST)
+            if (state.calibration.phase == CalibrationPhase.CONFIRM) {
+                GlassAlert(
+                    title = "完成画面校准？",
+                    message = "已调整四个角。确认后保存，之后播放的视频都会使用这个画面范围。",
+                    primaryLabel = "已完成",
+                    onPrimary = actions.onFinishCalibration,
+                    secondaryLabel = "再看看",
+                    onSecondary = actions.onReviewCalibration,
+                )
+            }
+        }
+        return
+    }
     val backdrop = rememberLayerBackdrop()
     val ambient = state.mode == TvMode.IDLE
     // 浮层与导航菜单共用一条层级：栈顶拥有按键与焦点。
@@ -376,6 +394,18 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                     onSecondary = actions.onCancelStopCast,
                     destructive = true,
                 )
+            }
+
+            when (state.calibration.phase) {
+                CalibrationPhase.INTRO -> GlassAlert(
+                    title = "校准电视画面？",
+                    message = "如果视频超出屏幕边缘，可以用遥控器调整四边。跳过后不会再次自动提示，仍可从设置中打开。",
+                    primaryLabel = "开始校准",
+                    onPrimary = actions.onStartCalibration,
+                    secondaryLabel = "跳过",
+                    onSecondary = actions.onCancelCalibration,
+                )
+                else -> Unit
             }
 
             AnimatedVisibility(

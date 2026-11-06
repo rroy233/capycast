@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.update.UpdateUiState
+import com.roy233.tvcast.feature.display.CalibrationState
+import com.roy233.tvcast.feature.display.CalibrationPhase
 
 /** 最近投屏卡片的精确焦点身份；同一稿件的不同分 P 也必须区分。 */
 data class RecentCastFocus(val aid: Long, val cid: Long)
@@ -136,10 +138,12 @@ data class TvUiState(
     val syncPlaybackHistory: Boolean = true,
     val showContinue: Boolean = true,
     val update: UpdateUiState = UpdateUiState(),
+    val calibration: CalibrationState = CalibrationState(),
 ) {
     /** 当前叠在目的页之上的浮层，按优先级从高到低排列。 */
     val overlayStack: List<UiOverlay>
         get() = buildList {
+            if (calibration.phase != CalibrationPhase.HIDDEN) add(UiOverlay.CALIBRATION)
             if (stopCastConfirm) add(UiOverlay.STOP_CAST_CONFIRM)
             if (error != null) add(UiOverlay.ERROR)
             if (panel != null) add(UiOverlay.PANEL)

@@ -4,6 +4,7 @@ import com.roy233.tvcast.feature.cast.domain.RecentCast
 
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.update.model.UpdateChannel
+import com.roy233.tvcast.feature.display.CalibrationDirection
 
 /**
  * 聚合电视界面向宿主发送的用户操作回调。
@@ -67,6 +68,12 @@ class TvActions(
     val onFocusRecent: (Long, Long) -> Unit = { _, _ -> },
     val onNavigateHome: () -> Unit = {},
     val onNavigateSettings: () -> Unit = {},
+    val onStartCalibration: () -> Unit = {},
+    val onCancelCalibration: () -> Unit = {},
+    val onAdjustCalibration: (CalibrationDirection) -> Unit = {},
+    val onNextCalibrationCorner: () -> Unit = {},
+    val onReviewCalibration: () -> Unit = {},
+    val onFinishCalibration: () -> Unit = {},
     val onOpenUpdateSettings: () -> Unit = {},
     val onNavigateSettingsBack: () -> Unit = {},
     val onOpenUpdateNotes: () -> Unit = {},

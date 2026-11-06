@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.View
+import android.view.Surface
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
@@ -95,6 +96,7 @@ class VlcPlayerEngine(
 
     /** 防止同一故障由多个监控周期重复排队重建。 */
     private var recoveryQueued: Boolean = false
+    private var videoOutput: Surface? = null
 
     /** 等待布局完成后重试已延迟的播放请求。 */
     private val surfaceOpenRunnable = Runnable { openWhenSurfaceReady("surface-wait") }
@@ -141,6 +143,18 @@ class VlcPlayerEngine(
         pendingOpenRequest = null
         voutRecoveryAttempts = 0
         return openOrWaitForSurface(request, "open")
+    }
+
+    /** 输出目标变更时重建 VLC vout，避免沿用旧的 Surface 绑定。 */
+    fun setVideoOutput(surface: Surface?) {
+        if (videoOutput === surface || released) return
+        handler.removeCallbacks(surfaceOpenRunnable)
+        pendingOpenRequest = null
+        surfaceWaitStartedAt = 0L
+        videoOutput = surface
+        releasePlayerInstance("video-output-switch", suppressEvents = true)
+        createPlayer("video-output-switch")
+        LogHub.i(TAG, "video output=${if (surface == null) "direct" else "4kPixelCompositor"}")
     }
 
     /** 读取直播播放时钟和 libVLC 统计计数；媒体时钟为零时由计数判断是否仍在前进。 */
@@ -318,7 +332,18 @@ class VlcPlayerEngine(
             return false
         }
         return runCatching {
-            internalPlayer.attachViews(videoLayout, null, false, false)
+            val output = videoOutput
+            if (output == null) {
+                internalPlayer.attachViews(videoLayout, null, false, false)
+            } else {
+                internalPlayer.vlcVout.setVideoSurface(output, null)
+                internalPlayer.vlcVout.setWindowSize(
+                    com.roy233.tvcast.platform.display.VideoFrameCompositor.OUTPUT_WIDTH,
+                    com.roy233.tvcast.platform.display.VideoFrameCompositor.OUTPUT_HEIGHT,
+                )
+                internalPlayer.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT)
+                internalPlayer.vlcVout.attachViews()
+            }
             state.viewsAttached = true
             LogHub.i(TAG, "video surface attached reason=$reason size=${reporter.viewSize()}")
             PlaybackDiagnostics.event(
@@ -415,12 +440,13 @@ class VlcPlayerEngine(
     }
 
     /** 释放当前 MediaPlayer 与媒体对象；LibVLC 保留给下一实例复用。 */
-    private fun releasePlayerInstance(reason: String) {
+    private fun releasePlayerInstance(reason: String, suppressEvents: Boolean = false) {
         monitor.stop()
         val oldPlayer = internalPlayer
         val oldMedia = state.currentMedia
         state.currentMedia = null
         state.viewsAttached = false
+        if (suppressEvents) oldPlayer.setEventListener(null)
         runCatching { oldPlayer.stop() }.onFailure {
             LogHub.e(TAG, "player stop failed reason=$reason", it, stack = true)
         }
