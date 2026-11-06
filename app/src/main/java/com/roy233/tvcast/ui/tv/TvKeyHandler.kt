@@ -6,11 +6,11 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import com.roy233.tvcast.ui.model.PanelKind
-import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.UiOverlay
 import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
 import com.roy233.tvcast.ui.tv.player.handlePlaybackSeekKey
 
@@ -21,9 +21,9 @@ internal enum class TvBackAction {
     BACK_PANEL,
     CLOSE_PANEL,
     CLOSE_HELP,
-    CLOSE_UPDATE_NOTES,
-    CLOSE_UPDATE_SETTINGS,
-    NAVIGATE_HOME,
+    CLOSE_LOGIN,
+    NAVIGATE_SETTINGS_BACK,
+    OPEN_SIDEBAR,
     REQUEST_STOP_CAST,
     CLOSE_SIDEBAR,
     HOME_BACK,
@@ -48,8 +48,66 @@ internal object HomeBackExitTiming {
     const val EXIT_WINDOW_MS = 5_000L
 }
 
+/** 同一时刻唯一拥有按键的界面表面。 */
+internal enum class KeySurface {
+    STOP_CAST_CONFIRM,
+    ERROR,
+    PANEL,
+    HELP,
+    LOGIN_DIALOG,
+    MENU,
+    PAGE,
+}
+
+/** 菜单显示期间允许的方向键动作；其余按键一律吞掉，下层页面不可操作。 */
+internal enum class MenuKeyAction {
+    FOCUS_PREVIOUS,
+    FOCUS_NEXT,
+    CLOSE_MENU,
+
+    /** 确认类按键交给已获焦点的菜单条目自己响应。 */
+    ACTIVATE_FOCUSED,
+
+    SWALLOW,
+}
+
 /** 处理电视遥控器按键并将其转换为界面操作。 */
 object TvKeyHandler {
+
+    /** 解析当前应当接收按键的表面：浮层栈顶 > 导航菜单 > 目的页。 */
+    internal fun resolveKeySurface(state: TvUiState): KeySurface {
+        when (state.topOverlay) {
+            UiOverlay.STOP_CAST_CONFIRM -> return KeySurface.STOP_CAST_CONFIRM
+            UiOverlay.ERROR -> return KeySurface.ERROR
+            UiOverlay.PANEL -> return KeySurface.PANEL
+            UiOverlay.HELP -> return KeySurface.HELP
+            UiOverlay.LOGIN_DIALOG -> return KeySurface.LOGIN_DIALOG
+            null -> Unit
+        }
+        return if (state.sidebarVisible && state.mode == TvMode.IDLE) {
+            KeySurface.MENU
+        } else {
+            KeySurface.PAGE
+        }
+    }
+
+    /** 导航菜单的按键策略：上下移动焦点，向右收起菜单，确认键交给条目。 */
+    internal fun resolveMenuKeyAction(event: KeyEvent): MenuKeyAction = when (event.key) {
+        Key.DirectionUp -> MenuKeyAction.FOCUS_PREVIOUS
+        Key.DirectionDown -> MenuKeyAction.FOCUS_NEXT
+        Key.DirectionRight -> MenuKeyAction.CLOSE_MENU
+        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> MenuKeyAction.ACTIVATE_FOCUSED
+        else -> MenuKeyAction.SWALLOW
+    }
+
+    /**
+     * 左侧是否已到当前页面的边界。
+     *
+     * 边界由调用方用焦点搜索判定；这里只回答“当前表面是否允许打开导航菜单”。
+     */
+    internal fun canOpenMenuFromEdge(state: TvUiState): Boolean =
+        resolveKeySurface(state) == KeySurface.PAGE && state.mode == TvMode.IDLE
+
 
     /** 按照由上到下的界面层级，解析返回键的唯一目标。 */
     internal fun resolveBackAction(state: TvUiState): TvBackAction = when {
@@ -58,14 +116,13 @@ object TvKeyHandler {
         state.panel != null && state.panel != PanelKind.ROOT -> TvBackAction.BACK_PANEL
         state.panel == PanelKind.ROOT -> TvBackAction.CLOSE_PANEL
         state.helpVisible -> TvBackAction.CLOSE_HELP
+        state.loginDialogVisible -> TvBackAction.CLOSE_LOGIN
         state.mode == TvMode.PLAYING || (state.mode == TvMode.LOADING && state.castActive) ->
             TvBackAction.REQUEST_STOP_CAST
+        state.sidebarVisible -> TvBackAction.CLOSE_SIDEBAR
         state.destination == TvDestination.SETTINGS &&
-            state.settingsPage == SettingsPage.UPDATE_NOTES -> TvBackAction.CLOSE_UPDATE_NOTES
-        state.destination == TvDestination.SETTINGS &&
-            state.settingsPage == SettingsPage.UPDATE -> TvBackAction.CLOSE_UPDATE_SETTINGS
-        state.destination == TvDestination.SETTINGS -> TvBackAction.NAVIGATE_HOME
-        state.destination == TvDestination.HOME && state.sidebarVisible -> TvBackAction.CLOSE_SIDEBAR
+            state.settingsNavigation.canNavigateBack -> TvBackAction.NAVIGATE_SETTINGS_BACK
+        state.destination == TvDestination.SETTINGS -> TvBackAction.OPEN_SIDEBAR
         else -> TvBackAction.HOME_BACK
     }
 
@@ -77,9 +134,9 @@ object TvKeyHandler {
             TvBackAction.BACK_PANEL -> actions.onOpenPanel(PanelKind.ROOT)
             TvBackAction.CLOSE_PANEL -> actions.onClosePanel()
             TvBackAction.CLOSE_HELP -> actions.onCloseHelp()
-            TvBackAction.CLOSE_UPDATE_NOTES -> actions.onCloseUpdateNotes()
-            TvBackAction.CLOSE_UPDATE_SETTINGS -> actions.onCloseUpdateSettings()
-            TvBackAction.NAVIGATE_HOME -> actions.onNavigateHome()
+            TvBackAction.CLOSE_LOGIN -> actions.onCloseLogin()
+            TvBackAction.NAVIGATE_SETTINGS_BACK -> actions.onNavigateSettingsBack()
+            TvBackAction.OPEN_SIDEBAR -> actions.onOpenSidebar()
             TvBackAction.REQUEST_STOP_CAST -> actions.onRequestStopCast()
             TvBackAction.CLOSE_SIDEBAR -> actions.onCloseSidebar()
             TvBackAction.HOME_BACK -> actions.onHomeBack()
@@ -103,6 +160,26 @@ object TvKeyHandler {
         seekAccelerator: PlaybackSeekAccelerator,
     ): Boolean {
         if (event.type != KeyEventType.KeyDown) return false
+        val surface = resolveKeySurface(state)
+        val handled = handleKeyDown(event, state, actions, modal, seekAccelerator, surface)
+        FocusDiagnostics.keyRouted(
+            state = state,
+            surface = surface,
+            key = FocusDiagnostics.keyName(event.nativeKeyEvent.keyCode),
+            handled = handled,
+        )
+        return handled
+    }
+
+    /** [handle] 的按键处理主体；日志与归属解析由调用方统一负责。 */
+    private fun handleKeyDown(
+        event: KeyEvent,
+        state: TvUiState,
+        actions: TvActions,
+        modal: Boolean,
+        seekAccelerator: PlaybackSeekAccelerator,
+        surface: KeySurface,
+    ): Boolean {
 
         // Back is dispatched by Activity's OnBackPressedDispatcher. Handling it
         // here as well can count one remote press twice (KeyDown + system Back).
@@ -118,11 +195,31 @@ object TvKeyHandler {
         if (event.key == Key.Menu) {
             when {
                 state.helpVisible -> actions.onCloseHelp()
+                state.loginDialogVisible -> actions.onCloseLogin()
                 state.panel != null -> actions.onClosePanel()
                 state.error != null -> actions.onDismissError()
                 state.mode == TvMode.IDLE ->
                     if (state.sidebarVisible) actions.onCloseSidebar() else actions.onOpenSidebar()
             }
+            return true
+        }
+
+        if (surface == KeySurface.MENU) {
+            val action = resolveMenuKeyAction(event)
+            FocusDiagnostics.menuKey(
+                key = FocusDiagnostics.keyName(event.nativeKeyEvent.keyCode),
+                action = action,
+                focused = state.focusRequest.anchor,
+            )
+            when (action) {
+                MenuKeyAction.FOCUS_PREVIOUS -> actions.onMenuFocusMove(-1)
+                MenuKeyAction.FOCUS_NEXT -> actions.onMenuFocusMove(1)
+                MenuKeyAction.CLOSE_MENU -> actions.onCloseSidebar()
+                // 菜单条目用 clickable 响应确认键，所以这里不能吞掉事件。
+                MenuKeyAction.ACTIVATE_FOCUSED -> return false
+                MenuKeyAction.SWALLOW -> Unit
+            }
+            // 菜单显示期间其余按键不传向页面，避免隔层操作。
             return true
         }
 

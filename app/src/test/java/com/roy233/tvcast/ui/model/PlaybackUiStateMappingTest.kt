@@ -15,6 +15,7 @@ class PlaybackUiStateMappingTest {
             mid = 42L,
             vip = true,
             version = "0.1.5",
+            versionCode = 15L,
             update = TvUiState().update.copy(status = UpdateStatus.AVAILABLE),
             castTitle = "测试投屏",
             isPlaying = true,
@@ -34,6 +35,7 @@ class PlaybackUiStateMappingTest {
             mid = 42L,
             vip = true,
             version = "0.1.5",
+            versionCode = 15L,
             update = TvUiState().update.copy(status = UpdateStatus.DOWNLOADING),
         )
         val playback = root.playbackUiState().copy(
@@ -49,6 +51,7 @@ class PlaybackUiStateMappingTest {
         assertEquals(42L, updated.mid)
         assertEquals(true, updated.vip)
         assertEquals("0.1.5", updated.version)
+        assertEquals(15L, updated.versionCode)
         assertEquals(UpdateStatus.DOWNLOADING, updated.update.status)
         assertEquals(true, updated.isPlaying)
         assertEquals(5_000L, updated.positionMs)

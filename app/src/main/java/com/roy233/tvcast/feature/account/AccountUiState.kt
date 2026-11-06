@@ -9,6 +9,6 @@ data class AccountUiState(
     val mid: Long = 0L,
     val vip: Boolean = false,
     val loginQr: Bitmap? = null,
-    val loginStatus: String = "正在获取二维码…",
+    val loginStatus: String = "",
     val loginSkipped: Boolean = false,
 )

@@ -15,6 +15,9 @@ import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.designsystem.*
+import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
+import com.roy233.tvcast.ui.tv.focusTarget
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
@@ -168,22 +171,19 @@ internal fun PlayingScreen(
     enabled: Boolean,
     seekAccelerator: PlaybackSeekAccelerator,
 ) {
-    val playFocus = remember { FocusRequester() }
-    val progressFocus = remember { FocusRequester() }
-    val videoFocus = remember { FocusRequester() }
+    val playFocus = rememberFocusTarget()
+    val progressFocus = rememberFocusTarget()
+    val videoFocus = rememberFocusTarget()
     val modal = state.panel != null || state.error != null || state.stopCastConfirm
     val displayedPositionMs = state.seekPreviewPositionMs ?: state.positionMs
     val seekingState = rememberUpdatedState(state.seekPreviewPositionMs != null)
     val actionsState = rememberUpdatedState(actions)
 
-    LaunchedEffect(state.hudVisible, modal, enabled) {
-        if (!enabled || modal) return@LaunchedEffect
-        if (state.hudVisible) {
-            delay(80)
-            runCatching { playFocus.requestFocus() }
-        } else {
-            runCatching { videoFocus.requestFocus() }
-        }
+    if (enabled && !modal) {
+        RequestFocusWhenReady(
+            activation = listOf(state.hudVisible, state.panel, state.error, state.stopCastConfirm),
+            target = if (state.hudVisible) playFocus else videoFocus,
+        )
     }
 
     LaunchedEffect(state.seekPreviewPositionMs) {
@@ -200,7 +200,7 @@ internal fun PlayingScreen(
         Box(
             Modifier
                 .fillMaxSize()
-                .focusRequester(videoFocus)
+                .focusTarget(videoFocus)
                 .focusable(enabled && !state.hudVisible)
                 .playbackTouchControls(
                     enabled = enabled && !state.hudVisible,

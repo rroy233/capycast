@@ -27,10 +27,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -62,7 +62,7 @@ internal fun TvProgressBar(positionMs: Long, durationMs: Long, focused: Boolean)
         )
         val filled = size.width * progress
         drawRoundRect(
-            color = if (focused) TvColors.pink else Color.White.copy(alpha = 0.92f),
+            color = if (focused) TvColors.accent else Color.White.copy(alpha = 0.92f),
             topLeft = Offset(0f, y),
             size = Size(filled, trackHeight),
             cornerRadius = CornerRadius(trackHeight / 2f),
@@ -81,8 +81,8 @@ internal fun SeekableProgressBar(
     positionMs: Long,
     durationMs: Long,
     isSeeking: Boolean,
-    focusRequester: FocusRequester,
-    playFocusRequester: FocusRequester,
+    focusTarget: FocusTarget,
+    playFocusTarget: FocusTarget,
     seekAccelerator: PlaybackSeekAccelerator,
     onPreviewSeekBy: (Long) -> Unit,
     onConfirmSeek: () -> Unit,
@@ -92,8 +92,8 @@ internal fun SeekableProgressBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(34.dp)
-            .focusRequester(focusRequester)
-            .focusProperties { down = playFocusRequester }
+            .focusTarget(focusTarget)
+            .focusProperties { down = playFocusTarget.requester }
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent { event ->
                 handlePlaybackSeekKey(
@@ -119,11 +119,9 @@ internal fun SeekPreviewOverlay(positionMs: Long, durationMs: Long) {
             .widthIn(max = 580.dp)
             .fillMaxWidth(0.48f)
             .height(92.dp),
+        material = GlassMaterial.Hud,
+        size = GlassSize.Standard,
         shape = RoundedCornerShape(26.dp),
-        tint = Color(0x68000000),
-        borderAlpha = 0.46f,
-        highlightAlpha = 0.52f,
-        shadow = 28.dp,
     ) {
         Column(
             modifier = Modifier

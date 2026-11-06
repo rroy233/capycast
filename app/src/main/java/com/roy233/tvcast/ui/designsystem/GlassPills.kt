@@ -3,6 +3,8 @@ package com.roy233.tvcast.ui.designsystem
 import android.graphics.Bitmap
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
+import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -26,13 +28,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -52,11 +51,10 @@ fun GlassPill(
 ) {
     GlassSurface(
         modifier = modifier,
+        material = GlassMaterial.Control,
+        size = GlassSize.Compact,
         shape = CircleShape,
-        tint = if (emphasized) Color(0x4D000000) else Color(0x26000000),
-        borderAlpha = if (emphasized) 0.42f else 0.20f,
-        highlightAlpha = 0.30f,
-        shadow = 6.dp,
+        emphasized = emphasized,
         contentAlignment = Alignment.Center,
     ) {
         Row(
@@ -97,10 +95,8 @@ fun GlassAlert(
     destructive: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val primaryFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        runCatching { primaryFocus.requestFocus() }
-    }
+    val primaryFocus = rememberFocusTarget()
+    RequestFocusWhenReady(activation = title, target = primaryFocus)
 
     Box(
         modifier = modifier
@@ -113,14 +109,8 @@ fun GlassAlert(
             modifier = Modifier
                 .widthIn(max = 640.dp)
                 .fillMaxWidth(0.82f),
-            tint = Color(0xB30B0B0F),
-            borderAlpha = 0.48f,
-            highlightAlpha = 0.50f,
-            shadow = 40.dp,
-            useBackdrop = true,
-            blurRadius = 30.dp,
-            lensHeight = 12.dp,
-            lensAmount = 18.dp,
+            material = GlassMaterial.Panel,
+            size = GlassSize.Large,
         ) {
             Column(
                 Modifier.padding(horizontal = 32.dp, vertical = 28.dp),
@@ -163,7 +153,7 @@ fun GlassAlert(
                         onClick = onPrimary,
                         primary = !destructive,
                         destructive = destructive,
-                        focusRequester = primaryFocus,
+                        focusTarget = primaryFocus,
                     )
                 }
             }
@@ -195,7 +185,7 @@ fun QrCodeImage(
 /** 绘制带有呼吸动画的状态圆点。 */
 @Composable
 fun PulseDot(
-    color: Color = TvColors.pink,
+    color: Color = TvColors.accent,
     size: Dp = 7.dp,
 ) {
     val reduceMotion = rememberReduceMotion()

@@ -210,6 +210,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                     loginQr = account.loginQr,
                     loginStatus = account.loginStatus,
                     loginSkipped = account.loginSkipped,
+                    loginDialogVisible = ui.loginDialogVisible && !account.loggedIn,
                 )
             },
             readUpdateState = { ui.update },
@@ -217,28 +218,12 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             onLogoutUi = {
                 ui = ui.copy(
                     destination = TvDestination.HOME,
-                    sidebarVisible = true,
+                    sidebarVisible = false,
+                    loginDialogVisible = false,
                     showContinue = ui.rememberPlaybackContent,
-                )
+                ).focusCurrentPage()
             },
             onToast = { message -> ui = ui.copy(toast = message) },
-            openUpdateSettingsNavigation = {
-                ui = ui.copy(
-                    destination = TvDestination.SETTINGS,
-                    settingsPage = SettingsPage.UPDATE,
-                    sidebarVisible = false,
-                    hudVisible = false,
-                )
-            },
-            closeUpdateSettingsNavigation = {
-                ui = ui.copy(settingsPage = SettingsPage.ROOT)
-            },
-            openUpdateNotesNavigation = {
-                ui = ui.copy(settingsPage = SettingsPage.UPDATE_NOTES)
-            },
-            closeUpdateNotesNavigation = {
-                ui = ui.copy(settingsPage = SettingsPage.UPDATE)
-            },
             isPlaying = { playerIsPlaying() },
             positionMs = { playerPositionMs() },
             durationMs = { playerDurationMs() },
@@ -317,17 +302,11 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     override fun requestLogin() = startQrLogin()
 
+    override fun requestCloseLogin() = loginCoordinator.dismissQrLogin()
+
     override fun requestSkipLogin() = skipLogin()
 
     override fun requestLogout() = logout()
-
-    override fun openUpdateSettings() = updateCoordinator.openSettings()
-
-    override fun closeUpdateSettings() = updateCoordinator.closeSettings()
-
-    override fun openUpdateNotes() = updateCoordinator.openNotes()
-
-    override fun closeUpdateNotes() = updateCoordinator.closeNotes()
 
     override fun selectUpdateChannel(channel: UpdateChannel) =
         updateCoordinator.selectChannel(channel)
@@ -856,6 +835,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             network = deviceInfo.wifiName(),
             ip = LogHub.localIp(),
             version = deviceInfo.versionName(),
+            versionCode = deviceInfo.versionCode(),
             dlnaUrl = dlna.descriptionUrl,
             danmakuEnabled = danmakuSettings.enabled,
             danmakuAiShield = danmakuSettings.aiShield,
@@ -995,7 +975,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         ui = ui.copy(
             mode = TvMode.IDLE,
             destination = TvDestination.HOME,
-            sidebarVisible = true,
             castTitle = "",
             qualityLabel = "",
             qualityDetail = "",
@@ -1014,7 +993,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             audios = emptyList(),
             toast = "播放结束",
             showContinue = ui.rememberPlaybackContent,
-        )
+        ).returnToHomeAfterPlayback()
     }
     override fun updateVideoSize(width: Int, height: Int) {
         videoWidth = width
@@ -1378,14 +1357,13 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             tracks = emptyList(),
             audios = emptyList(),
             showContinue = ui.rememberPlaybackContent,
-        )
+        ).returnToHomeAfterPlayback()
     }
     override fun showStoppedState() {
         ui = ui.copy(
             mode = TvMode.IDLE,
             destination = TvDestination.HOME,
-            settingsPage = SettingsPage.ROOT,
-            sidebarVisible = true,
+            settingsNavigation = ui.settingsNavigation.reset(),
             panel = null,
             stopCastConfirm = false,
             error = null,
@@ -1407,7 +1385,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             audios = emptyList(),
             showContinue = ui.rememberPlaybackContent,
             toast = "投屏已停止",
-        )
+        ).returnToHomeAfterPlayback()
     }
     override fun showErrorState(title: String, message: String, code: String, canRetry: Boolean) {
         ui = ui.copy(
@@ -1422,7 +1400,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             liveBackupCount = 0,
             panel = null,
             stopCastConfirm = false,
-        )
+        ).withMenuClosed()
     }
     override fun flushHistoryPosition() {
         playbackHistoryCoordinator.onPosition(
@@ -1436,7 +1414,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         ui = ui.copy(
             mode = TvMode.IDLE,
             destination = TvDestination.HOME,
-            sidebarVisible = true,
             castTitle = "",
             qualityLabel = "",
             qualityDetail = "",
@@ -1455,7 +1432,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             audios = emptyList(),
             toast = "投屏已结束",
             showContinue = ui.rememberPlaybackContent,
-        )
+        ).returnToHomeAfterPlayback()
     }
 
     /** 首页连续两次返回退出，首按显示明确提示。 */

@@ -8,12 +8,19 @@ import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.TrackOption
 import com.roy233.tvcast.ui.model.TvActions
-import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
-import com.roy233.tvcast.ui.tv.tvFocusRegion
 import com.roy233.tvcast.ui.designsystem.*
+import com.roy233.tvcast.ui.model.MENU_ENTRIES
+import com.roy233.tvcast.ui.model.MenuEntry
+import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.FocusDiagnostics
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
+import com.roy233.tvcast.ui.tv.focusTrace
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
+import com.roy233.tvcast.ui.tv.RestoreFocus
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
@@ -53,6 +60,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -68,7 +76,6 @@ import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -76,8 +83,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -91,11 +96,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -105,7 +110,15 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import kotlinx.coroutines.delay
+
+private val COMPACT_SCREEN_WIDTH = 720.dp
+private val SIDEBAR_MIN_WIDTH = 248.dp
+private val SIDEBAR_MAX_WIDTH = 300.dp
+
+private fun sidebarWidthFor(maxWidth: Dp): Dp = when {
+    maxWidth < COMPACT_SCREEN_WIDTH -> maxWidth * 0.42f
+    else -> maxWidth * 0.285f
+}.coerceIn(SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH)
 
 /**
  * 显示电视端主导航侧边栏。
@@ -119,142 +132,132 @@ internal fun Sidebar(
     state: TvUiState,
     actions: TvActions,
 ) {
-    val homeFocus = remember { FocusRequester() }
-    val settingsFocus = remember { FocusRequester() }
-
-    val view = LocalView.current
-    LaunchedEffect(state.destination) {
-        var guard = 0
-        while (!view.hasFocus() && guard++ < 15) delay(100)
-        delay(340)
-        runCatching {
-            if (state.destination == TvDestination.SETTINGS) {
-                settingsFocus.requestFocus()
-            } else {
-                homeFocus.requestFocus()
-            }
-        }
-    }
-
-    GlassSurface(
-        modifier = Modifier
-            .fillMaxHeight()
-            .width(208.dp)
-            .tvFocusRegion(),
-        shape = RoundedCornerShape(0.dp),
-        tint = Color(0xB30B0B0F),
-        borderAlpha = 0f,
-        highlightAlpha = 0.10f,
-        shadow = 0.dp,
-        useBackdrop = true,
-        drawBackdropHighlight = false,
-        blurRadius = 40.dp,
-        lensHeight = 8.dp,
-        lensAmount = 12.dp,
-    ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 24.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .border(
-                            width = 1.dp,
-                            color = Color.White.copy(alpha = 0.16f),
-                            shape = RoundedCornerShape(11.dp),
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(com.roy233.tvcast.R.mipmap.ic_launcher),
-                        contentDescription = "CapyCast Logo",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(0.dp),
-                ) {
-                    BasicText(
-                        text = "CapyCast",
-                        style = TvType.bodyMedium.copy(
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    BasicText(
-                        text = "v${state.version}",
-                        style = TvType.caption.copy(
-                            color = TvColors.textTertiary,
-                            fontSize = 12.sp,
-                        ),
-                        modifier = Modifier.align(Alignment.End),
-                        maxLines = 1,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(26.dp))
-
-            SidebarItem(
-                title = "Bilibili 投屏",
-                icon = Icons.Rounded.Cast,
-                selected = state.destination == TvDestination.HOME,
-                onClick = {
-                    if (state.destination == TvDestination.HOME) {
-                        actions.onCloseSidebar()
-                    } else {
-                        actions.onNavigateHome()
-                    }
-                },
-                focusRequester = homeFocus,
-            )
-            Spacer(Modifier.height(4.dp))
-            SidebarItem(
-                title = "设置",
-                icon = Icons.Rounded.Settings,
-                selected = state.destination == TvDestination.SETTINGS,
-                onClick = {
-                    if (state.destination == TvDestination.SETTINGS) {
-                        actions.onCloseSidebar()
-                    } else {
-                        actions.onNavigateSettings()
-                    }
-                },
-                focusRequester = settingsFocus,
-                badge = state.update.availableUpdate != null,
-            )
-
-            Spacer(Modifier.weight(1f))
-        }
-
-        Box(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .width(1.dp)
-                .background(Color.White.copy(alpha = 0.06f))
+    val homeFocus = rememberFocusTarget()
+    val settingsFocus = rememberFocusTarget()
+    val entryRequesters = remember(homeFocus, settingsFocus) {
+        mapOf(
+            MenuEntry.HOME to homeFocus,
+            MenuEntry.SETTINGS to settingsFocus,
         )
     }
+
+    // 菜单只声明条目与锚点，焦点时机由统一的恢复入口负责。
+    RestoreFocus(
+        request = state.focusRequest,
+        bindings = MENU_ENTRIES.map { entry ->
+            FocusBinding(anchor = entry.anchor, target = entryRequesters.getValue(entry))
+        },
+    )
+
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        val compact = maxWidth < COMPACT_SCREEN_WIDTH || maxHeight < 500.dp
+        val sidebarWidth = sidebarWidthFor(maxWidth)
+
+        GlassSurface(
+            modifier = Modifier
+                .padding(start = if (compact) 24.dp else 48.dp)
+                .width(sidebarWidth)
+                .heightIn(max = 420.dp)
+                .wrapContentHeight()
+                .testTag("sidebar-panel"),
+            material = GlassMaterial.Navigation,
+            size = GlassSize.Large,
+            shape = RoundedCornerShape(if (compact) 28.dp else 36.dp),
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 20.dp,
+                        vertical = 22.dp,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(11.dp))
+                            .border(
+                                width = 1.dp,
+                                color = Color.White.copy(alpha = 0.16f),
+                                shape = RoundedCornerShape(11.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(
+                            painter = painterResource(com.roy233.tvcast.R.drawable.capycast_brandmark),
+                            contentDescription = "CapyCast Logo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        BasicText(
+                            text = "CapyCast",
+                            style = TvType.bodyMedium.copy(
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        BasicText(
+                            text = "v${state.version}",
+                            style = TvType.caption.copy(
+                                color = TvColors.textTertiary,
+                                fontSize = 12.sp,
+                            ),
+                            maxLines = 1,
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                MENU_ENTRIES.forEach { entry ->
+                    SidebarItem(
+                        entry = entry,
+                        selected = state.destination == entry.destination,
+                        onClick = {
+                            FocusDiagnostics.menuItemActivated(entry, state.destination.name)
+                            if (state.destination == entry.destination) {
+                                actions.onCloseSidebar()
+                            } else {
+                                entry.navigate(actions)
+                            }
+                        },
+                        focusTarget = entryRequesters.getValue(entry),
+                        badge = entry == MenuEntry.SETTINGS &&
+                            state.update.availableUpdate != null,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 把菜单条目映射到目的页导航命令。 */
+private fun MenuEntry.navigate(actions: TvActions) = when (this) {
+    MenuEntry.HOME -> actions.onNavigateHome()
+    MenuEntry.SETTINGS -> actions.onNavigateSettings()
 }
 
 /** 绘制单个侧边栏导航项。 */
 @Composable
 private fun SidebarItem(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    entry: MenuEntry,
     selected: Boolean,
     onClick: () -> Unit,
-    focusRequester: FocusRequester,
+    focusTarget: FocusTarget,
     badge: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -265,65 +268,84 @@ private fun SidebarItem(
         animationSpec = spring(dampingRatio = 0.85f, stiffness = 420f),
         label = "sidebar-item",
     )
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(20.dp)
 
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(46.dp)
+            .height(56.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .focusRequester(focusRequester)
             .clip(shape)
             .background(
-                when {
-                    selected -> Brush.linearGradient(listOf(TvColors.pink, TvColors.pinkDeep))
-                    focused -> Brush.linearGradient(
-                        listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.05f))
-                    )
-                    else -> Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
-                }
+                Color.White.copy(
+                    alpha = when {
+                        focused -> 0.16f
+                        selected -> 0.10f
+                        else -> 0.03f
+                    }
+                )
             )
             .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) Color.White.copy(alpha = 0.75f) else Color.Transparent,
-                shape = shape,
+                1.dp,
+                Color.White.copy(alpha = if (focused) 0.48f else if (selected) 0.18f else 0.06f),
+                shape,
             )
+            .focusTarget(focusTarget)
+            .focusTrace("menu:${entry.title}")
             .clickable(
                 interactionSource = interaction,
                 indication = null,
                 role = Role.Button,
                 onClick = onClick,
-            )
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (selected) Color.White else Color.White.copy(alpha = 0.70f),
-            modifier = Modifier.size(20.dp),
-        )
-        BasicText(
-            text = title,
-            style = TvType.bodyMedium.copy(
-                color = if (selected || focused) Color.White else TvColors.textSecondary,
-                fontSize = 20.sp,
             ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (badge) {
-            Spacer(Modifier.weight(1f))
-            Box(
-                modifier = Modifier
-                    .size(9.dp)
-                    .clip(CircleShape)
-                    .background(TvColors.error)
-                    .border(1.dp, Color.White.copy(alpha = 0.9f), CircleShape)
-                    .semantics { contentDescription = "有新版本" },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            MenuEntryIcon(entry, if (selected) Color.White else Color.White.copy(alpha = 0.78f))
+            BasicText(
+                text = entry.title,
+                style = TvType.bodyMedium.copy(
+                    color = if (selected || focused) Color.White else TvColors.textSecondary,
+                    fontSize = 20.sp,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
+            if (badge) {
+                Spacer(Modifier.weight(1f))
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(TvColors.error)
+                        .border(1.dp, Color.White.copy(alpha = 0.9f), CircleShape)
+                        .semantics { contentDescription = "有新版本" },
+                )
+            }
         }
     }
 }
 
+/** 绘制菜单条目的图标；图标是条目的展示细节，与焦点和跳转无关。 */
+@Composable
+private fun MenuEntryIcon(entry: MenuEntry, tint: Color) {
+    when (entry) {
+        MenuEntry.HOME -> BilibiliTvLogo(
+            modifier = Modifier.size(30.dp),
+            color = tint,
+        )
+
+        MenuEntry.SETTINGS -> Icon(
+            imageVector = Icons.Rounded.Settings,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(30.dp),
+        )
+    }
+}

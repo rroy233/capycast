@@ -31,10 +31,8 @@ object TvColors {
     /** 禁用状态文本颜色。 */
     val textDisabled = Color(0x4DFFFFFF)
 
-    /** 品牌粉色。 */
-    val pink = Color(0xFFFB7299)
-    /** 品牌深粉色。 */
-    val pinkDeep = Color(0xFFF25D8A)
+    /** 焦点与主操作使用的低饱和冰蓝色。 */
+    val accent = Color(0xFF9BB8CC)
     /** 品牌蓝色。 */
     val blue = Color(0xFF00A1D6)
     /** 辅助紫色。 */
@@ -139,6 +137,8 @@ object TvType {
 
 /** 电视界面使用的尺寸常量集合。 */
 object TvDimens {
+    /** 大屏页面内容的最大宽度，避免信息分散到两侧。 */
+    val pageMaxWidth = 760.dp
     /** 水平方向的安全区域边距，约为 960dp 电视布局宽度的 5%。 */
     val safeHorizontal = 48.dp
     /** 垂直方向的安全区域边距。 */

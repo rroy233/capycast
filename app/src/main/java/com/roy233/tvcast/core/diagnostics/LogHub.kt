@@ -54,6 +54,8 @@ object LogHub {
     private var dlnaUrl: String = ""
     /** 当前投屏标题。 */
     private var castTitle: String = ""
+    /** 当前界面栈与焦点归属的快照，由界面层写入。 */
+    private var uiStack: String = ""
 
     /** 启动局域网诊断 HTTP 服务。 */
     fun start(ctx: Context) {
@@ -139,6 +141,8 @@ object LogHub {
     fun setDlna(url: String) { dlnaUrl = url }
     /** 更新当前投屏标题。 */
     fun setCast(title: String) { castTitle = title }
+    /** 更新当前界面栈与焦点归属快照。 */
+    fun setUiStack(snapshot: String) { uiStack = snapshot }
 
     /** 将一条日志追加到有上限的内存队列。 */
     private fun add(level: String, msg: String) {
@@ -170,6 +174,7 @@ object LogHub {
         j.put("dlnaUrl", dlnaUrl)
         j.put("castTitle", castTitle)
         j.put("play", playInfo)
+        j.put("uiStack", uiStack)
         j.put("playback", PlaybackDiagnostics.summary())
         j.put("playbackUrl", "http://${localIp()}:$PORT/playback")
         j.put("deviceUrl", "http://${localIp()}:$PORT/device")

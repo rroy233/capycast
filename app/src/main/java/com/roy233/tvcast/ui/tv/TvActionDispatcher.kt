@@ -4,11 +4,17 @@ import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.ui.model.PanelKind
+import com.roy233.tvcast.ui.model.RecentCastFocus
 import com.roy233.tvcast.feature.cast.domain.RecentCast
+import com.roy233.tvcast.ui.model.FocusRequest
 import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
+import com.roy233.tvcast.ui.model.UiFocusAnchor
+import com.roy233.tvcast.ui.model.menuEntryFor
+import com.roy233.tvcast.ui.model.menuEntryOf
+import com.roy233.tvcast.ui.model.moved
 
 /**
  * 电视界面需要宿主执行的业务命令。
@@ -18,12 +24,9 @@ import com.roy233.tvcast.ui.model.TvMode
  */
 interface TvActionHost {
     fun requestLogin()
+    fun requestCloseLogin()
     fun requestSkipLogin()
     fun requestLogout()
-    fun openUpdateSettings()
-    fun closeUpdateSettings()
-    fun openUpdateNotes()
-    fun closeUpdateNotes()
     fun selectUpdateChannel(channel: UpdateChannel)
     fun setAutomaticUpdateCheck(enabled: Boolean)
     fun checkForUpdates()
@@ -68,39 +71,128 @@ class TvActionDispatcher(
 
     /** 提供给电视界面的操作回调集合；实例在构造期固定，避免重组时重建。 */
     val actions: TvActions = TvActions(
-        onLogin = { host.requestLogin() },
+        onLogin = {
+            val state = stateHolder.read()
+            if (state.mode == TvMode.IDLE && !state.loggedIn) {
+                stateHolder.set(state.copy(loginDialogVisible = true, sidebarVisible = false))
+                host.requestLogin()
+            }
+        },
+        onCloseLogin = {
+            stateHolder.set(stateHolder.read().copy(loginDialogVisible = false))
+            host.requestCloseLogin()
+        },
         onSkipLogin = { host.requestSkipLogin() },
         onOpenSidebar = {
-            stateHolder.set(stateHolder.read().copy(sidebarVisible = true))
+            val state = stateHolder.read()
+            stateHolder.set(state.withMenuOpen())
+            FocusDiagnostics.menuOpened(
+                entry = menuEntryFor(state.destination),
+                destination = state.destination.name,
+                anchor = stateHolder.read().focusRequest.anchor,
+            )
         },
         onCloseSidebar = {
-            stateHolder.set(stateHolder.read().copy(sidebarVisible = false))
+            stateHolder.set(stateHolder.read().withMenuClosed())
+            FocusDiagnostics.pageFocusReclaimed(stateHolder.read())
+        },
+        onMenuFocusMove = { step ->
+            val state = stateHolder.read()
+            if (state.sidebarVisible) {
+                // 栈顶若不是菜单条目，说明打开菜单的路径漏了锚点；从当前目的页条目重新起步。
+                val current = menuEntryOf(state.focusRequest.anchor)
+                    ?: menuEntryFor(state.destination)
+                val target = current.moved(step)
+                if (target != current || current.anchor != state.focusRequest.anchor) {
+                    stateHolder.set(
+                        state.copy(focusRequest = state.focusRequest.moveTo(target.anchor)),
+                    )
+                }
+            }
+        },
+        onFocusRecent = { aid, cid ->
+            val state = stateHolder.read()
+            val focusedRecent = RecentCastFocus(aid, cid)
+            if (state.focusedRecent != focusedRecent) {
+                stateHolder.set(state.copy(focusedRecent = focusedRecent))
+            }
+        },
+        onReclaimPageFocus = {
+            val state = stateHolder.read().focusCurrentPage()
+            stateHolder.set(state)
+            FocusDiagnostics.pageFocusReclaimed(state)
+        },
+        onFocusHomeControl = {
+            val state = stateHolder.read()
+            if (state.destination == TvDestination.HOME && state.focusedRecent != null) {
+                stateHolder.set(state.copy(focusedRecent = null))
+            }
         },
         onNavigateHome = {
             val state = stateHolder.read()
             stateHolder.set(
                 state.copy(
                     destination = TvDestination.HOME,
-                    settingsPage = SettingsPage.ROOT,
-                    sidebarVisible = true,
+                    settingsNavigation = state.settingsNavigation.reset(),
+                    sidebarVisible = false,
                     hudVisible = state.mode == TvMode.PLAYING,
-                ),
+                ).focusCurrentPage(),
             )
         },
         onNavigateSettings = {
+            val state = stateHolder.read()
             stateHolder.set(
-                stateHolder.read().copy(
+                state.copy(
                     destination = TvDestination.SETTINGS,
-                    settingsPage = SettingsPage.ROOT,
-                    sidebarVisible = true,
+                    settingsNavigation = state.settingsNavigation.reset(),
+                    sidebarVisible = false,
                     hudVisible = false,
+                ).focusCurrentPage(),
+            )
+        },
+        onOpenUpdateSettings = {
+            val state = stateHolder.read()
+            val navigation = state.settingsNavigation.push(
+                page = SettingsPage.UPDATE,
+                returnFocus = UiFocusAnchor.SETTINGS_UPDATE_ENTRY,
+            )
+            stateHolder.set(
+                state.copy(
+                    destination = TvDestination.SETTINGS,
+                    sidebarVisible = false,
+                    hudVisible = false,
+                    settingsNavigation = navigation,
+                    focusRequest = state.focusRequest.moveTo(navigation.topAnchor),
                 ),
             )
         },
-        onOpenUpdateSettings = { host.openUpdateSettings() },
-        onCloseUpdateSettings = { host.closeUpdateSettings() },
-        onOpenUpdateNotes = { host.openUpdateNotes() },
-        onCloseUpdateNotes = { host.closeUpdateNotes() },
+        onNavigateSettingsBack = {
+            val state = stateHolder.read()
+            // 出栈：栈顶锚点由新栈顶决定，父页声明的返回锚点优先。
+            val returnAnchor = state.settingsNavigation.returnAnchor
+            val navigation = state.settingsNavigation.pop()
+            stateHolder.set(
+                state.copy(
+                    settingsNavigation = navigation,
+                    focusRequest = state.focusRequest.moveTo(returnAnchor ?: navigation.topAnchor),
+                ),
+            )
+        },
+        onOpenUpdateNotes = {
+            val state = stateHolder.read()
+            if (state.update.availableUpdate != null) {
+                val navigation = state.settingsNavigation.push(
+                    page = SettingsPage.UPDATE_NOTES,
+                    returnFocus = UiFocusAnchor.SETTINGS_UPDATE_RELEASE_NOTES,
+                )
+                stateHolder.set(
+                    state.copy(
+                        settingsNavigation = navigation,
+                        focusRequest = state.focusRequest.moveTo(navigation.topAnchor),
+                    ),
+                )
+            }
+        },
         onSelectUpdateChannel = { channel -> host.selectUpdateChannel(channel) },
         onSetAutoUpdateCheck = { enabled -> host.setAutomaticUpdateCheck(enabled) },
         onCheckForUpdates = { host.checkForUpdates() },

@@ -10,11 +10,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -34,7 +36,6 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,8 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -68,10 +67,17 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.ui.model.TvActions
+import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
+import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
+import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 import kotlinx.coroutines.launch
 
@@ -81,73 +87,86 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
     val available = state.update.availableUpdate
     val notes = available?.releaseNotes.orEmpty()
     val blocks = remember(notes) { parseReleaseNotes(notes) }
-    val firstFocus = remember { FocusRequester() }
-    val backFocus = remember { FocusRequester() }
+    val firstFocus = rememberFocusTarget()
+    val backFocus = rememberFocusTarget()
+    val listState = rememberLazyListState()
     val firstFocusable = blocks.indexOfFirst { it.kind != ReleaseNoteKind.DIVIDER }
-    LaunchedEffect(firstFocusable) {
-        runCatching {
-            if (firstFocusable >= 0) firstFocus.requestFocus() else backFocus.requestFocus()
-        }
-    }
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 80.dp, vertical = 52.dp)
-            .tvFocusRegion(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    BasicText(
-                        text = "更新日志",
-                        style = TvType.title.copy(fontSize = 48.sp),
-                    )
-                    available?.let {
+    RestoreFocus(
+        request = state.focusRequest,
+        listState = listState,
+        bindings = listOf(
+            FocusBinding(
+                anchor = UiFocusAnchor.SETTINGS_UPDATE_NOTES_INITIAL,
+                itemIndex = if (firstFocusable >= 0) firstFocusable + 1 else 0,
+                target = if (firstFocusable >= 0) firstFocus else backFocus,
+            ),
+        ),
+        contentKey = firstFocusable,
+    )
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .width((maxWidth - 160.dp).coerceAtMost(TvDimens.pageMaxWidth))
+                .fillMaxHeight()
+                .align(Alignment.Center)
+                .padding(vertical = 52.dp)
+                .tvFocusRegion(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
                         BasicText(
-                            text = "v${it.versionName}",
-                            style = TvType.caption.copy(
-                                color = TvColors.textSecondary,
-                                fontSize = 18.sp,
-                            ),
+                            text = "更新日志",
+                            style = TvType.title.copy(fontSize = 48.sp),
+                        )
+                        available?.let {
+                            BasicText(
+                                text = "v${it.versionName}",
+                                style = TvType.caption.copy(
+                                    color = TvColors.textSecondary,
+                                    fontSize = 18.sp,
+                                ),
+                            )
+                        }
+                    }
+                    WhiteButton(
+                        text = "返回",
+                        onClick = actions.onNavigateSettingsBack,
+                        focusTarget = backFocus,
+                        compact = true,
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
+            }
+            if (blocks.isEmpty()) {
+                item {
+                    BasicText(
+                        text = "此版本未提供更新说明。",
+                        style = TvType.body.copy(color = TvColors.textSecondary),
+                    )
+                }
+            } else {
+                blocks.forEachIndexed { index, block ->
+                    item(key = index) {
+                        ReleaseNoteBlock(
+                            block = block,
+                            focusTarget = if (index == firstFocusable) firstFocus else null,
                         )
                     }
                 }
-                WhiteButton(
-                    text = "返回",
-                    onClick = actions.onCloseUpdateNotes,
-                    focusRequester = backFocus,
-                    compact = true,
-                )
             }
-            Spacer(Modifier.height(18.dp))
-        }
-        if (blocks.isEmpty()) {
             item {
+                Spacer(Modifier.height(20.dp))
                 BasicText(
-                    text = "此版本未提供更新说明。",
-                    style = TvType.body.copy(color = TvColors.textSecondary),
+                    text = "按返回键回到更新页面",
+                    style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 15.sp),
                 )
             }
-        } else {
-            blocks.forEachIndexed { index, block ->
-                item(key = index) {
-                    ReleaseNoteBlock(
-                        block = block,
-                        focusRequester = if (index == firstFocusable) firstFocus else null,
-                    )
-                }
-            }
-        }
-        item {
-            Spacer(Modifier.height(20.dp))
-            BasicText(
-                text = "按返回键回到更新页面",
-                style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 15.sp),
-            )
         }
     }
 }

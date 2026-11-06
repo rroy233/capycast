@@ -1,21 +1,22 @@
 package com.roy233.tvcast.ui.tv.home
 
-import com.roy233.tvcast.ui.tv.account.LoginPage
-
-import android.graphics.Bitmap
 import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.model.AudioOption
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.TrackOption
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.ui.model.TvActions
-import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.designsystem.*
-import com.roy233.tvcast.ui.tv.tvFocusRegion
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
@@ -29,20 +30,20 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -52,7 +53,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -69,9 +69,10 @@ import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -81,22 +82,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -107,9 +104,27 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import java.util.Calendar
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import kotlinx.coroutines.delay
+import com.roy233.tvcast.ui.model.UiFocusAnchor
+import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.focusTrace
+import com.roy233.tvcast.ui.tv.RestoreFocus
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
+
+/** 视口高度低于此值时，货架使用更小的卡片，保证与标题、按钮同屏。 */
+private val SHELF_COMPACT_HEIGHT = 620.dp
+
+/** 货架卡片宽度：标准与紧凑两档，高度由 16:9 推出。 */
+private val SHELF_CARD_WIDTH = 240.dp
+private val SHELF_CARD_WIDTH_COMPACT = 200.dp
+private const val MAX_RECENT_CARDS = 8
+private const val RECENT_CARD_ASPECT_RATIO = 16f / 9f
+private const val RECENT_CARD_FOCUS_SCALE = 1.06f
+private const val RECENT_CARD_FOCUS_OVERFLOW_RATIO = (RECENT_CARD_FOCUS_SCALE - 1f) / 2f
 
 /**
  * 显示首页内容、登录入口和最近投屏记录。
@@ -119,26 +134,29 @@ import kotlinx.coroutines.delay
  */
 @Composable
 internal fun HomeScreen(state: TvUiState, actions: TvActions) {
-    val primaryFocus = remember { FocusRequester() }
-    val featured = if (state.showContinue) state.recents.firstOrNull() else null
-
-    val view = LocalView.current
-    LaunchedEffect(state.sidebarVisible, state.helpVisible, state.showContinue) {
-        if (!state.sidebarVisible && !state.helpVisible) {
-            var guard = 0
-            while (!view.hasFocus() && guard++ < 15) delay(100)
-            delay(220)
-            for (i in 0 until 8) {
-                if (runCatching { primaryFocus.requestFocus() }.getOrDefault(false)) break
-                delay(180)
-            }
-        }
+    val primaryFocus = rememberFocusTarget()
+    val secondaryFocus = rememberFocusTarget()
+    val cardTargets = remember { mutableMapOf<String, FocusTarget>() }
+    val visibleRecents = state.recents.take(MAX_RECENT_CARDS)
+    val recentFocusTargets = visibleRecents.map { recent ->
+        cardTargets.getOrPut(recent.focusKey()) { FocusTarget() }
     }
+    // 大标题、背景与主按钮都跟随同一个字段：最近投屏里被聚焦的那条。
+    val featured = state.featuredRecent
 
-    if (!state.loggedIn && !state.loginSkipped) {
-        LoginPage(state, actions)
-        return
-    }
+    // 首页只声明自己能接的锚点；何时请求由统一恢复入口决定。
+    RestoreFocus(
+        request = state.focusRequest,
+        bindings = listOf(
+            FocusBinding(anchor = UiFocusAnchor.HOME_PRIMARY, target = primaryFocus),
+        ),
+        // 主入口在扫码登录、继续播放、投屏帮助之间切换；按钮被替换后必须重新取回焦点。
+        contentKey = listOf(state.loggedIn, featured != null, state.helpVisible),
+    )
+
+    val density = LocalDensity.current
+    val windowWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }.toInt()
+    val windowHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }.toInt()
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < 500.dp
@@ -155,319 +173,251 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
             else -> 64.sp
         }
         val metaSize = if (compact) 17.sp else 23.sp
-
-        HomeBackdrop(featured, compact)
+        HomeBackdrop(featured = featured, compact = compact)
+        // 货架是固定槽位：先给它高度，可伸缩的只有上方文字区，焦点目标不会被挤出视口。
+        val shelfShown = state.showContinue && visibleRecents.size > 1
+        val firstRecentFocus = recentFocusTargets.firstOrNull()
+        val secondaryActionShown = featured != null
+        val shelfCardWidth = if (compact || maxHeight < SHELF_COMPACT_HEIGHT) {
+            SHELF_CARD_WIDTH_COMPACT
+        } else {
+            SHELF_CARD_WIDTH
+        }
+        val titleLines = if (shelfShown && !compact) 1 else 2
+        // 布局自检：任何可聚焦区域被挤出视口，都会在 /log 里以 W/TvLayout 出现。
+        LaunchedEffect(maxWidth, maxHeight, shelfShown, shelfCardWidth) {
+            LogHub.d(
+                "TvLayout",
+                "home viewport=${maxWidth.value.toInt()}x${maxHeight.value.toInt()}dp " +
+                    "compact=$compact shelf=$shelfShown card=${shelfCardWidth.value.toInt()}dp " +
+                    "titleLines=$titleLines",
+            )
+        }
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = hPad, vertical = vPad),
-            verticalArrangement = Arrangement.Bottom,
+                .width((maxWidth - hPad * 2).coerceAtMost(TvDimens.pageMaxWidth))
+                .fillMaxHeight()
+                .align(Alignment.Center)
+                .padding(vertical = vPad)
+                .onGloballyPositioned { coordinates ->
+                    val bounds = coordinates.boundsInWindow()
+                    LogHub.d(
+                        "TvLayout",
+                        "home content bounds=(${bounds.left.toInt()},${bounds.top.toInt()})-" +
+                            "(${bounds.right.toInt()},${bounds.bottom.toInt()}) " +
+                            "viewportPx=${windowWidthPx}x${windowHeightPx}",
+                    )
+                },
         ) {
-            Spacer(Modifier.weight(1f))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.BottomStart,
             ) {
-                PulseDot(if (state.loggedIn) TvColors.pink else TvColors.warning, 7.dp)
-                BasicText(
-                    text = if (state.loggedIn) "等待手机投屏" else "访客模式",
-                    style = TvType.caption.copy(
-                        color = TvColors.textSecondary,
-                        fontSize = if (compact) 16.sp else 20.sp,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                )
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        PulseDot(if (state.loggedIn) TvColors.accent else TvColors.warning, 7.dp)
+                        BasicText(
+                            text = if (state.loggedIn) "等待手机投屏" else "访客模式",
+                            style = TvType.caption.copy(
+                                color = TvColors.textSecondary,
+                                fontSize = if (compact) 16.sp else 20.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                        )
+                    }
+                    Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+
+                    Crossfade(
+                        targetState = featured,
+                        animationSpec = tween(260),
+                        label = "home-hero",
+                    ) { hero ->
+                        Column {
+                            BasicText(
+                                text = hero?.title ?: "Bilibili 投屏",
+                                style = TvType.hero.copy(
+                                    fontSize = titleSize,
+                                    lineHeight = titleLine,
+                                    shadow = Shadow(
+                                        color = Color.Black.copy(alpha = 0.55f),
+                                        offset = Offset(0f, 3f),
+                                        blurRadius = 14f,
+                                    ),
+                                ),
+                                maxLines = titleLines,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth(0.78f),
+                            )
+                            Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
+                            BasicText(
+                                text = hero?.let {
+                                    listOf(it.quality, it.relativeTimeLabel())
+                                        .filter { value -> value.isNotBlank() }
+                                        .joinToString(" · ")
+                                } ?: "${state.deviceName} · ${state.roomName}",
+                                style = TvType.body.copy(
+                                    color = TvColors.textSecondary,
+                                    fontSize = metaSize,
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
-            Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
-
-            BasicText(
-                text = featured?.title ?: "Bilibili 投屏",
-                style = TvType.hero.copy(
-                    fontSize = titleSize,
-                    lineHeight = titleLine,
-                    shadow = Shadow(
-                        color = Color.Black.copy(alpha = 0.55f),
-                        offset = Offset(0f, 3f),
-                        blurRadius = 14f,
-                    ),
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth(0.78f),
-            )
-            Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
-
-            BasicText(
-                text = featured?.let {
-                    listOf(it.quality, "上次投屏").filter { v -> v.isNotBlank() }.joinToString(" · ")
-                } ?: "${state.deviceName} · ${state.roomName}",
-                style = TvType.body.copy(
-                    color = TvColors.textSecondary,
-                    fontSize = metaSize,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
 
             Spacer(Modifier.height(if (compact) 14.dp else 22.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (featured != null) {
+                if (!state.loggedIn) {
+                    WhiteButton(
+                        text = "扫码登录",
+                        onClick = actions.onLogin,
+                        modifier = Modifier.focusProperties {
+                            left = FocusRequester.Cancel
+                            if (secondaryActionShown) right = secondaryFocus.requester
+                            if (shelfShown && firstRecentFocus != null) down = firstRecentFocus.requester
+                        },
+                        focusTarget = primaryFocus,
+                        onFocused = actions.onFocusHomeControl,
+                        compact = compact,
+                    )
+                    if (featured != null) {
+                        GlassButton(
+                            text = "继续播放",
+                            onClick = { actions.onRecast(featured) },
+                            modifier = Modifier.focusProperties {
+                                left = primaryFocus.requester
+                                if (shelfShown && firstRecentFocus != null) down = firstRecentFocus.requester
+                            },
+                            focusTarget = secondaryFocus,
+                            onFocused = actions.onFocusHomeControl,
+                            compact = compact,
+                        )
+                    }
+                } else if (featured != null) {
                     WhiteButton(
                         text = "继续播放",
                         onClick = { actions.onRecast(featured) },
-                        focusRequester = primaryFocus,
+                        modifier = Modifier.focusProperties {
+                            left = FocusRequester.Cancel
+                            right = secondaryFocus.requester
+                            if (shelfShown && firstRecentFocus != null) down = firstRecentFocus.requester
+                        },
+                        focusTarget = primaryFocus,
+                        onFocused = actions.onFocusHomeControl,
                         compact = compact,
                     )
                     GlassButton(
                         text = "返回",
                         onClick = actions.onDismissContinue,
-                        compact = compact,
-                    )
-                } else if (!state.loggedIn) {
-                    WhiteButton(
-                        text = "扫码登录",
-                        onClick = actions.onLogin,
-                        focusRequester = primaryFocus,
+                        modifier = Modifier.focusProperties {
+                            left = primaryFocus.requester
+                            if (shelfShown && firstRecentFocus != null) down = firstRecentFocus.requester
+                        },
+                        focusTarget = secondaryFocus,
+                        onFocused = actions.onFocusHomeControl,
                         compact = compact,
                     )
                 } else {
                     WhiteButton(
                         text = "投屏帮助",
                         onClick = actions.onShowHelp,
-                        focusRequester = primaryFocus,
+                        modifier = Modifier.focusProperties { left = FocusRequester.Cancel },
+                        focusTarget = primaryFocus,
+                        onFocused = actions.onFocusHomeControl,
                         compact = compact,
                     )
                 }
             }
 
-            if (!compact && state.showContinue && state.recents.size > 1) {
-                Spacer(Modifier.height(26.dp))
-                RecentShelf(state.recents, actions)
+            if (shelfShown) {
+                Spacer(Modifier.height(if (compact) 14.dp else 20.dp))
+                RecentShelf(
+                    recents = visibleRecents,
+                    focusTargets = recentFocusTargets,
+                    primaryFocus = primaryFocus,
+                    cardWidth = shelfCardWidth,
+                    actions = actions,
+                )
             }
         }
     }
 }
 
 
-/** 根据当前推荐内容绘制首页背景。 */
+/**
+ * 绘制首页背景：继续投屏时展示该视频的封面，并按焦点切换淡入淡出。
+ *
+ * @param featured 当前展示的最近投屏；为空时退回环境光背景。
+ */
 @Composable
-private fun HomeBackdrop(featured: RecentCast?, compact: Boolean) {
+internal fun HomeBackdrop(featured: RecentCast?, compact: Boolean) {
     Box(Modifier.fillMaxSize()) {
-        if (featured != null && featured.cover.isNotBlank()) {
-            AsyncImage(
-                model = featured.cover,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            TvBackground(Modifier.matchParentSize())
-            HeroArtwork(compact)
-        }
-
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.28f),
-                        0.45f to Color.Black.copy(alpha = 0.42f),
-                        1f to Color.Black.copy(alpha = 0.94f),
+        HomeAmbientBackground(Modifier.matchParentSize())
+        Crossfade(
+            targetState = featured,
+            modifier = Modifier.fillMaxSize(),
+            animationSpec = tween(420),
+            label = "home-backdrop-cover",
+        ) { background ->
+            val current = background ?: return@Crossfade
+            val cover = current.cover.takeIf { it.isNotBlank() }
+            if (cover != null) {
+                // Crossfade 用自己的 Box 测量内容，封面必须参与测量才能占满背景。
+                Box(Modifier.fillMaxSize()) {
+                    key(current.focusKey()) {
+                        AsyncImage(
+                            model = cover,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .matchParentSize()
+                                .testTag("home-backdrop-${current.focusKey()}"),
+                        )
+                    }
+                    // 双层压暗：纵向保证底部文字可读，横向保证左侧大标题可读。
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to Color.Black.copy(alpha = 0.26f),
+                                    0.45f to Color.Black.copy(alpha = 0.48f),
+                                    1f to Color.Black.copy(alpha = 0.94f),
+                                )
+                            )
                     )
-                )
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        0f to Color.Black.copy(alpha = 0.88f),
-                        0.52f to Color.Black.copy(alpha = 0.55f),
-                        0.82f to Color.Transparent,
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    0f to Color.Black.copy(alpha = 0.70f),
+                                    0.55f to Color.Black.copy(alpha = 0.30f),
+                                    1f to Color.Transparent,
+                                )
+                            )
                     )
-                )
-        )
-    }
-}
-
-/** 绘制无推荐内容时显示的电视与投屏插画。 */
-@Composable
-private fun HeroArtwork(compact: Boolean) {
-    Canvas(Modifier.fillMaxSize()) {
-        val tvW = size.width * if (compact) 0.56f else 0.46f
-        val tvH = tvW * 0.56f
-        val tvLeft = size.width * if (compact) 0.36f else 0.47f
-        val tvTop = size.height * if (compact) 0.15f else 0.11f
-        val corner = CornerRadius(if (compact) 18.dp.toPx() else 26.dp.toPx())
-        val inset = if (compact) 6.dp.toPx() else 9.dp.toPx()
-
-        // Light spilling from behind the screen.
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(TvColors.pink.copy(alpha = 0.20f), Color.Transparent),
-                center = Offset(tvLeft + tvW * 0.36f, tvTop + tvH * 0.32f),
-                radius = tvW * 0.72f,
-            ),
-            radius = tvW * 0.72f,
-            center = Offset(tvLeft + tvW * 0.36f, tvTop + tvH * 0.32f),
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(TvColors.blue.copy(alpha = 0.18f), Color.Transparent),
-                center = Offset(tvLeft + tvW * 0.78f, tvTop + tvH * 0.74f),
-                radius = tvW * 0.62f,
-            ),
-            radius = tvW * 0.62f,
-            center = Offset(tvLeft + tvW * 0.78f, tvTop + tvH * 0.74f),
-        )
-
-        // Soft shadow / bezel.
-        drawRoundRect(
-            color = Color.Black.copy(alpha = 0.45f),
-            topLeft = Offset(tvLeft + 12.dp.toPx(), tvTop + 22.dp.toPx()),
-            size = Size(tvW, tvH),
-            cornerRadius = corner,
-        )
-        drawRoundRect(
-            brush = Brush.linearGradient(
-                listOf(Color(0xFF151018), Color(0xFF070A10))
-            ),
-            topLeft = Offset(tvLeft, tvTop),
-            size = Size(tvW, tvH),
-            cornerRadius = corner,
-        )
-
-        val sx = tvLeft + inset
-        val sy = tvTop + inset
-        val sw = tvW - inset * 2
-        val sh = tvH - inset * 2
-        clipRect(sx, sy, sx + sw, sy + sh) {
-            drawRect(
-                brush = Brush.linearGradient(
-                    listOf(Color(0xFF250B18), Color(0xFF0A1220))
-                ),
-                topLeft = Offset(sx, sy),
-                size = Size(sw, sh),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(TvColors.pink.copy(alpha = 0.42f), Color.Transparent),
-                    center = Offset(sx + sw * 0.24f, sy + sh * 0.38f),
-                    radius = sw * 0.52f,
-                ),
-                radius = sw * 0.52f,
-                center = Offset(sx + sw * 0.24f, sy + sh * 0.38f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(TvColors.blue.copy(alpha = 0.36f), Color.Transparent),
-                    center = Offset(sx + sw * 0.80f, sy + sh * 0.70f),
-                    radius = sw * 0.52f,
-                ),
-                radius = sw * 0.52f,
-                center = Offset(sx + sw * 0.80f, sy + sh * 0.70f),
-            )
-
-            // A restrained play glyph in the screen, not a logo.
-            val cx = sx + sw * 0.53f
-            val cy = sy + sh * 0.48f
-            val ph = sh * 0.16f
-            val path = androidx.compose.ui.graphics.Path().apply {
-                moveTo(cx - ph * 0.45f, cy - ph * 0.55f)
-                lineTo(cx + ph * 0.55f, cy)
-                lineTo(cx - ph * 0.45f, cy + ph * 0.55f)
-                close()
-            }
-            drawPath(path, Color.White.copy(alpha = 0.07f))
-
-            // Glass reflection.
-            drawRect(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.10f),
-                        Color.White.copy(alpha = 0.02f),
-                        Color.Transparent,
-                    ),
-                    start = Offset(sx, sy + sh * 0.10f),
-                    end = Offset(sx + sw, sy + sh * 0.55f),
-                ),
-                topLeft = Offset(sx, sy),
-                size = Size(sw, sh * 0.55f),
-            )
-            for (i in 1..7) {
-                val y = sy + sh * (i / 8f)
-                drawLine(
-                    color = Color.White.copy(alpha = 0.025f),
-                    start = Offset(sx, y),
-                    end = Offset(sx + sw, y),
-                    strokeWidth = 1.dp.toPx(),
-                )
+                }
             }
         }
-
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.13f),
-            topLeft = Offset(tvLeft, tvTop),
-            size = Size(tvW, tvH),
-            cornerRadius = corner,
-            style = Stroke(1.2.dp.toPx()),
+        BilibiliLogo(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(
+                    end = if (compact) 36.dp else 72.dp,
+                    bottom = if (compact) 28.dp else 56.dp,
+                )
+                .width(if (compact) 220.dp else 360.dp),
         )
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.06f),
-            topLeft = Offset(tvLeft + inset, tvTop + inset),
-            size = Size(sw, sh),
-            cornerRadius = CornerRadius((corner.x - inset).coerceAtLeast(0f)),
-            style = Stroke(1.dp.toPx()),
-        )
-
-        // TV stand.
-        drawRoundRect(
-            color = Color(0xFF0B0B10),
-            topLeft = Offset(tvLeft + tvW * 0.38f, tvTop + tvH),
-            size = Size(tvW * 0.24f, 8.dp.toPx()),
-            cornerRadius = CornerRadius(4.dp.toPx()),
-        )
-
-        // Phone casting into the screen, with visible signal arcs.
-        val phoneW = tvW * 0.09f
-        val phoneH = phoneW * 1.85f
-        val phoneLeft = tvLeft + tvW * 0.86f
-        val phoneTop = tvTop + tvH * 0.67f
-        drawRoundRect(
-            color = Color(0xE60A0A0F),
-            topLeft = Offset(phoneLeft, phoneTop),
-            size = Size(phoneW, phoneH),
-            cornerRadius = CornerRadius(9.dp.toPx()),
-        )
-        drawRoundRect(
-            brush = Brush.linearGradient(
-                listOf(TvColors.pink.copy(alpha = 0.55f), TvColors.violet.copy(alpha = 0.35f))
-            ),
-            topLeft = Offset(phoneLeft + 3.dp.toPx(), phoneTop + 8.dp.toPx()),
-            size = Size(phoneW - 6.dp.toPx(), phoneH - 16.dp.toPx()),
-            cornerRadius = CornerRadius(6.dp.toPx()),
-        )
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.30f),
-            topLeft = Offset(phoneLeft, phoneTop),
-            size = Size(phoneW, phoneH),
-            cornerRadius = CornerRadius(9.dp.toPx()),
-            style = Stroke(1.dp.toPx()),
-        )
-        for (i in 1..3) {
-            drawArc(
-                color = Color.White.copy(alpha = 0.20f - i * 0.035f),
-                startAngle = 205f,
-                sweepAngle = 70f,
-                useCenter = false,
-                topLeft = Offset(phoneLeft - phoneW * i * 0.9f, phoneTop - phoneH * 0.10f),
-                size = Size(phoneW * i * 1.8f, phoneH * 0.85f),
-                style = Stroke(1.1.dp.toPx()),
-            )
-        }
     }
 }
 
@@ -477,64 +427,45 @@ private fun HeroArtwork(compact: Boolean) {
  * @param text 按钮文本。
  * @param onClick 点击回调。
  * @param focusRequester 用于请求焦点的对象。
+ * @param focusTarget 可恢复焦点目标；提供时会等待实际布局完成再请求焦点。
  * @param compact 是否使用紧凑尺寸。
  */
 @Composable
 internal fun WhiteButton(
     text: String,
     onClick: () -> Unit,
-    focusRequester: FocusRequester,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
+    focusTarget: FocusTarget? = null,
+    onFocused: (() -> Unit)? = null,
     compact: Boolean = false,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val interactionFocused by interaction.collectIsFocusedAsState()
-    var focusObserved by remember { mutableStateOf(false) }
-    val focused = interactionFocused || focusObserved
-    val scale by animateFloatAsState(
-        targetValue = if (focused) 1.05f else 1f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
-        label = "white-button",
+    GlassButton(
+        text = text,
+        onClick = onClick,
+        modifier = modifier,
+        primary = true,
+        compact = compact,
+        focusRequester = focusRequester,
+        focusTarget = focusTarget,
+        onFocused = onFocused,
     )
-
-    Box(
-        modifier = Modifier
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .focusRequester(focusRequester)
-            .onFocusChanged { focusObserved = it.isFocused }
-            .shadow(18.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
-            .clip(CircleShape)
-            .background(Color.White)
-            .border(
-                width = 3.dp,
-                color = if (focused) TvColors.pink else Color.Transparent,
-                shape = CircleShape,
-            )
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .height(if (compact) 52.dp else 62.dp)
-            .padding(horizontal = if (compact) 24.dp else 30.dp)
-            .semantics { contentDescription = text },
-        contentAlignment = Alignment.Center,
-    ) {
-        BasicText(
-            text = text,
-            style = TvType.button.copy(
-                color = Color.Black,
-                fontSize = if (compact) 18.sp else 22.sp,
-                fontWeight = FontWeight.SemiBold,
-            ),
-            maxLines = 1,
-        )
-    }
 }
 
 /** 显示最近投屏记录横向列表。 */
 @Composable
-private fun RecentShelf(recents: List<RecentCast>, actions: TvActions) {
+private fun RecentShelf(
+    recents: List<RecentCast>,
+    focusTargets: List<FocusTarget>,
+    primaryFocus: FocusTarget,
+    cardWidth: Dp,
+    actions: TvActions,
+) {
+    // LazyRow 会裁剪自己的视口。安全区按卡片实际尺寸和缩放倍率计算，使中心缩放后的
+    // 边缘仍落在可绘制范围内；它与屏幕分辨率、密度和当前卡片规格无关。
+    val horizontalFocusInset = cardWidth * RECENT_CARD_FOCUS_OVERFLOW_RATIO
+    val verticalFocusInset =
+        cardWidth * (1f / RECENT_CARD_ASPECT_RATIO) * RECENT_CARD_FOCUS_OVERFLOW_RATIO
     Column {
         BasicText(
             text = "最近投屏",
@@ -542,14 +473,33 @@ private fun RecentShelf(recents: List<RecentCast>, actions: TvActions) {
         )
         Spacer(Modifier.height(12.dp))
         LazyRow(
-            modifier = Modifier.tvFocusRegion(),
+            contentPadding = PaddingValues(
+                start = horizontalFocusInset,
+                top = verticalFocusInset,
+                end = horizontalFocusInset,
+                bottom = verticalFocusInset,
+            ),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            items(
-                items = recents.take(8),
-                key = { "${it.aid}-${it.cid}" },
-            ) { recent ->
-                RecentCard(recent, actions)
+            itemsIndexed(
+                items = recents,
+                key = { _, recent -> recent.focusKey() },
+            ) { index, recent ->
+                RecentCard(
+                    recent = recent,
+                    focusTarget = focusTargets[index],
+                    modifier = Modifier.focusProperties {
+                        up = primaryFocus.requester
+                        left = if (index == 0) {
+                            FocusRequester.Cancel
+                        } else {
+                            focusTargets[index - 1].requester
+                        }
+                        if (index < focusTargets.lastIndex) right = focusTargets[index + 1].requester
+                    },
+                    width = cardWidth,
+                    actions = actions,
+                )
             }
         }
     }
@@ -557,25 +507,42 @@ private fun RecentShelf(recents: List<RecentCast>, actions: TvActions) {
 
 /** 显示单条最近投屏记录卡片。 */
 @Composable
-private fun RecentCard(recent: RecentCast, actions: TvActions) {
+private fun RecentCard(
+    recent: RecentCast,
+    focusTarget: FocusTarget,
+    modifier: Modifier,
+    width: Dp,
+    actions: TvActions,
+) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    // 焦点落到卡片即切换大标题与背景；点击才真正开始投屏。
+    LaunchedEffect(focused) {
+        if (focused) actions.onFocusRecent(recent.aid, recent.cid)
+    }
     val scale by animateFloatAsState(
-        targetValue = if (focused) 1.06f else 1f,
+        targetValue = if (focused) RECENT_CARD_FOCUS_SCALE else 1f,
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
         label = "recent-card",
     )
 
     Column(
         modifier = Modifier
-            .width(240.dp)
+            .width(width)
+            .then(modifier)
+            .focusTarget(focusTarget)
+            .testTag("recent-card-${recent.focusKey()}")
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(18.dp))
             .border(
                 width = 2.dp,
-                color = if (focused) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.10f),
+                color = when {
+                    focused -> Color.White.copy(alpha = 0.92f)
+                    else -> Color.White.copy(alpha = 0.10f)
+                },
                 shape = RoundedCornerShape(18.dp),
             )
+            .focusTrace("card:${recent.title}")
             .clickable(
                 interactionSource = interaction,
                 indication = null,
@@ -585,12 +552,8 @@ private fun RecentCard(recent: RecentCast, actions: TvActions) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .background(
-                    Brush.linearGradient(
-                        listOf(TvColors.pink.copy(alpha = 0.35f), TvColors.blue.copy(alpha = 0.3f))
-                    )
-                ),
+                .aspectRatio(RECENT_CARD_ASPECT_RATIO)
+                .background(Color(0xFF19232C)),
         ) {
             if (recent.cover.isNotBlank()) {
                 AsyncImage(
@@ -636,4 +599,33 @@ private fun RecentCard(recent: RecentCast, actions: TvActions) {
         }
     }
 }
+
+private fun RecentCast.focusKey(): String = "$aid-$cid"
+
+/** 将最近投屏的记录时间转换为适合十英尺界面的简短相对时间。 */
+internal fun RecentCast.relativeTimeLabel(nowMs: Long = System.currentTimeMillis()): String {
+    if (at <= 0L) return "好久之前"
+    val elapsed = (nowMs - at).coerceAtLeast(0L)
+    when {
+        elapsed < MINUTE_MS -> return "刚刚"
+        elapsed < HOUR_MS -> return "${elapsed / MINUTE_MS}分钟前"
+        isYesterday(at, nowMs) -> return "昨天"
+        elapsed < DAY_MS -> return "${elapsed / HOUR_MS}小时前"
+        elapsed < WEEK_MS -> return "${elapsed / DAY_MS}天前"
+        else -> return "好久之前"
+    }
+}
+
+private fun isYesterday(timestampMs: Long, nowMs: Long): Boolean {
+    val now = Calendar.getInstance().apply { timeInMillis = nowMs }
+    val yesterday = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
+    val timestamp = Calendar.getInstance().apply { timeInMillis = timestampMs }
+    return timestamp.get(Calendar.YEAR) == yesterday.get(Calendar.YEAR) &&
+        timestamp.get(Calendar.DAY_OF_YEAR) == yesterday.get(Calendar.DAY_OF_YEAR)
+}
+
+private const val MINUTE_MS = 60_000L
+private const val HOUR_MS = 60L * MINUTE_MS
+private const val DAY_MS = 24L * HOUR_MS
+private const val WEEK_MS = 7L * DAY_MS
 

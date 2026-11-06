@@ -121,14 +121,14 @@ internal fun SettingsInfoRow(title: String, value: String) {
         BasicText(
             text = title,
             style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 20.sp),
-            modifier = Modifier.weight(0.9f),
+            modifier = Modifier.width(180.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         BasicText(
             text = value,
             style = TvType.body.copy(color = TvColors.textPrimary, fontSize = 20.sp),
-            modifier = Modifier.weight(1.1f),
+            modifier = Modifier.weight(1f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -185,7 +185,7 @@ internal fun SettingsToggleRow(
                 .width(62.dp)
                 .height(34.dp)
                 .clip(CircleShape)
-                .background(if (checked) TvColors.pink else Color.White.copy(alpha = 0.20f)),
+                .background(if (checked) TvColors.accent else Color.White.copy(alpha = 0.20f)),
         ) {
             Box(
                 modifier = Modifier

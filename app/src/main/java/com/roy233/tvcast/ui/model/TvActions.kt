@@ -9,15 +9,19 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
  * 聚合电视界面向宿主发送的用户操作回调。
  *
  * @property onLogin 请求开始登录。
+ * @property onCloseLogin 关闭扫码登录弹窗。
  * @property onSkipLogin 跳过登录流程。
- * @property onOpenSidebar 打开侧边栏。
- * @property onCloseSidebar 关闭侧边栏。
+ * @property onOpenSidebar 打开左侧导航菜单。
+ * @property onCloseSidebar 收起左侧导航菜单并把焦点交还给当前页面。
+ * @property onMenuFocusMove 在菜单条目间移动焦点，正数向下、负数向上。
+ * @property onReclaimPageFocus 腾出的焦点交还给当前页面。
+ * @property onFocusHomeControl 首页主操作区获得焦点，清除最近投屏卡片的视觉焦点状态。
+ * @property onFocusRecent 首页最近投屏卡片获得焦点，用于切换大标题与背景。
  * @property onNavigateHome 导航到首页。
  * @property onNavigateSettings 导航到设置页。
  * @property onOpenUpdateSettings 打开应用更新二级页面。
- * @property onCloseUpdateSettings 返回设置主页。
+ * @property onNavigateSettingsBack 弹出当前设置子页面并恢复父页焦点。
  * @property onOpenUpdateNotes 打开当前更新的更新日志。
- * @property onCloseUpdateNotes 从更新日志返回应用更新页面。
  * @property onSelectUpdateChannel 选择更新通道。
  * @property onSetAutoUpdateCheck 设置是否自动检查更新。
  * @property onCheckForUpdates 手动检查更新。
@@ -53,15 +57,19 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
  */
 class TvActions(
     val onLogin: () -> Unit = {},
+    val onCloseLogin: () -> Unit = {},
     val onSkipLogin: () -> Unit = {},
     val onOpenSidebar: () -> Unit = {},
     val onCloseSidebar: () -> Unit = {},
+    val onMenuFocusMove: (Int) -> Unit = {},
+    val onReclaimPageFocus: () -> Unit = {},
+    val onFocusHomeControl: () -> Unit = {},
+    val onFocusRecent: (Long, Long) -> Unit = { _, _ -> },
     val onNavigateHome: () -> Unit = {},
     val onNavigateSettings: () -> Unit = {},
     val onOpenUpdateSettings: () -> Unit = {},
-    val onCloseUpdateSettings: () -> Unit = {},
+    val onNavigateSettingsBack: () -> Unit = {},
     val onOpenUpdateNotes: () -> Unit = {},
-    val onCloseUpdateNotes: () -> Unit = {},
     val onSelectUpdateChannel: (UpdateChannel) -> Unit = {},
     val onSetAutoUpdateCheck: (Boolean) -> Unit = {},
     val onCheckForUpdates: () -> Unit = {},

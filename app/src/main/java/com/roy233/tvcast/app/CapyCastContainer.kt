@@ -37,10 +37,6 @@ class CapyCastContainer(
     private val writeUpdateState: (UpdateUiState) -> Unit,
     private val onLogoutUi: () -> Unit,
     private val onToast: (String) -> Unit,
-    private val openUpdateSettingsNavigation: () -> Unit,
-    private val closeUpdateSettingsNavigation: () -> Unit,
-    private val openUpdateNotesNavigation: () -> Unit,
-    private val closeUpdateNotesNavigation: () -> Unit,
     private val isPlaying: () -> Boolean,
     private val positionMs: () -> Long,
     private val durationMs: () -> Long,
@@ -115,10 +111,6 @@ class CapyCastContainer(
             scope = scope,
             readUpdateState = readUpdateState,
             writeUpdateState = writeUpdateState,
-            openSettingsNavigation = openUpdateSettingsNavigation,
-            closeSettingsNavigation = closeUpdateSettingsNavigation,
-            openNotesNavigation = openUpdateNotesNavigation,
-            closeNotesNavigation = closeUpdateNotesNavigation,
             onToast = onToast,
         )
     }
