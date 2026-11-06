@@ -137,6 +137,43 @@ class TvActionDispatcherTest {
         assertEquals(UiFocusAnchor.MENU_SETTINGS, stateHolder.read().focusRequest.anchor)
     }
 
+    @Test
+    fun featuredRecentFollowsTheFocusedCard() {
+        val recents = listOf(
+            recentCast(aid = 1L, title = "第一条"),
+            recentCast(aid = 2L, title = "第二条"),
+        )
+        val stateHolder = TvStateHolder(TvUiState(recents = recents))
+        val actions = TvActionDispatcher(stateHolder, noOpHost()).actions
+
+        assertEquals(1L, stateHolder.read().featuredRecent?.aid)
+
+        actions.onFocusRecent(2L)
+        assertEquals("第二条", stateHolder.read().featuredRecent?.title)
+
+        // 收起继续投屏时不再展示任何记录。
+        stateHolder.set(stateHolder.read().copy(showContinue = false))
+        assertEquals(null, stateHolder.read().featuredRecent)
+    }
+
+    @Test
+    fun featuredRecentFallsBackWhenTheFocusedItemDisappears() {
+        val stateHolder = TvStateHolder(
+            TvUiState(
+                recents = listOf(recentCast(aid = 7L, title = "仍在列表")),
+                focusedRecentAid = 404L,
+            ),
+        )
+
+        assertEquals(7L, stateHolder.read().featuredRecent?.aid)
+    }
+
+    private fun recentCast(aid: Long, title: String) = com.roy233.tvcast.feature.cast.domain.RecentCast(
+        aid = aid,
+        cid = aid * 10,
+        title = title,
+    )
+
     private fun noOpHost(): TvActionHost = Proxy.newProxyInstance(
         TvActionHost::class.java.classLoader,
         arrayOf(TvActionHost::class.java),

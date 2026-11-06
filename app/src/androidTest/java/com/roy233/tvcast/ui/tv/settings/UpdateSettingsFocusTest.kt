@@ -1,12 +1,10 @@
 package com.roy233.tvcast.ui.tv.settings
 
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
@@ -22,11 +20,15 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.feature.update.AppUpdateInfo
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
+import com.roy233.tvcast.ui.model.FocusRequest
 import com.roy233.tvcast.ui.model.TvActions
-import com.roy233.tvcast.ui.model.SettingsPage
-import com.roy233.tvcast.ui.model.SettingsNavigationState
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.UiFocusAnchor
+import com.roy233.tvcast.ui.tv.TvActionDispatcher
+import com.roy233.tvcast.ui.tv.TvActionHost
+import com.roy233.tvcast.ui.tv.TvStateHolder
+import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -94,32 +96,31 @@ class UpdateSettingsFocusTest {
     }
 
     @Test
-    fun updatePageReturnButtonReturnsToSettingsRoot() {
+    fun updatePageReturnRestoresTheSettingsEntryThroughTheDispatcher() {
+        lateinit var dispatcher: TvActionDispatcher
         composeRule.setContent {
-            val uiState = remember {
-                mutableStateOf(
+            val stateHolder = remember {
+                TvStateHolder(
                     TvUiState(
                         destination = TvDestination.SETTINGS,
-                        settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE),
+                        focusRequest = FocusRequest(UiFocusAnchor.SETTINGS_UPDATE_ENTRY),
                         loggedIn = true,
                         accountName = "tv-user",
                     ),
                 )
             }
-            Box(Modifier.size(width = 960.dp, height = 540.dp)) {
+            dispatcher = remember { TvActionDispatcher(stateHolder, noOpHost()) }
+            Box(Modifier.fillMaxSize()) {
                 SettingsScreen(
-                    state = uiState.value,
-                    actions = TvActions(
-                        onNavigateSettingsBack = {
-                            uiState.value = uiState.value.copy(
-                                settingsNavigation = uiState.value.settingsNavigation.pop(),
-                            )
-                        },
-                    ),
+                    state = stateHolder.state,
+                    actions = dispatcher.actions,
                 )
             }
         }
 
+        composeRule.onNodeWithText("检查更新").assertIsFocused()
+        composeRule.runOnIdle { dispatcher.actions.onOpenUpdateSettings() }
+        composeRule.onNodeWithText("返回").assertIsFocused()
         composeRule.onNodeWithText("返回").performClick()
         composeRule.onNodeWithText("账号信息").assertExists()
         composeRule.onNodeWithText("检查更新").assertIsFocused()
@@ -347,4 +348,9 @@ class UpdateSettingsFocusTest {
         releaseNotes = notes,
         releaseUrl = "https://github.com/rroy233/capycast/releases/tag/v1.2.3",
     )
+
+    private fun noOpHost(): TvActionHost = Proxy.newProxyInstance(
+        TvActionHost::class.java.classLoader,
+        arrayOf(TvActionHost::class.java),
+    ) { _, _, _ -> null } as TvActionHost
 }

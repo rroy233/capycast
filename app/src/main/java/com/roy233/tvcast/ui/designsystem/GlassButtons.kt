@@ -42,6 +42,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.focusTrace
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -67,6 +69,7 @@ fun GlassButton(
     compact: Boolean = false,
     minWidth: Dp = 0.dp,
     focusRequester: FocusRequester? = null,
+    focusTarget: FocusTarget? = null,
 ) {
     val reduceMotion = rememberReduceMotion()
     val interaction = remember { MutableInteractionSource() }
@@ -87,7 +90,14 @@ fun GlassButton(
     val shape = RoundedCornerShape(50)
     GlassSurface(
         modifier = modifier
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusTarget(focusTarget)
+            .then(
+                if (focusTarget == null && focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                },
+            )
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .focusProperties { canFocus = enabled }
             .onFocusChanged { focusObserved = it.isFocused }

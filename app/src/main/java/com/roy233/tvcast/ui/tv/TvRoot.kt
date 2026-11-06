@@ -142,6 +142,9 @@ import kotlinx.coroutines.delay
 /** 背景截取前的等待时长：等背景完成一次绘制。 */
 private const val FROST_CAPTURE_DELAY_MS = 160L
 
+/** 封面试图异步加载，稍后再取一次，避免磨砂小于可见背景。 */
+private const val FROST_CAPTURE_REFRESH_MS = 900L
+
 /**
  * 渲染电视端根界面并根据状态选择当前页面与全局弹层。
  *
@@ -211,27 +214,35 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
             drawLayer(frostLayer)
         }
     }
-    LaunchedEffect(ambient, state.destination, state.mode, state.recents) {
+    LaunchedEffect(
+        ambient,
+        state.destination,
+        state.mode,
+        state.featuredRecent?.cover,
+    ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S || !ambient) return@LaunchedEffect
-        // 等背景完成一次布局与绘制，再截取；太早会拿到空图层。
-        delay(FROST_CAPTURE_DELAY_MS)
-        val snapshot = runCatching { frostLayer.toImageBitmap() }.getOrNull()
-        if (snapshot == null || snapshot.width <= 0 || snapshot.height <= 0) {
-            LogHub.w("TvGlass", "frost capture failed for destination=${state.destination}")
-            return@LaunchedEffect
-        }
-        frostedBackdrop = withContext(Dispatchers.Default) {
-            FrostedBackdrop(
-                image = snapshot.progressiveBlur(),
-                windowWidth = snapshot.width,
-                windowHeight = snapshot.height,
+        // 等背景完成布局与绘制；封面是异步加载的，所以再多截一次。
+        listOf(FROST_CAPTURE_DELAY_MS, FROST_CAPTURE_REFRESH_MS).forEach { wait ->
+            delay(wait)
+            val snapshot = runCatching { frostLayer.toImageBitmap() }.getOrNull()
+            if (snapshot == null || snapshot.width <= 0 || snapshot.height <= 0) {
+                LogHub.w("TvGlass", "frost capture failed for destination=${state.destination}")
+                return@forEach
+            }
+            val blurred = withContext(Dispatchers.Default) {
+                FrostedBackdrop(
+                    image = snapshot.progressiveBlur(),
+                    windowWidth = snapshot.width,
+                    windowHeight = snapshot.height,
+                )
+            }
+            frostedBackdrop = blurred
+            LogHub.d(
+                "TvGlass",
+                "frost ready source=${snapshot.width}x${snapshot.height} " +
+                    "blurred=${blurred.image.width}x${blurred.image.height}",
             )
         }
-        LogHub.d(
-            "TvGlass",
-            "frost ready source=${snapshot.width}x${snapshot.height} " +
-                "blurred=${frostedBackdrop?.image?.width}x${frostedBackdrop?.image?.height}",
-        )
     }
 
     CompositionLocalProvider(
@@ -274,6 +285,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                 if (state.destination == TvDestination.HOME) {
                     BoxWithConstraints(Modifier.matchParentSize().then(frostCapture)) {
                         HomeBackdrop(
+                            featured = state.featuredRecent,
                             compact = maxHeight < 500.dp,
                             modifier = recede.layerBackdrop(backdrop),
                         )

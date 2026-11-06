@@ -49,14 +49,16 @@ import com.roy233.tvcast.ui.designsystem.FocusableRow
 import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.model.TvActions
-import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.focusTrace
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 
@@ -68,9 +70,9 @@ private enum class AccountPlatform(val label: String) {
 /** 显示由账号、软件与设备信息组成的设置首页。 */
 @Composable
 internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
-    val platformFocus = remember { FocusRequester() }
+    val platformFocus = rememberFocusTarget()
     val loginFocus = remember { FocusRequester() }
-    val updateEntryFocus = remember { FocusRequester() }
+    val updateEntryFocus = rememberFocusTarget()
     val rootListState = rememberLazyListState()
     var selectedPlatform by remember { mutableStateOf(AccountPlatform.BILIBILI) }
 
@@ -95,12 +97,12 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
             FocusBinding(
                 anchor = UiFocusAnchor.SETTINGS_PLATFORM,
                 itemIndex = ACCOUNT_INFO_ITEM_INDEX,
-                requester = platformFocus,
+                target = platformFocus,
             ),
             FocusBinding(
                 anchor = UiFocusAnchor.SETTINGS_UPDATE_ENTRY,
                 itemIndex = SOFTWARE_INFO_ITEM_INDEX,
-                requester = updateEntryFocus,
+                target = updateEntryFocus,
             ),
         ),
         // 账号区块在未登录时收起为登录按钮，可聚焦内容随之变化。
@@ -129,7 +131,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                         selectedPlatform = selectedPlatform,
                         loggedIn = state.loggedIn,
                         compact = compact,
-                        focusRequester = platformFocus,
+                        focusTarget = platformFocus,
                         onPlatformSelected = { selectedPlatform = it },
                     )
                     SettingsRowDivider()
@@ -151,7 +153,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     FocusableRow(
                         title = "检查更新",
                         onClick = actions.onOpenUpdateSettings,
-                        focusRequester = updateEntryFocus,
+                        focusTarget = updateEntryFocus,
                         rowHeight = if (compact) 56.dp else 64.dp,
                     )
                 }
@@ -176,7 +178,7 @@ private fun PlatformGallery(
     selectedPlatform: AccountPlatform,
     loggedIn: Boolean,
     compact: Boolean,
-    focusRequester: FocusRequester,
+    focusTarget: FocusTarget,
     onPlatformSelected: (AccountPlatform) -> Unit,
 ) {
     Column(Modifier.padding(start = 20.dp, top = if (compact) 12.dp else 16.dp, bottom = 14.dp)) {
@@ -200,7 +202,7 @@ private fun PlatformGallery(
                     selected = platform == selectedPlatform,
                     loggedIn = loggedIn,
                     compact = compact,
-                    focusRequester = if (platform == AccountPlatform.BILIBILI) focusRequester else null,
+                    focusTarget = if (platform == AccountPlatform.BILIBILI) focusTarget else null,
                     onClick = { onPlatformSelected(platform) },
                 )
             }
@@ -215,7 +217,7 @@ private fun PlatformTile(
     selected: Boolean,
     loggedIn: Boolean,
     compact: Boolean,
-    focusRequester: FocusRequester?,
+    focusTarget: FocusTarget?,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -241,7 +243,7 @@ private fun PlatformTile(
         modifier = Modifier
             .width(if (compact) 136.dp else 164.dp)
             .height(if (compact) 82.dp else 96.dp)
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusTarget(focusTarget)
             .focusTrace("platform:${platform.label}")
             .clip(shape)
             .background(cardColor)

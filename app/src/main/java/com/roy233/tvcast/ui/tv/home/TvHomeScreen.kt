@@ -7,12 +7,16 @@ import com.roy233.tvcast.ui.model.AudioOption
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.TrackOption
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.designsystem.*
-import com.roy233.tvcast.ui.tv.tvFocusRegion
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
@@ -64,6 +68,7 @@ import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -102,6 +107,15 @@ import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.tv.FocusBinding
 import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.RestoreFocus
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
+
+/** 视口高度低于此值时，货架使用更小的卡片，保证与标题、按钮同屏。 */
+private val SHELF_COMPACT_HEIGHT = 620.dp
+
+/** 货架卡片宽度：标准与紧凑两档，高度由 16:9 推出。 */
+private val SHELF_CARD_WIDTH = 240.dp
+private val SHELF_CARD_WIDTH_COMPACT = 200.dp
 
 /**
  * 显示首页内容、登录入口和最近投屏记录。
@@ -111,18 +125,23 @@ import com.roy233.tvcast.ui.tv.RestoreFocus
  */
 @Composable
 internal fun HomeScreen(state: TvUiState, actions: TvActions) {
-    val primaryFocus = remember { FocusRequester() }
-    val featured = if (state.showContinue) state.recents.firstOrNull() else null
+    val primaryFocus = rememberFocusTarget()
+    // 大标题、背景与主按钮都跟随同一个字段：最近投屏里被聚焦的那条。
+    val featured = state.featuredRecent
 
     // 首页只声明自己能接的锚点；何时请求由统一恢复入口决定。
     RestoreFocus(
         request = state.focusRequest,
         bindings = listOf(
-            FocusBinding(anchor = UiFocusAnchor.HOME_PRIMARY, requester = primaryFocus),
+            FocusBinding(anchor = UiFocusAnchor.HOME_PRIMARY, target = primaryFocus),
         ),
         // 主入口在扫码登录、继续播放、投屏帮助之间切换；按钮被替换后必须重新取回焦点。
         contentKey = listOf(state.loggedIn, featured != null, state.helpVisible),
     )
+
+    val density = LocalDensity.current
+    val windowWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }.toInt()
+    val windowHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }.toInt()
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < 500.dp
@@ -139,61 +158,102 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
             else -> 64.sp
         }
         val metaSize = if (compact) 17.sp else 23.sp
+        // 货架是固定槽位：先给它高度，可伸缩的只有上方文字区，焦点目标不会被挤出视口。
+        val shelfShown = state.showContinue && state.recents.size > 1
+        val shelfCardWidth = if (compact || maxHeight < SHELF_COMPACT_HEIGHT) {
+            SHELF_CARD_WIDTH_COMPACT
+        } else {
+            SHELF_CARD_WIDTH
+        }
+        val titleLines = if (shelfShown && !compact) 1 else 2
+        // 布局自检：任何可聚焦区域被挤出视口，都会在 /log 里以 W/TvLayout 出现。
+        LaunchedEffect(maxWidth, maxHeight, shelfShown, shelfCardWidth) {
+            LogHub.d(
+                "TvLayout",
+                "home viewport=${maxWidth.value.toInt()}x${maxHeight.value.toInt()}dp " +
+                    "compact=$compact shelf=$shelfShown card=${shelfCardWidth.value.toInt()}dp " +
+                    "titleLines=$titleLines",
+            )
+        }
 
         Column(
             modifier = Modifier
                 .width((maxWidth - hPad * 2).coerceAtMost(TvDimens.pageMaxWidth))
                 .fillMaxHeight()
                 .align(Alignment.Center)
-                .padding(vertical = vPad),
-            verticalArrangement = Arrangement.Bottom,
+                .padding(vertical = vPad)
+                .onGloballyPositioned { coordinates ->
+                    val bounds = coordinates.boundsInWindow()
+                    LogHub.d(
+                        "TvLayout",
+                        "home content bounds=(${bounds.left.toInt()},${bounds.top.toInt()})-" +
+                            "(${bounds.right.toInt()},${bounds.bottom.toInt()}) " +
+                            "viewportPx=${windowWidthPx}x${windowHeightPx}",
+                    )
+                },
         ) {
-            Spacer(Modifier.weight(1f))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.BottomStart,
             ) {
-                PulseDot(if (state.loggedIn) TvColors.accent else TvColors.warning, 7.dp)
-                BasicText(
-                    text = if (state.loggedIn) "等待手机投屏" else "访客模式",
-                    style = TvType.caption.copy(
-                        color = TvColors.textSecondary,
-                        fontSize = if (compact) 16.sp else 20.sp,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                )
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        PulseDot(if (state.loggedIn) TvColors.accent else TvColors.warning, 7.dp)
+                        BasicText(
+                            text = if (state.loggedIn) "等待手机投屏" else "访客模式",
+                            style = TvType.caption.copy(
+                                color = TvColors.textSecondary,
+                                fontSize = if (compact) 16.sp else 20.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                        )
+                    }
+                    Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
+
+                    Crossfade(
+                        targetState = featured,
+                        animationSpec = tween(260),
+                        label = "home-hero",
+                    ) { hero ->
+                        Column {
+                            BasicText(
+                                text = hero?.title ?: "Bilibili 投屏",
+                                style = TvType.hero.copy(
+                                    fontSize = titleSize,
+                                    lineHeight = titleLine,
+                                    shadow = Shadow(
+                                        color = Color.Black.copy(alpha = 0.55f),
+                                        offset = Offset(0f, 3f),
+                                        blurRadius = 14f,
+                                    ),
+                                ),
+                                maxLines = titleLines,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth(0.78f),
+                            )
+                            Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
+                            BasicText(
+                                text = hero?.let {
+                                    listOf(it.quality, "上次投屏")
+                                        .filter { value -> value.isNotBlank() }
+                                        .joinToString(" · ")
+                                } ?: "${state.deviceName} · ${state.roomName}",
+                                style = TvType.body.copy(
+                                    color = TvColors.textSecondary,
+                                    fontSize = metaSize,
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
-            Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
-
-            BasicText(
-                text = featured?.title ?: "Bilibili 投屏",
-                style = TvType.hero.copy(
-                    fontSize = titleSize,
-                    lineHeight = titleLine,
-                    shadow = Shadow(
-                        color = Color.Black.copy(alpha = 0.55f),
-                        offset = Offset(0f, 3f),
-                        blurRadius = 14f,
-                    ),
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth(0.78f),
-            )
-            Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
-
-            BasicText(
-                text = featured?.let {
-                    listOf(it.quality, "上次投屏").filter { v -> v.isNotBlank() }.joinToString(" · ")
-                } ?: "${state.deviceName} · ${state.roomName}",
-                style = TvType.body.copy(
-                    color = TvColors.textSecondary,
-                    fontSize = metaSize,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
 
             Spacer(Modifier.height(if (compact) 14.dp else 22.dp))
 
@@ -202,7 +262,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     WhiteButton(
                         text = "扫码登录",
                         onClick = actions.onLogin,
-                        focusRequester = primaryFocus,
+                        focusTarget = primaryFocus,
                         compact = compact,
                     )
                     if (featured != null) {
@@ -216,7 +276,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     WhiteButton(
                         text = "继续播放",
                         onClick = { actions.onRecast(featured) },
-                        focusRequester = primaryFocus,
+                        focusTarget = primaryFocus,
                         compact = compact,
                     )
                     GlassButton(
@@ -228,26 +288,74 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     WhiteButton(
                         text = "投屏帮助",
                         onClick = actions.onShowHelp,
-                        focusRequester = primaryFocus,
+                        focusTarget = primaryFocus,
                         compact = compact,
                     )
                 }
             }
 
-            if (!compact && state.showContinue && state.recents.size > 1) {
-                Spacer(Modifier.height(26.dp))
-                RecentShelf(state.recents, actions)
+            if (shelfShown) {
+                Spacer(Modifier.height(if (compact) 14.dp else 20.dp))
+                RecentShelf(
+                    recents = state.recents,
+                    selectedAid = featured?.aid,
+                    cardWidth = shelfCardWidth,
+                    actions = actions,
+                )
             }
         }
     }
 }
 
 
-/** 绘制具有雾化玻璃与体积光的首页背景。 */
+/**
+ * 绘制首页背景：继续投屏时展示该视频的封面，并按焦点切换淡入淡出。
+ *
+ * @param featured 当前展示的最近投屏；为空时退回环境光背景。
+ */
 @Composable
-internal fun HomeBackdrop(compact: Boolean, modifier: Modifier = Modifier) {
+internal fun HomeBackdrop(featured: RecentCast?, compact: Boolean, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxSize()) {
         HomeAmbientBackground(Modifier.matchParentSize())
+        Crossfade(
+            targetState = featured?.cover?.takeIf { it.isNotBlank() },
+            animationSpec = tween(420),
+            label = "home-backdrop-cover",
+        ) { cover ->
+            if (cover != null) {
+                Box(Modifier.matchParentSize()) {
+                    AsyncImage(
+                        model = cover,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.matchParentSize(),
+                    )
+                    // 双层压暗：纵向保证底部文字可读，横向保证左侧大标题可读。
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to Color.Black.copy(alpha = 0.26f),
+                                    0.45f to Color.Black.copy(alpha = 0.48f),
+                                    1f to Color.Black.copy(alpha = 0.94f),
+                                )
+                            )
+                    )
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    0f to Color.Black.copy(alpha = 0.70f),
+                                    0.55f to Color.Black.copy(alpha = 0.30f),
+                                    1f to Color.Transparent,
+                                )
+                            )
+                    )
+                }
+            }
+        }
         BilibiliLogo(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -266,13 +374,15 @@ internal fun HomeBackdrop(compact: Boolean, modifier: Modifier = Modifier) {
  * @param text 按钮文本。
  * @param onClick 点击回调。
  * @param focusRequester 用于请求焦点的对象。
+ * @param focusTarget 可恢复焦点目标；提供时会等待实际布局完成再请求焦点。
  * @param compact 是否使用紧凑尺寸。
  */
 @Composable
 internal fun WhiteButton(
     text: String,
     onClick: () -> Unit,
-    focusRequester: FocusRequester,
+    focusRequester: FocusRequester? = null,
+    focusTarget: FocusTarget? = null,
     compact: Boolean = false,
 ) {
     GlassButton(
@@ -281,12 +391,18 @@ internal fun WhiteButton(
         primary = true,
         compact = compact,
         focusRequester = focusRequester,
+        focusTarget = focusTarget,
     )
 }
 
 /** 显示最近投屏记录横向列表。 */
 @Composable
-private fun RecentShelf(recents: List<RecentCast>, actions: TvActions) {
+private fun RecentShelf(
+    recents: List<RecentCast>,
+    selectedAid: Long?,
+    cardWidth: Dp,
+    actions: TvActions,
+) {
     Column {
         BasicText(
             text = "最近投屏",
@@ -294,14 +410,18 @@ private fun RecentShelf(recents: List<RecentCast>, actions: TvActions) {
         )
         Spacer(Modifier.height(12.dp))
         LazyRow(
-            modifier = Modifier.tvFocusRegion(),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             items(
                 items = recents.take(8),
                 key = { "${it.aid}-${it.cid}" },
             ) { recent ->
-                RecentCard(recent, actions)
+                RecentCard(
+                    recent = recent,
+                    selected = recent.aid == selectedAid,
+                    width = cardWidth,
+                    actions = actions,
+                )
             }
         }
     }
@@ -309,9 +429,18 @@ private fun RecentShelf(recents: List<RecentCast>, actions: TvActions) {
 
 /** 显示单条最近投屏记录卡片。 */
 @Composable
-private fun RecentCard(recent: RecentCast, actions: TvActions) {
+private fun RecentCard(
+    recent: RecentCast,
+    selected: Boolean,
+    width: Dp,
+    actions: TvActions,
+) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    // 焦点落到卡片即切换大标题与背景；点击才真正开始投屏。
+    LaunchedEffect(focused) {
+        if (focused) actions.onFocusRecent(recent.aid)
+    }
     val scale by animateFloatAsState(
         targetValue = if (focused) 1.06f else 1f,
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
@@ -320,12 +449,16 @@ private fun RecentCard(recent: RecentCast, actions: TvActions) {
 
     Column(
         modifier = Modifier
-            .width(240.dp)
+            .width(width)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(18.dp))
             .border(
                 width = 2.dp,
-                color = if (focused) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.10f),
+                color = when {
+                    focused -> Color.White.copy(alpha = 0.92f)
+                    selected -> TvColors.accent.copy(alpha = 0.85f)
+                    else -> Color.White.copy(alpha = 0.10f)
+                },
                 shape = RoundedCornerShape(18.dp),
             )
             .focusTrace("card:${recent.title}")

@@ -15,6 +15,7 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
  * @property onCloseSidebar 收起左侧导航菜单并把焦点交还给当前页面。
  * @property onMenuFocusMove 在菜单条目间移动焦点，正数向下、负数向上。
  * @property onReclaimPageFocus 腾出的焦点交还给当前页面。
+ * @property onFocusRecent 首页最近投屏卡片获得焦点，用于切换大标题与背景。
  * @property onNavigateHome 导航到首页。
  * @property onNavigateSettings 导航到设置页。
  * @property onOpenUpdateSettings 打开应用更新二级页面。
@@ -61,6 +62,7 @@ class TvActions(
     val onCloseSidebar: () -> Unit = {},
     val onMenuFocusMove: (Int) -> Unit = {},
     val onReclaimPageFocus: () -> Unit = {},
+    val onFocusRecent: (Long) -> Unit = {},
     val onNavigateHome: () -> Unit = {},
     val onNavigateSettings: () -> Unit = {},
     val onOpenUpdateSettings: () -> Unit = {},

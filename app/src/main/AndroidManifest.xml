@@ -13,6 +13,7 @@
     <uses-feature android:name="android.hardware.type.television" android:required="false" />
 
     <application
+        android:name=".CapyCastApplication"
         android:allowBackup="false"
         android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher"

@@ -162,12 +162,17 @@ internal object FocusDiagnostics {
         )
     }
 
-    /** 焦点恢复结果；始终失败时说明锚点没有可聚焦节点。 */
-    fun focusResult(anchor: UiFocusAnchor, attempts: Int, focused: Boolean) {
+    /** 焦点目标尚未进入布局树；它完成布局时恢复器会自动重新执行。 */
+    fun focusAwaitingTarget(anchor: UiFocusAnchor) {
+        LogHub.d(TAG, "focus waiting for target anchor=$anchor")
+    }
+
+    /** 焦点恢复结果；失败说明目标已就绪但不是可聚焦节点。 */
+    fun focusResult(anchor: UiFocusAnchor, focused: Boolean) {
         if (focused) {
-            LogHub.d(TAG, "focus granted anchor=$anchor attempts=$attempts")
+            LogHub.d(TAG, "focus granted anchor=$anchor")
         } else {
-            LogHub.w(TAG, "focus rejected anchor=$anchor attempts=$attempts")
+            LogHub.w(TAG, "focus rejected anchor=$anchor")
         }
     }
 

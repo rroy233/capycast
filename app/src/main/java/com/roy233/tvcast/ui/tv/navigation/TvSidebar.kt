@@ -16,7 +16,10 @@ import com.roy233.tvcast.ui.model.MENU_ENTRIES
 import com.roy233.tvcast.ui.model.MenuEntry
 import com.roy233.tvcast.ui.tv.FocusBinding
 import com.roy233.tvcast.ui.tv.FocusDiagnostics
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.focusTrace
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.RestoreFocus
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -80,8 +83,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -131,8 +132,8 @@ internal fun Sidebar(
     state: TvUiState,
     actions: TvActions,
 ) {
-    val homeFocus = remember { FocusRequester() }
-    val settingsFocus = remember { FocusRequester() }
+    val homeFocus = rememberFocusTarget()
+    val settingsFocus = rememberFocusTarget()
     val entryRequesters = remember(homeFocus, settingsFocus) {
         mapOf(
             MenuEntry.HOME to homeFocus,
@@ -144,7 +145,7 @@ internal fun Sidebar(
     RestoreFocus(
         request = state.focusRequest,
         bindings = MENU_ENTRIES.map { entry ->
-            FocusBinding(anchor = entry.anchor, requester = entryRequesters.getValue(entry))
+            FocusBinding(anchor = entry.anchor, target = entryRequesters.getValue(entry))
         },
     )
 
@@ -234,7 +235,7 @@ internal fun Sidebar(
                                 entry.navigate(actions)
                             }
                         },
-                        focusRequester = entryRequesters.getValue(entry),
+                        focusTarget = entryRequesters.getValue(entry),
                         badge = entry == MenuEntry.SETTINGS &&
                             state.update.availableUpdate != null,
                     )
@@ -256,7 +257,7 @@ private fun SidebarItem(
     entry: MenuEntry,
     selected: Boolean,
     onClick: () -> Unit,
-    focusRequester: FocusRequester,
+    focusTarget: FocusTarget,
     badge: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -289,7 +290,7 @@ private fun SidebarItem(
                 Color.White.copy(alpha = if (focused) 0.48f else if (selected) 0.18f else 0.06f),
                 shape,
             )
-            .focusRequester(focusRequester)
+            .focusTarget(focusTarget)
             .focusTrace("menu:${entry.title}")
             .clickable(
                 interactionSource = interaction,

@@ -2,23 +2,82 @@ package com.roy233.tvcast.ui.tv
 
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.roy233.tvcast.ui.model.FocusRequest
 import com.roy233.tvcast.ui.model.UiFocusAnchor
-import kotlinx.coroutines.delay
+
+/**
+ * 一个可恢复焦点目标的实际挂载状态。
+ *
+ * [FocusRequester] 只能在目标已进入焦点树后生效。页面切换、懒列表回收与动画都会
+ * 让目标暂时离开组合树，因此恢复器不能以帧数或延时猜测时机，而是只消费已布局的目标。
+ */
+@Stable
+class FocusTarget {
+    internal val requester = FocusRequester()
+
+    private var attached by mutableStateOf(false)
+    private var laidOut by mutableStateOf(false)
+
+    /** 目标仍在组合树中，且已经有可供焦点系统使用的布局节点。 */
+    val isReady: Boolean
+        get() = attached && laidOut
+
+    internal fun onAttached() {
+        attached = true
+    }
+
+    internal fun onLaidOut() {
+        laidOut = true
+    }
+
+    internal fun onDetached() {
+        attached = false
+        laidOut = false
+    }
+}
+
+/** 创建一个稳定的焦点目标；目标的挂载生命周期由 [focusTarget] 管理。 */
+@Composable
+internal fun rememberFocusTarget(): FocusTarget = remember { FocusTarget() }
+
+/**
+ * 将 [FocusTarget] 绑定到实际可聚焦节点。
+ *
+ * 必须与该节点的 `clickable` 或 `focusable` 放在同一修饰器链上，保证离开懒列表或
+ * 页面时能同步撤销就绪状态。
+ */
+@Composable
+internal fun Modifier.focusTarget(target: FocusTarget?): Modifier {
+    if (target == null) return this
+    DisposableEffect(target) {
+        target.onAttached()
+        onDispose(target::onDetached)
+    }
+    return focusRequester(target.requester)
+        .onGloballyPositioned { target.onLaidOut() }
+}
 
 /**
  * 页面声明的一个可恢复焦点锚点。
  *
  * @property anchor 锚点标识，由页面自己定义取值域。
- * @property requester 锚点对应的焦点请求对象。
+ * @property target 锚点对应的焦点目标及其真实挂载状态。
  * @property itemIndex 锚点位于懒列表时的条目下标，恢复前先把该条目滚入组合树。
  */
 internal data class FocusBinding(
     val anchor: UiFocusAnchor,
-    val requester: FocusRequester,
+    val target: FocusTarget,
     val itemIndex: Int? = null,
 )
 
@@ -32,7 +91,7 @@ internal data class FocusBinding(
  * @param bindings 本界面能接住的锚点。
  * @param listState 目标位于懒列表时提供，用于先把目标滚入组合树。
  * @param contentKey 本界面可聚焦内容的指纹。内容变化会替换掉持有焦点的节点，
- *   因此指纹一变就重新恢复栈顶锚点；界面把“哪些状态决定自己的可聚焦结构”声明在这里。
+ *   因此指纹一变就重新检查栈顶锚点；界面把“哪些状态决定自己的可聚焦结构”声明在这里。
  */
 @Composable
 internal fun RestoreFocus(
@@ -41,26 +100,21 @@ internal fun RestoreFocus(
     listState: LazyListState? = null,
     contentKey: Any? = null,
 ) {
-    LaunchedEffect(request.revision, request.anchor, contentKey) {
+    val matchedBinding = bindings.firstOrNull { it.anchor == request.anchor }
+    // 读取这个状态会让 effect 在目标完成布局或被回收时自动重启；没有任何时间假设。
+    val targetReady = matchedBinding?.target?.isReady ?: false
+    LaunchedEffect(request.revision, request.anchor, contentKey, targetReady) {
         val binding = bindings.firstOrNull { it.anchor == request.anchor } ?: return@LaunchedEffect
         val itemIndex = binding.itemIndex
         FocusDiagnostics.focusRequest(request, itemIndex)
         if (itemIndex != null && listState != null) {
             listState.scrollToItem(itemIndex)
         }
-        // 目标条目刚被滚入组合树时还没有布局节点，等一帧再请求。
-        withFrameNanos { }
-        repeat(FOCUS_REQUEST_ATTEMPTS) { attempt ->
-            val focused = runCatching { binding.requester.requestFocus() }.getOrDefault(false)
-            if (focused) {
-                FocusDiagnostics.focusResult(request.anchor, attempt + 1, true)
-                return@LaunchedEffect
-            }
-            delay(FOCUS_RETRY_INTERVAL_MS)
+        if (!binding.target.isReady) {
+            FocusDiagnostics.focusAwaitingTarget(request.anchor)
+            return@LaunchedEffect
         }
-        FocusDiagnostics.focusResult(request.anchor, FOCUS_REQUEST_ATTEMPTS, false)
+        val focused = runCatching { binding.target.requester.requestFocus() }.getOrDefault(false)
+        FocusDiagnostics.focusResult(request.anchor, focused)
     }
 }
-
-private const val FOCUS_REQUEST_ATTEMPTS = 4
-private const val FOCUS_RETRY_INTERVAL_MS = 80L

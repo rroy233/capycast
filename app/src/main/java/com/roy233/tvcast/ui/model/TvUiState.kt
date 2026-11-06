@@ -55,6 +55,7 @@ import com.roy233.tvcast.feature.update.UpdateUiState
  * @property castActive 当前是否存在活动投屏。
  * @property castMode 当前投屏通道说明。
  * @property recents 最近投屏记录。
+ * @property focusedRecentAid 首页最近投屏中被聚焦的记录，用于切换大标题与背景。
  * @property rememberPlaybackContent 是否记忆最近投屏内容。
  * @property syncPlaybackHistory 是否同步投屏播放记录到 B 站账号。
  * @property showContinue 是否展示继续投屏入口。
@@ -127,6 +128,7 @@ data class TvUiState(
     val castActive: Boolean = false,
     val castMode: String = "DLNA 兼容",
     val recents: List<RecentCast> = emptyList(),
+    val focusedRecentAid: Long? = null,
     val rememberPlaybackContent: Boolean = true,
     val syncPlaybackHistory: Boolean = true,
     val showContinue: Boolean = true,
@@ -145,6 +147,20 @@ data class TvUiState(
     /** 当前拥有按键与焦点的浮层；为 null 表示栈顶是目的页。 */
     val topOverlay: UiOverlay?
         get() = overlayStack.firstOrNull()
+
+    /**
+     * 首页当前展示的最近投屏。
+     *
+     * 焦点所在的记录优先，其次是最新一条；收起继续投屏时为空。背景、大标题与主按钮
+     * 都由它派生，因此“焦点换一个卡片，整页跟着换”只需维护一个字段。
+     */
+    val featuredRecent: RecentCast?
+        get() = when {
+            !showContinue -> null
+            focusedRecentAid != null ->
+                recents.firstOrNull { it.aid == focusedRecentAid } ?: recents.firstOrNull()
+            else -> recents.firstOrNull()
+        }
 
     /** 当前设置页面；仅为渲染与既有投影提供只读视图。 */
     val settingsPage: SettingsPage

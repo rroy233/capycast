@@ -43,8 +43,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -72,11 +70,13 @@ import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun ReleaseNoteBlock(block: ReleaseNote, focusRequester: FocusRequester?) {
+internal fun ReleaseNoteBlock(block: ReleaseNote, focusTarget: FocusTarget?) {
     if (block.kind == ReleaseNoteKind.DIVIDER) {
         Box(
             Modifier
@@ -124,7 +124,7 @@ internal fun ReleaseNoteBlock(block: ReleaseNote, focusRequester: FocusRequester
             .clip(shape)
             .background(if (focused) Color.White.copy(alpha = 0.07f) else Color.Transparent)
             .onFocusChanged { focused = it.isFocused }
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusTarget(focusTarget)
             .focusable()
             .semantics(mergeDescendants = true) { }
             .padding(horizontal = 12.dp, vertical = 6.dp),

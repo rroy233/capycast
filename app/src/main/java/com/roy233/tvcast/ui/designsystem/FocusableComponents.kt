@@ -31,6 +31,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.focusTrace
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -60,6 +62,7 @@ fun FocusableRow(
     destructive: Boolean = false,
     showChevron: Boolean = true,
     focusRequester: FocusRequester? = null,
+    focusTarget: FocusTarget? = null,
     rowHeight: Dp = 58.dp,
 ) {
     val reduceMotion = rememberReduceMotion()
@@ -79,7 +82,14 @@ fun FocusableRow(
         modifier = modifier
             .fillMaxWidth()
             .height(rowHeight)
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusTarget(focusTarget)
+            .then(
+                if (focusTarget == null && focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                },
+            )
             .focusTrace("row:$title")
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)

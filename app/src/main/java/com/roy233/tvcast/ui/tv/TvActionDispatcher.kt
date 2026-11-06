@@ -109,6 +109,12 @@ class TvActionDispatcher(
                 }
             }
         },
+        onFocusRecent = { aid ->
+            val state = stateHolder.read()
+            if (state.focusedRecentAid != aid) {
+                stateHolder.set(state.copy(focusedRecentAid = aid))
+            }
+        },
         onReclaimPageFocus = {
             val state = stateHolder.read().focusCurrentPage()
             stateHolder.set(state)

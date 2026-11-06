@@ -77,7 +77,10 @@ import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.focusTrace
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 import kotlinx.coroutines.launch
@@ -92,8 +95,8 @@ import kotlinx.coroutines.launch
 internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
     val update = state.update
     val releaseNotes = update.availableUpdate?.releaseNotes.orEmpty()
-    val backFocus = remember { FocusRequester() }
-    val releaseNotesFocus = remember { FocusRequester() }
+    val backFocus = rememberFocusTarget()
+    val releaseNotesFocus = rememberFocusTarget()
     val primaryActionFocus = remember { FocusRequester() }
     val listState = rememberLazyListState()
     val focusBindings = buildList {
@@ -101,7 +104,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
             FocusBinding(
                 anchor = UiFocusAnchor.SETTINGS_UPDATE_BACK,
                 itemIndex = UPDATE_HEADER_ITEM_INDEX,
-                requester = backFocus,
+                target = backFocus,
             ),
         )
         if (releaseNotes.isNotBlank()) {
@@ -109,7 +112,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                 FocusBinding(
                     anchor = UiFocusAnchor.SETTINGS_UPDATE_RELEASE_NOTES,
                     itemIndex = UPDATE_RELEASE_NOTES_ITEM_INDEX,
-                    requester = releaseNotesFocus,
+                    target = releaseNotesFocus,
                 ),
             )
         }
@@ -186,7 +189,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                     WhiteButton(
                         text = "返回",
                         onClick = actions.onNavigateSettingsBack,
-                        focusRequester = backFocus,
+                        focusTarget = backFocus,
                         compact = true,
                     )
                 }
@@ -203,7 +206,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                     ReleaseNotesEntry(
                         notes = releaseNotes,
                         onClick = actions.onOpenUpdateNotes,
-                        focusRequester = releaseNotesFocus,
+                        focusTarget = releaseNotesFocus,
                     )
                     Spacer(Modifier.height(14.dp))
                 }
@@ -472,7 +475,7 @@ private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
 private fun ReleaseNotesEntry(
     notes: String,
     onClick: () -> Unit,
-    focusRequester: FocusRequester,
+    focusTarget: FocusTarget,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.collectIsFocusedAsState().value
@@ -481,7 +484,7 @@ private fun ReleaseNotesEntry(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .focusRequester(focusRequester)
+            .focusTarget(focusTarget)
             .clip(shape)
             .background(
                 if (focused) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.06f)

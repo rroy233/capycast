@@ -44,8 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -77,6 +75,8 @@ import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 import kotlinx.coroutines.launch
@@ -87,8 +87,8 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
     val available = state.update.availableUpdate
     val notes = available?.releaseNotes.orEmpty()
     val blocks = remember(notes) { parseReleaseNotes(notes) }
-    val firstFocus = remember { FocusRequester() }
-    val backFocus = remember { FocusRequester() }
+    val firstFocus = rememberFocusTarget()
+    val backFocus = rememberFocusTarget()
     val listState = rememberLazyListState()
     val firstFocusable = blocks.indexOfFirst { it.kind != ReleaseNoteKind.DIVIDER }
     RestoreFocus(
@@ -98,7 +98,7 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
             FocusBinding(
                 anchor = UiFocusAnchor.SETTINGS_UPDATE_NOTES_INITIAL,
                 itemIndex = if (firstFocusable >= 0) firstFocusable + 1 else 0,
-                requester = if (firstFocusable >= 0) firstFocus else backFocus,
+                target = if (firstFocusable >= 0) firstFocus else backFocus,
             ),
         ),
         contentKey = firstFocusable,
@@ -137,7 +137,7 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
                     WhiteButton(
                         text = "返回",
                         onClick = actions.onNavigateSettingsBack,
-                        focusRequester = backFocus,
+                        focusTarget = backFocus,
                         compact = true,
                     )
                 }
@@ -155,7 +155,7 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
                     item(key = index) {
                         ReleaseNoteBlock(
                             block = block,
-                            focusRequester = if (index == firstFocusable) firstFocus else null,
+                            focusTarget = if (index == firstFocusable) firstFocus else null,
                         )
                     }
                 }
