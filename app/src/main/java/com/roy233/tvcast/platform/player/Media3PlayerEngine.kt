@@ -1,7 +1,11 @@
 package com.roy233.tvcast.platform.player
 
 import android.content.Context
+import android.graphics.Point
 import android.net.Uri
+import android.os.Build
+import android.view.SurfaceView
+import android.view.TextureView
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
@@ -24,6 +28,7 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
@@ -47,7 +52,7 @@ import android.util.Base64
 @UnstableApi
 class Media3PlayerEngine(
     context: Context,
-    playerView: PlayerView,
+    private val playerView: PlayerView,
     private val onEvent: (PlaybackEvent) -> Unit,
 ) {
 
@@ -143,6 +148,7 @@ class Media3PlayerEngine(
                     "video size=${videoSize.width}x${videoSize.height} " +
                         "pixelRatio=${videoSize.pixelWidthHeightRatio}",
                 )
+                logOutputGeometry("video-size")
                 onEvent(PlaybackEvent.VideoSizeChanged(videoSize.width, videoSize.height))
             }
         })
@@ -207,7 +213,7 @@ class Media3PlayerEngine(
         PlaybackDiagnostics.attribute("stream.mimeType", info.video.mimeType)
         PlaybackDiagnostics.attribute("stream.audioCodecString", info.audio?.codecs.orEmpty())
         PlaybackDiagnostics.attribute("decoder.video.policy", "hardware-only")
-        PlaybackDiagnostics.attribute("renderer.video.surface", "surfaceView")
+        PlaybackDiagnostics.attribute("renderer.video.surface", outputType())
         LogHub.i(
             TAG,
             "open media3 qn=${info.video.id} drm=${info.isDrm} hdr=${info.video.isHdr} dv=${info.video.isDolbyVision} mime=${info.video.mimeType} " +
@@ -216,6 +222,7 @@ class Media3PlayerEngine(
                 "audioMime=${info.audio?.mimeType.orEmpty()} audioCodecs=${info.audio?.codecs.orEmpty()} " +
                 "seek=${seekToMs.coerceAtLeast(0L)}ms rendererPolicy=hardware-video-only",
         )
+        logOutputGeometry("open")
         try {
             if (dashItem != null) player.setMediaItem(dashItem!!) else player.setMediaSource(mediaSource!!)
             player.seekTo(seekToMs.coerceAtLeast(0L))
@@ -275,6 +282,55 @@ class Media3PlayerEngine(
     fun isPlaying(): Boolean = player.isPlaying
     fun isSeekable(): Boolean = player.isCurrentMediaItemSeekable
     fun volume(): Int = (player.volume * 100).toInt().coerceIn(0, 100)
+
+    /** 对照视频帧、Surface 缓冲区、视图和 Android 报告的屏幕尺寸。 */
+    private fun logOutputGeometry(stage: String) {
+        val surface = playerView.videoSurfaceView
+        val surfaceFrame = runCatching { (surface as? SurfaceView)?.holder?.surfaceFrame }
+            .onFailure { LogHub.w(TAG, "surface frame unavailable: ${LogRedaction.reason(it)}") }
+            .getOrNull()
+        val display = playerView.display
+        val realSize = Point()
+        val reportedRealSize = if (display != null) {
+            runCatching { display.getRealSize(realSize) }
+                .fold({ "${realSize.x}x${realSize.y}" }, { "unavailable" })
+        } else {
+            "unavailable"
+        }
+        val reportedMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            runCatching { display?.mode }
+                .getOrNull()
+                ?.let { "${it.physicalWidth}x${it.physicalHeight}@${it.refreshRate}" }
+                ?: "unavailable"
+        } else {
+            "unavailable"
+        }
+        val videoSize = player.videoSize
+        val resizeMode = when (playerView.resizeMode) {
+            AspectRatioFrameLayout.RESIZE_MODE_FIT -> "fit"
+            AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH -> "fixed-width"
+            AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT -> "fixed-height"
+            AspectRatioFrameLayout.RESIZE_MODE_FILL -> "fill"
+            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "zoom"
+            else -> "unknown"
+        }
+        val geometry = "video=${videoSize.width}x${videoSize.height} " +
+            "window=${playerView.rootView.width}x${playerView.rootView.height} " +
+            "playerView=${playerView.width}x${playerView.height} " +
+            "output=${outputType()} outputView=${surface?.width}x${surface?.height} " +
+            "surfaceFrame=${surfaceFrame?.let { "${it.width()}x${it.height()}" } ?: "unavailable"} " +
+            "resize=$resizeMode androidReal=$reportedRealSize androidMode=$reportedMode"
+        LogHub.d(TAG, "output geometry stage=$stage $geometry")
+        if (stage == "first-frame") {
+            PlaybackDiagnostics.attribute("renderer.video.geometry", geometry)
+        }
+    }
+
+    private fun outputType(): String = when (playerView.videoSurfaceView) {
+        is SurfaceView -> "surfaceView"
+        is TextureView -> "textureView"
+        else -> "unknown"
+    }
 
     private fun progressiveSource(track: MediaTrack): MediaSource {
         val headers = mapOf(
@@ -454,7 +510,12 @@ class Media3PlayerEngine(
             output: Any,
             renderTimeMs: Long,
         ) {
-            LogHub.i(TAG, "first video frame rendered at=${renderTimeMs}ms output=${output.javaClass.simpleName}")
+            LogHub.i(
+                TAG,
+                "first video frame rendered at=${renderTimeMs}ms " +
+                    "output=${output.javaClass.simpleName} view=${outputType()}",
+            )
+            logOutputGeometry("first-frame")
             PlaybackDiagnostics.event("Media3FirstFrame", "renderTime=${renderTimeMs}ms")
         }
 
