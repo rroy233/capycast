@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.content.pm.ActivityInfo
 import android.view.Gravity
 import android.view.View
+import android.view.SurfaceView
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.Toast
@@ -30,6 +31,10 @@ import com.roy233.tvcast.ui.model.CastPlaybackStateProjector
 import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.app.CapyCastContainer
 import com.roy233.tvcast.app.PlaybackEngineHost
+import com.roy233.tvcast.app.VideoViewportHost
+import com.roy233.tvcast.feature.display.CalibrationDirection
+import com.roy233.tvcast.feature.display.CalibrationPhase
+import com.roy233.tvcast.feature.display.DisplayCalibrationCoordinator
 import com.roy233.tvcast.app.MainThreadPlaybackAccess
 import com.roy233.tvcast.app.DlnaCastListenerAdapter
 import com.roy233.tvcast.feature.cast.application.DlnaTransportCoordinator
@@ -125,6 +130,41 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private lateinit var videoLayout: VLCVideoLayout
     /** Media3 使用的 SurfaceView 容器，仅杜比视界会显示。 */
     private lateinit var media3PlayerView: PlayerView
+    /** 4K 解码帧补偿与真实视频校准输出。 */
+    private lateinit var viewportHost: VideoViewportHost
+    private var resumePlaybackAfterCalibration = false
+    private var startupLoginPending = false
+    private val calibrationCoordinator: DisplayCalibrationCoordinator by lazy {
+        DisplayCalibrationCoordinator(
+            store = container.displayCalibrationPreferences,
+            viewportSize = viewportHost::viewportSize,
+            onState = { state ->
+                ui = ui.copy(calibration = state)
+                if (state.phase == CalibrationPhase.ADJUST || state.phase == CalibrationPhase.CONFIRM) {
+                    if (!viewportHost.showCalibration(state.draft, state.corner)) {
+                        Toast.makeText(this, "4K 校准视频输出初始化失败", Toast.LENGTH_LONG).show()
+                        window.decorView.post { calibrationCoordinator.skipOrCancel() }
+                    }
+                } else {
+                    viewportHost.hideCalibration(release = state.phase == CalibrationPhase.HIDDEN)
+                }
+                if (state.phase == CalibrationPhase.HIDDEN && startupLoginPending) {
+                    startupLoginPending = false
+                    startOrLogin()
+                }
+                if (state.phase == CalibrationPhase.HIDDEN && resumePlaybackAfterCalibration) {
+                    resumePlaybackAfterCalibration = false
+                    if (::playbackEngineHost.isInitialized && currentRequest != null) {
+                        setPlayerPaused(false, "calibration-finished")
+                    }
+                }
+            },
+            onCalibration = { corners, completed ->
+                viewportHost.applySaved(corners, completed)
+                if (::danmakuView.isInitialized) videoLayout.post { layoutDanmaku() }
+            },
+        )
+    }
     /** 弹幕渲染视图。 */
     private lateinit var danmakuView: DanmakuView
     /** 弹幕渲染引擎，点播与直播共用。 */
@@ -302,6 +342,30 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     override fun requestLogin() = startQrLogin()
 
+    override fun startCalibration() {
+        if (::playbackEngineHost.isInitialized && currentRequest != null && playerIsPlaying()) {
+            resumePlaybackAfterCalibration = true
+            setPlayerPaused(true, "calibration-start")
+        }
+        calibrationCoordinator.start()
+    }
+
+    override fun cancelCalibration() = calibrationCoordinator.skipOrCancel()
+
+    override fun adjustCalibration(direction: CalibrationDirection) = calibrationCoordinator.adjust(direction)
+
+    override fun nextCalibrationCorner() = calibrationCoordinator.nextCorner()
+
+    override fun reviewCalibration() = calibrationCoordinator.review()
+
+    override fun finishCalibration() {
+        val activePlayback = currentRequest != null
+        calibrationCoordinator.finish()
+        if (activePlayback) {
+            Toast.makeText(this, "当前视频将在下一次播放时使用新校准", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun requestCloseLogin() = loginCoordinator.dismissQrLogin()
 
     override fun requestSkipLogin() = skipLogin()
@@ -403,13 +467,21 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun remembersPlaybackContent(): Boolean = ui.rememberPlaybackContent
     override fun playbackSpeed(): Float = ui.playbackSpeed
     override fun showRecentLoading(title: String) {
+        cancelCalibrationForPlayback()
         ui = CastPlaybackStateProjector.recentLoading(ui, title)
     }
     override fun showIncomingCast(title: String) {
+        cancelCalibrationForPlayback()
         ui = CastPlaybackStateProjector.incomingCast(ui, title)
     }
     override fun showResolveLoading(title: String) {
+        cancelCalibrationForPlayback()
         ui = CastPlaybackStateProjector.resolving(ui, title)
+    }
+    private fun cancelCalibrationForPlayback() {
+        if (calibrationCoordinator.state.phase == CalibrationPhase.HIDDEN) return
+        startupLoginPending = false
+        calibrationCoordinator.skipOrCancel()
     }
     override fun showPlayback(request: PlaybackRequest, seekToMs: Long) {
         val liveQualities = if (request.isLive) {
@@ -814,6 +886,15 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
         videoLayout = findViewById(R.id.videoLayout)
         media3PlayerView = findViewById(R.id.media3PlayerView)
+        viewportHost = VideoViewportHost(
+            root = findViewById(R.id.rootLayout),
+            playbackView = findViewById<SurfaceView>(R.id.compensatedVideoSurfaceView),
+            calibrationView = findViewById<SurfaceView>(R.id.calibrationSurfaceView),
+            onCalibrationFailure = {
+                Toast.makeText(this, "电视无法播放 4K 校准视频", Toast.LENGTH_LONG).show()
+                window.decorView.post { calibrationCoordinator.skipOrCancel() }
+            },
+        )
         danmakuView = findViewById(R.id.danmakuView)
         danmakuSettings = danmakuPreferences.load()
         composeUi = findViewById(R.id.composeUi)
@@ -852,6 +933,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 context = this,
                 vlcView = videoLayout,
                 media3View = media3PlayerView,
+                viewportHost = viewportHost,
                 onEvent = playbackEventRouter::dispatch,
                 onHdrWindowChanged = ::setHdrWindowEnabled,
             )
@@ -902,7 +984,12 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             showContinue = rememberPlaybackContent,
         )
         playbackHistoryCoordinator
-        startOrLogin()
+        startupLoginPending = true
+        calibrationCoordinator.initialize()
+        if (calibrationCoordinator.state.phase == CalibrationPhase.HIDDEN) {
+            startupLoginPending = false
+            startOrLogin()
+        }
         startTicker()
         updateCoordinator.checkAutomaticallyOnLaunch()
     }
@@ -1246,8 +1333,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             ?: FrameLayout.LayoutParams(screenW, areaH)
         params.width = screenW
         params.height = areaH
-        params.leftMargin = 0
-        params.topMargin = 0
+        params.leftMargin = videoLayout.left
+        params.topMargin = videoLayout.top
         params.gravity = Gravity.TOP or Gravity.START
         danmakuView.layoutParams = params
         if (::danmakuController.isInitialized) {
@@ -1645,6 +1732,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         runCatching { if (::liveDanmakuController.isInitialized) liveDanmakuController.release() }
         scope.cancel()
         runCatching { if (::playbackEngineHost.isInitialized) playbackEngineHost.release() }
+        runCatching { if (::viewportHost.isInitialized) viewportHost.release() }
         LogHub.stop()
     }
 

@@ -5,6 +5,7 @@ import android.graphics.Point
 import android.net.Uri
 import android.os.Build
 import android.view.SurfaceView
+import android.view.Surface
 import android.view.TextureView
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -64,6 +65,7 @@ class Media3PlayerEngine(
 
     @Volatile
     private var activeDrm = false
+    private var videoOutput: Surface? = null
 
     private val drmHttpFactory = DefaultHttpDataSource.Factory()
         .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
@@ -250,6 +252,20 @@ class Media3PlayerEngine(
         }
     }
 
+    /** 在 prepare 前选择硬解码器的输出；补偿模式交由 4K 像素合成器处理。 */
+    fun setVideoOutput(surface: Surface?) {
+        if (videoOutput === surface) return
+        videoOutput = surface
+        if (surface == null) {
+            player.clearVideoSurface()
+            playerView.player = player
+        } else {
+            playerView.player = null
+            player.setVideoSurface(surface)
+        }
+        LogHub.i(TAG, "video output=${outputType()}")
+    }
+
     /** 暂停或恢复。 */
     fun setPaused(paused: Boolean) {
         if (paused) player.pause() else player.play()
@@ -276,7 +292,10 @@ class Media3PlayerEngine(
     }
 
     fun stop() = player.stop()
-    fun release() = player.release()
+    fun release() {
+        playerView.player = null
+        player.release()
+    }
     fun positionMs(): Long = player.currentPosition.coerceAtLeast(0L)
     fun durationMs(): Long = player.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
     fun isPlaying(): Boolean = player.isPlaying
@@ -326,7 +345,7 @@ class Media3PlayerEngine(
         }
     }
 
-    private fun outputType(): String = when (playerView.videoSurfaceView) {
+    private fun outputType(): String = if (videoOutput != null) "4kPixelCompositor" else when (playerView.videoSurfaceView) {
         is SurfaceView -> "surfaceView"
         is TextureView -> "textureView"
         else -> "unknown"

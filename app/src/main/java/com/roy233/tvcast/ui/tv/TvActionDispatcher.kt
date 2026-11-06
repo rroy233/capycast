@@ -3,6 +3,7 @@ package com.roy233.tvcast.ui.tv
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.update.model.UpdateChannel
+import com.roy233.tvcast.feature.display.CalibrationDirection
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.RecentCastFocus
 import com.roy233.tvcast.feature.cast.domain.RecentCast
@@ -23,6 +24,12 @@ import com.roy233.tvcast.ui.model.moved
  * 持久化的动作通过本接口交给宿主执行。
  */
 interface TvActionHost {
+    fun startCalibration()
+    fun cancelCalibration()
+    fun adjustCalibration(direction: CalibrationDirection)
+    fun nextCalibrationCorner()
+    fun reviewCalibration()
+    fun finishCalibration()
     fun requestLogin()
     fun requestCloseLogin()
     fun requestSkipLogin()
@@ -150,6 +157,12 @@ class TvActionDispatcher(
                 ).focusCurrentPage(),
             )
         },
+        onStartCalibration = { host.startCalibration() },
+        onCancelCalibration = { host.cancelCalibration() },
+        onAdjustCalibration = { host.adjustCalibration(it) },
+        onNextCalibrationCorner = { host.nextCalibrationCorner() },
+        onReviewCalibration = { host.reviewCalibration() },
+        onFinishCalibration = { host.finishCalibration() },
         onOpenUpdateSettings = {
             val state = stateHolder.read()
             val navigation = state.settingsNavigation.push(

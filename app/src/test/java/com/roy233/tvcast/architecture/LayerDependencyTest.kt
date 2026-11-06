@@ -23,6 +23,7 @@ class LayerDependencyTest {
                             line.contains("com.roy233.tvcast.feature.account.model") ||
                             line.contains("com.roy233.tvcast.feature.update.model") ||
                             line.contains("com.roy233.tvcast.feature.danmaku.domain") ||
+                            line.contains("com.roy233.tvcast.feature.display") ||
                             line.contains("com.roy233.tvcast.feature.history")
                     }
                     .map { "${file.relativeTo(root).path}: $it" }
@@ -98,6 +99,20 @@ class LayerDependencyTest {
                 "org.videolan.libvlc",
                 "com.roy233.tvcast.platform.player",
                 "com.roy233.tvcast.data.bili",
+            ),
+        )
+    }
+
+    @Test
+    fun `display calibration rules stay independent of Android views and persistence adapters`() {
+        assertNoImports(
+            packageDir = "feature/display",
+            forbidden = listOf(
+                "android.view",
+                "androidx.compose",
+                "com.roy233.tvcast.platform",
+                "com.roy233.tvcast.data",
+                "com.roy233.tvcast.ui",
             ),
         )
     }

@@ -11,11 +11,14 @@ import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.model.UiOverlay
+import com.roy233.tvcast.feature.display.CalibrationDirection
+import com.roy233.tvcast.feature.display.CalibrationPhase
 import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
 import com.roy233.tvcast.ui.tv.player.handlePlaybackSeekKey
 
 /** 当前页面按一次返回键应执行的层级动作。 */
 internal enum class TvBackAction {
+    CANCEL_CALIBRATION,
     CANCEL_STOP_CAST_CONFIRM,
     DISMISS_ERROR,
     BACK_PANEL,
@@ -50,6 +53,7 @@ internal object HomeBackExitTiming {
 
 /** 同一时刻唯一拥有按键的界面表面。 */
 internal enum class KeySurface {
+    CALIBRATION,
     STOP_CAST_CONFIRM,
     ERROR,
     PANEL,
@@ -77,6 +81,7 @@ object TvKeyHandler {
     /** 解析当前应当接收按键的表面：浮层栈顶 > 导航菜单 > 目的页。 */
     internal fun resolveKeySurface(state: TvUiState): KeySurface {
         when (state.topOverlay) {
+            UiOverlay.CALIBRATION -> return KeySurface.CALIBRATION
             UiOverlay.STOP_CAST_CONFIRM -> return KeySurface.STOP_CAST_CONFIRM
             UiOverlay.ERROR -> return KeySurface.ERROR
             UiOverlay.PANEL -> return KeySurface.PANEL
@@ -111,6 +116,7 @@ object TvKeyHandler {
 
     /** 按照由上到下的界面层级，解析返回键的唯一目标。 */
     internal fun resolveBackAction(state: TvUiState): TvBackAction = when {
+        state.calibration.phase != CalibrationPhase.HIDDEN -> TvBackAction.CANCEL_CALIBRATION
         state.stopCastConfirm -> TvBackAction.CANCEL_STOP_CAST_CONFIRM
         state.error != null -> TvBackAction.DISMISS_ERROR
         state.panel != null && state.panel != PanelKind.ROOT -> TvBackAction.BACK_PANEL
@@ -129,6 +135,7 @@ object TvKeyHandler {
     /** 将解析后的返回层级分发到宿主操作。 */
     internal fun dispatchBack(state: TvUiState, actions: TvActions) {
         when (resolveBackAction(state)) {
+            TvBackAction.CANCEL_CALIBRATION -> actions.onCancelCalibration()
             TvBackAction.CANCEL_STOP_CAST_CONFIRM -> actions.onCancelStopCast()
             TvBackAction.DISMISS_ERROR -> actions.onDismissError()
             TvBackAction.BACK_PANEL -> actions.onOpenPanel(PanelKind.ROOT)
@@ -190,6 +197,31 @@ object TvKeyHandler {
                 dispatchBack(state, actions)
             }
             return true
+        }
+
+        if (surface == KeySurface.CALIBRATION) {
+            if (state.calibration.phase == CalibrationPhase.ADJUST) {
+                val direction = when (event.key) {
+                    Key.DirectionLeft -> CalibrationDirection.LEFT
+                    Key.DirectionUp -> CalibrationDirection.UP
+                    Key.DirectionRight -> CalibrationDirection.RIGHT
+                    Key.DirectionDown -> CalibrationDirection.DOWN
+                    else -> null
+                }
+                if (direction != null) {
+                    actions.onAdjustCalibration(direction)
+                    return true
+                }
+                if (event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter) {
+                    if (event.nativeKeyEvent.repeatCount == 0) actions.onNextCalibrationCorner()
+                    return true
+                }
+            }
+            // 提示与确认弹窗的方向键和确认键交给获得焦点的按钮。
+            return state.calibration.phase == CalibrationPhase.ADJUST ||
+                (event.key != Key.DirectionLeft && event.key != Key.DirectionRight &&
+                    event.key != Key.DirectionUp && event.key != Key.DirectionDown &&
+                    event.key != Key.DirectionCenter && event.key != Key.Enter && event.key != Key.NumPadEnter)
         }
 
         if (event.key == Key.Menu) {

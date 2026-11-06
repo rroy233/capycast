@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black">
@@ -23,6 +24,12 @@
         app:surface_type="surface_view"
         app:use_controller="false" />
 
+    <SurfaceView
+        android:id="@+id/compensatedVideoSurfaceView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <master.flame.danmaku.ui.widget.DanmakuView
         android:id="@+id/danmakuView"
         android:layout_width="match_parent"
@@ -31,6 +38,12 @@
         android:clickable="false"
         android:focusable="false"
         android:focusableInTouchMode="false" />
+
+    <SurfaceView
+        android:id="@+id/calibrationSurfaceView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
 
     <androidx.compose.ui.platform.ComposeView
         android:id="@+id/composeUi"
