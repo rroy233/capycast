@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -120,6 +121,9 @@ private val SHELF_COMPACT_HEIGHT = 620.dp
 private val SHELF_CARD_WIDTH = 240.dp
 private val SHELF_CARD_WIDTH_COMPACT = 200.dp
 private const val MAX_RECENT_CARDS = 8
+private const val RECENT_CARD_ASPECT_RATIO = 16f / 9f
+private const val RECENT_CARD_FOCUS_SCALE = 1.06f
+private const val RECENT_CARD_FOCUS_OVERFLOW_RATIO = (RECENT_CARD_FOCUS_SCALE - 1f) / 2f
 
 /**
  * 显示首页内容、登录入口和最近投屏记录。
@@ -447,6 +451,11 @@ private fun RecentShelf(
     cardWidth: Dp,
     actions: TvActions,
 ) {
+    // LazyRow 会裁剪自己的视口。安全区按卡片实际尺寸和缩放倍率计算，使中心缩放后的
+    // 边缘仍落在可绘制范围内；它与屏幕分辨率、密度和当前卡片规格无关。
+    val horizontalFocusInset = cardWidth * RECENT_CARD_FOCUS_OVERFLOW_RATIO
+    val verticalFocusInset =
+        cardWidth * (1f / RECENT_CARD_ASPECT_RATIO) * RECENT_CARD_FOCUS_OVERFLOW_RATIO
     Column {
         BasicText(
             text = "最近投屏",
@@ -454,6 +463,12 @@ private fun RecentShelf(
         )
         Spacer(Modifier.height(12.dp))
         LazyRow(
+            contentPadding = PaddingValues(
+                start = horizontalFocusInset,
+                top = verticalFocusInset,
+                end = horizontalFocusInset,
+                bottom = verticalFocusInset,
+            ),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             itemsIndexed(
@@ -496,7 +511,7 @@ private fun RecentCard(
         if (focused) actions.onFocusRecent(recent.aid)
     }
     val scale by animateFloatAsState(
-        targetValue = if (focused) 1.06f else 1f,
+        targetValue = if (focused) RECENT_CARD_FOCUS_SCALE else 1f,
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
         label = "recent-card",
     )
@@ -527,7 +542,7 @@ private fun RecentCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(16f / 9f)
+                .aspectRatio(RECENT_CARD_ASPECT_RATIO)
                 .background(Color(0xFF19232C)),
         ) {
             if (recent.cover.isNotBlank()) {
