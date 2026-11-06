@@ -1,6 +1,10 @@
 package com.roy233.tvcast.ui.tv.overlay
 
 import com.roy233.tvcast.ui.tv.home.WhiteButton
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.FocusDiagnostics
+import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 
 import android.graphics.Bitmap
@@ -130,11 +134,8 @@ import kotlinx.coroutines.delay
  */
 @Composable
 internal fun HelpSheet(state: TvUiState, actions: TvActions) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        delay(80)
-        runCatching { focus.requestFocus() }
-    }
+    val focus = rememberFocusTarget()
+    RequestFocusWhenReady(activation = state.helpVisible, target = focus)
 
     Box(
         modifier = Modifier
@@ -164,7 +165,7 @@ internal fun HelpSheet(state: TvUiState, actions: TvActions) {
                 WhiteButton(
                     text = "知道了",
                     onClick = actions.onCloseHelp,
-                    focusRequester = focus,
+                    focusTarget = focus,
                     compact = true,
                 )
             }
@@ -198,28 +199,37 @@ private fun HelpStep(number: String, text: String) {
  */
 @Composable
 internal fun QuickPanel(state: TvUiState, actions: TvActions) {
-    val firstFocus = remember { FocusRequester() }
-    val selectedSpeedFocus = remember { FocusRequester() }
+    val closeFocus = rememberFocusTarget()
+    val firstFocus = rememberFocusTarget()
+    val selectedSpeedFocus = rememberFocusTarget()
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
     val panel = state.panel ?: return
 
-    LaunchedEffect(panel, state.playbackSpeed) {
-        delay(80)
-        runCatching {
-            if (panel == PanelKind.SPEED) {
-                val selectedIndex = PlaybackSpeed.options.indexOf(
-                    PlaybackSpeed.normalize(state.playbackSpeed),
-                ).coerceAtLeast(0)
-                scrollState.scrollTo(
-                    with(density) { (QUICK_PANEL_ROW_PITCH * selectedIndex).roundToPx() },
-                )
-                selectedSpeedFocus.requestFocus()
-            } else {
-                scrollState.scrollTo(0)
-                firstFocus.requestFocus()
-            }
+    val preferredFocus = if (panel == PanelKind.SPEED) selectedSpeedFocus else firstFocus
+    LaunchedEffect(
+        panel,
+        state.playbackSpeed,
+        preferredFocus.isReady,
+        closeFocus.isReady,
+    ) {
+        val initialFocus = when {
+            preferredFocus.isReady -> preferredFocus
+            closeFocus.isReady -> closeFocus
+            else -> return@LaunchedEffect
         }
+        if (panel == PanelKind.SPEED) {
+            val selectedIndex = PlaybackSpeed.options.indexOf(
+                PlaybackSpeed.normalize(state.playbackSpeed),
+            ).coerceAtLeast(0)
+            scrollState.scrollTo(
+                with(density) { (QUICK_PANEL_ROW_PITCH * selectedIndex).roundToPx() },
+            )
+        } else {
+            scrollState.scrollTo(0)
+        }
+        val focused = runCatching { initialFocus.requester.requestFocus() }.getOrDefault(false)
+        FocusDiagnostics.transientFocusResult(focused)
     }
 
     Box(
@@ -266,6 +276,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                             contentDescription = "关闭",
                             onClick = actions.onClosePanel,
                             size = 48.dp,
+                            focusTarget = closeFocus,
                         )
                     }
                     Spacer(Modifier.height(8.dp))
@@ -284,7 +295,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         title = "直播画质",
                                         value = state.qualityLabel.ifBlank { "自动" },
                                         onClick = { actions.onOpenPanel(PanelKind.LIVE_QUALITY) },
-                                        focusRequester = firstFocus,
+                                        focusTarget = firstFocus,
                                     )
                                     FocusableRow(
                                         title = "弹幕",
@@ -297,7 +308,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         title = "清晰度",
                                         value = state.qualityLabel.ifBlank { "自动" },
                                         onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
-                                        focusRequester = firstFocus,
+                                        focusTarget = firstFocus,
                                     )
                                     FocusableRow(
                                         title = "音轨",
@@ -338,7 +349,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         value = if (option.qn == state.selectedQn) "当前" else null,
                                         selected = option.qn == state.selectedQn,
                                         onClick = { actions.onSelectQuality(option.qn) },
-                                        focusRequester = if (index == 0) firstFocus else null,
+                                        focusTarget = if (index == 0) firstFocus else null,
                                     )
                                 }
                             }
@@ -350,7 +361,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         value = track.detail,
                                         selected = track.qn == state.selectedQn,
                                         onClick = { actions.onSelectQuality(track.qn) },
-                                        focusRequester = if (index == 0) firstFocus else null,
+                                        focusTarget = if (index == 0) firstFocus else null,
                                     )
                                 }
                             }
@@ -362,7 +373,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         value = if (audio.id == state.selectedAudioId) "当前" else null,
                                         selected = audio.id == state.selectedAudioId,
                                         onClick = { actions.onSelectAudio(audio.id) },
-                                        focusRequester = if (index == 0) firstFocus else null,
+                                        focusTarget = if (index == 0) firstFocus else null,
                                     )
                                 }
                             }
@@ -375,7 +386,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         value = if (speed == 1f) "正常速度" else null,
                                         selected = speed == selectedSpeed,
                                         onClick = { actions.onSetPlaybackSpeed(speed) },
-                                        focusRequester = if (speed == selectedSpeed) selectedSpeedFocus else null,
+                                        focusTarget = if (speed == selectedSpeed) selectedSpeedFocus else null,
                                     )
                                 }
                             }
@@ -386,7 +397,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                     value = if (state.danmakuEnabled) "开" else "关",
                                     selected = state.danmakuEnabled,
                                     onClick = actions.onToggleDanmaku,
-                                    focusRequester = firstFocus,
+                                    focusTarget = firstFocus,
                                 )
                                 FocusableRow(
                                     title = "智能云屏蔽",

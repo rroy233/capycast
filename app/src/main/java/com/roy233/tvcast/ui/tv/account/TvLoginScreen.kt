@@ -13,6 +13,9 @@ import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.designsystem.*
+import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
+import com.roy233.tvcast.ui.tv.focusTarget
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -126,21 +129,10 @@ import kotlinx.coroutines.delay
  */
 @Composable
 internal fun LoginDialog(state: TvUiState, actions: TvActions) {
-    val closeFocus = remember { FocusRequester() }
+    val closeFocus = rememberFocusTarget()
     val closeInteraction = remember { MutableInteractionSource() }
     val closeFocused by closeInteraction.collectIsFocusedAsState()
-    val view = LocalView.current
-    LaunchedEffect(Unit) {
-        var guard = 0
-        while (!view.hasFocus() && guard++ < 15) delay(100)
-        delay(220)
-        for (i in 0 until 8) {
-            if (runCatching { closeFocus.requestFocus() }.getOrDefault(false)) {
-                break
-            }
-            delay(180)
-        }
-    }
+    RequestFocusWhenReady(activation = state.loginDialogVisible, target = closeFocus)
 
     BoxWithConstraints(
         Modifier.fillMaxSize().tvModalFocusRegion(),
@@ -195,7 +187,7 @@ internal fun LoginDialog(state: TvUiState, actions: TvActions) {
                                 Color.White.copy(alpha = if (closeFocused) 0.52f else 0.12f),
                                 CircleShape,
                             )
-                            .focusRequester(closeFocus)
+                            .focusTarget(closeFocus)
                             .semantics { contentDescription = "关闭登录" }
                             .clickable(
                                 interactionSource = closeInteraction,

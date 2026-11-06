@@ -27,10 +27,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -81,8 +81,8 @@ internal fun SeekableProgressBar(
     positionMs: Long,
     durationMs: Long,
     isSeeking: Boolean,
-    focusRequester: FocusRequester,
-    playFocusRequester: FocusRequester,
+    focusTarget: FocusTarget,
+    playFocusTarget: FocusTarget,
     seekAccelerator: PlaybackSeekAccelerator,
     onPreviewSeekBy: (Long) -> Unit,
     onConfirmSeek: () -> Unit,
@@ -92,8 +92,8 @@ internal fun SeekableProgressBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(34.dp)
-            .focusRequester(focusRequester)
-            .focusProperties { down = playFocusRequester }
+            .focusTarget(focusTarget)
+            .focusProperties { down = playFocusTarget.requester }
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent { event ->
                 handlePlaybackSeekKey(

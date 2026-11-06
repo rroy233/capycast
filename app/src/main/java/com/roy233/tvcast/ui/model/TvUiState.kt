@@ -181,12 +181,28 @@ data class TvUiState(
     fun withMenuClosed(): TvUiState = copy(sidebarVisible = false).focusCurrentPage()
 
     /**
+     * 结束投屏后返回首页，并把焦点交给首页主操作。
+     *
+     * 用户停止、DLNA Stop、自然结束与错误退出都使用这一条 UI 转换，避免某条终止路径
+     * 只切换页面却遗留已销毁播放器的焦点。最近投屏的展示仍由最新记录派生，但不保留
+     * 已离开卡片的“当前焦点”标识。
+     */
+    fun returnToHomeAfterPlayback(): TvUiState = copy(
+        destination = TvDestination.HOME,
+        settingsNavigation = settingsNavigation.reset(),
+        sidebarVisible = false,
+        focusedRecentAid = null,
+    ).focusCurrentPage()
+
+    /**
      * 把栈顶焦点指向当前页面的顶层锚点。
      *
      * 设置页的顶层由它的路由栈决定（可能停在某个子页），其余目的页用自身锚点，
      * 因此“栈顶 = 当前页面”这一条规则在模型里只写这一次。
      */
     fun focusCurrentPage(): TvUiState = copy(
+        // 首页顶层锚点是主操作；卡片焦点不能跨菜单、浮层或投屏会话保留。
+        focusedRecentAid = if (destination == TvDestination.HOME) null else focusedRecentAid,
         focusRequest = focusRequest.moveTo(
             if (destination == TvDestination.SETTINGS) {
                 settingsNavigation.topAnchor

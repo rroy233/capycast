@@ -36,7 +36,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -80,6 +80,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
@@ -91,6 +92,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -108,6 +110,7 @@ import com.roy233.tvcast.ui.tv.FocusBinding
 import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.rememberFocusTarget
 
 /** 视口高度低于此值时，货架使用更小的卡片，保证与标题、按钮同屏。 */
@@ -116,6 +119,7 @@ private val SHELF_COMPACT_HEIGHT = 620.dp
 /** 货架卡片宽度：标准与紧凑两档，高度由 16:9 推出。 */
 private val SHELF_CARD_WIDTH = 240.dp
 private val SHELF_CARD_WIDTH_COMPACT = 200.dp
+private const val MAX_RECENT_CARDS = 8
 
 /**
  * 显示首页内容、登录入口和最近投屏记录。
@@ -126,6 +130,12 @@ private val SHELF_CARD_WIDTH_COMPACT = 200.dp
 @Composable
 internal fun HomeScreen(state: TvUiState, actions: TvActions) {
     val primaryFocus = rememberFocusTarget()
+    val secondaryFocus = rememberFocusTarget()
+    val cardTargets = remember { mutableMapOf<String, FocusTarget>() }
+    val visibleRecents = state.recents.take(MAX_RECENT_CARDS)
+    val recentFocusTargets = visibleRecents.map { recent ->
+        cardTargets.getOrPut(recent.focusKey()) { FocusTarget() }
+    }
     // 大标题、背景与主按钮都跟随同一个字段：最近投屏里被聚焦的那条。
     val featured = state.featuredRecent
 
@@ -159,7 +169,9 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
         }
         val metaSize = if (compact) 17.sp else 23.sp
         // 货架是固定槽位：先给它高度，可伸缩的只有上方文字区，焦点目标不会被挤出视口。
-        val shelfShown = state.showContinue && state.recents.size > 1
+        val shelfShown = state.showContinue && visibleRecents.size > 1
+        val firstRecentFocus = recentFocusTargets.firstOrNull()
+        val secondaryActionShown = featured != null
         val shelfCardWidth = if (compact || maxHeight < SHELF_COMPACT_HEIGHT) {
             SHELF_CARD_WIDTH_COMPACT
         } else {
@@ -262,13 +274,25 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     WhiteButton(
                         text = "扫码登录",
                         onClick = actions.onLogin,
+                        modifier = Modifier.focusProperties {
+                            left = FocusRequester.Cancel
+                            if (secondaryActionShown) right = secondaryFocus.requester
+                            if (shelfShown && firstRecentFocus != null) down = firstRecentFocus.requester
+                        },
                         focusTarget = primaryFocus,
+                        onFocused = actions.onFocusHomeControl,
                         compact = compact,
                     )
                     if (featured != null) {
                         GlassButton(
                             text = "继续播放",
                             onClick = { actions.onRecast(featured) },
+                            modifier = Modifier.focusProperties {
+                                left = primaryFocus.requester
+                                if (shelfShown && firstRecentFocus != null) down = firstRecentFocus.requester
+                            },
+                            focusTarget = secondaryFocus,
+                            onFocused = actions.onFocusHomeControl,
                             compact = compact,
                         )
                     }
@@ -276,19 +300,33 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     WhiteButton(
                         text = "继续播放",
                         onClick = { actions.onRecast(featured) },
+                        modifier = Modifier.focusProperties {
+                            left = FocusRequester.Cancel
+                            right = secondaryFocus.requester
+                            if (shelfShown && firstRecentFocus != null) down = firstRecentFocus.requester
+                        },
                         focusTarget = primaryFocus,
+                        onFocused = actions.onFocusHomeControl,
                         compact = compact,
                     )
                     GlassButton(
                         text = "返回",
                         onClick = actions.onDismissContinue,
+                        modifier = Modifier.focusProperties {
+                            left = primaryFocus.requester
+                            if (shelfShown && firstRecentFocus != null) down = firstRecentFocus.requester
+                        },
+                        focusTarget = secondaryFocus,
+                        onFocused = actions.onFocusHomeControl,
                         compact = compact,
                     )
                 } else {
                     WhiteButton(
                         text = "投屏帮助",
                         onClick = actions.onShowHelp,
+                        modifier = Modifier.focusProperties { left = FocusRequester.Cancel },
                         focusTarget = primaryFocus,
+                        onFocused = actions.onFocusHomeControl,
                         compact = compact,
                     )
                 }
@@ -297,8 +335,9 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
             if (shelfShown) {
                 Spacer(Modifier.height(if (compact) 14.dp else 20.dp))
                 RecentShelf(
-                    recents = state.recents,
-                    selectedAid = featured?.aid,
+                    recents = visibleRecents,
+                    focusTargets = recentFocusTargets,
+                    primaryFocus = primaryFocus,
                     cardWidth = shelfCardWidth,
                     actions = actions,
                 )
@@ -381,17 +420,21 @@ internal fun HomeBackdrop(featured: RecentCast?, compact: Boolean, modifier: Mod
 internal fun WhiteButton(
     text: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
     focusTarget: FocusTarget? = null,
+    onFocused: (() -> Unit)? = null,
     compact: Boolean = false,
 ) {
     GlassButton(
         text = text,
         onClick = onClick,
+        modifier = modifier,
         primary = true,
         compact = compact,
         focusRequester = focusRequester,
         focusTarget = focusTarget,
+        onFocused = onFocused,
     )
 }
 
@@ -399,7 +442,8 @@ internal fun WhiteButton(
 @Composable
 private fun RecentShelf(
     recents: List<RecentCast>,
-    selectedAid: Long?,
+    focusTargets: List<FocusTarget>,
+    primaryFocus: FocusTarget,
     cardWidth: Dp,
     actions: TvActions,
 ) {
@@ -412,13 +456,22 @@ private fun RecentShelf(
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            items(
-                items = recents.take(8),
-                key = { "${it.aid}-${it.cid}" },
-            ) { recent ->
+            itemsIndexed(
+                items = recents,
+                key = { _, recent -> recent.focusKey() },
+            ) { index, recent ->
                 RecentCard(
                     recent = recent,
-                    selected = recent.aid == selectedAid,
+                    focusTarget = focusTargets[index],
+                    modifier = Modifier.focusProperties {
+                        up = primaryFocus.requester
+                        left = if (index == 0) {
+                            FocusRequester.Cancel
+                        } else {
+                            focusTargets[index - 1].requester
+                        }
+                        if (index < focusTargets.lastIndex) right = focusTargets[index + 1].requester
+                    },
                     width = cardWidth,
                     actions = actions,
                 )
@@ -431,7 +484,8 @@ private fun RecentShelf(
 @Composable
 private fun RecentCard(
     recent: RecentCast,
-    selected: Boolean,
+    focusTarget: FocusTarget,
+    modifier: Modifier,
     width: Dp,
     actions: TvActions,
 ) {
@@ -450,13 +504,15 @@ private fun RecentCard(
     Column(
         modifier = Modifier
             .width(width)
+            .then(modifier)
+            .focusTarget(focusTarget)
+            .testTag("recent-card-${recent.focusKey()}")
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(18.dp))
             .border(
                 width = 2.dp,
                 color = when {
                     focused -> Color.White.copy(alpha = 0.92f)
-                    selected -> TvColors.accent.copy(alpha = 0.85f)
                     else -> Color.White.copy(alpha = 0.10f)
                 },
                 shape = RoundedCornerShape(18.dp),
@@ -518,4 +574,6 @@ private fun RecentCard(
         }
     }
 }
+
+private fun RecentCast.focusKey(): String = "$aid-$cid"
 

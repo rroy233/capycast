@@ -120,6 +120,12 @@ class TvActionDispatcher(
             stateHolder.set(state)
             FocusDiagnostics.pageFocusReclaimed(state)
         },
+        onFocusHomeControl = {
+            val state = stateHolder.read()
+            if (state.destination == TvDestination.HOME && state.focusedRecentAid != null) {
+                stateHolder.set(state.copy(focusedRecentAid = null))
+            }
+        },
         onNavigateHome = {
             val state = stateHolder.read()
             stateHolder.set(

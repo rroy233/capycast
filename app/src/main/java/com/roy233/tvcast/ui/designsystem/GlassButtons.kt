@@ -70,6 +70,7 @@ fun GlassButton(
     minWidth: Dp = 0.dp,
     focusRequester: FocusRequester? = null,
     focusTarget: FocusTarget? = null,
+    onFocused: (() -> Unit)? = null,
 ) {
     val reduceMotion = rememberReduceMotion()
     val interaction = remember { MutableInteractionSource() }
@@ -100,7 +101,10 @@ fun GlassButton(
             )
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .focusProperties { canFocus = enabled }
-            .onFocusChanged { focusObserved = it.isFocused }
+            .onFocusChanged {
+                focusObserved = it.isFocused
+                if (it.isFocused) onFocused?.invoke()
+            }
             .focusTrace("button:$text")
             .clickable(
                 interactionSource = interaction,
@@ -161,6 +165,7 @@ fun GlassIconButton(
     selectedColor: Color = TvColors.accent,
     size: Dp = TvDimens.iconButtonSize,
     focusRequester: FocusRequester? = null,
+    focusTarget: FocusTarget? = null,
 ) {
     val reduceMotion = rememberReduceMotion()
     val interaction = remember { MutableInteractionSource() }
@@ -182,7 +187,14 @@ fun GlassIconButton(
     GlassSurface(
         modifier = modifier
             .size(size)
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusTarget(focusTarget)
+            .then(
+                if (focusTarget == null && focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                },
+            )
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .focusProperties { canFocus = enabled }
             .onFocusChanged { focusObserved = it.isFocused }
@@ -222,6 +234,7 @@ fun PrimaryPlayButton(
     modifier: Modifier = Modifier,
     size: Dp = 64.dp,
     focusRequester: FocusRequester? = null,
+    focusTarget: FocusTarget? = null,
 ) {
     val reduceMotion = rememberReduceMotion()
     val interaction = remember { MutableInteractionSource() }
@@ -242,7 +255,14 @@ fun PrimaryPlayButton(
     Box(
         modifier = modifier
             .size(size)
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusTarget(focusTarget)
+            .then(
+                if (focusTarget == null && focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                },
+            )
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .onFocusChanged { focusObserved = it.isFocused }
             .shadow(

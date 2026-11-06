@@ -3,6 +3,8 @@ package com.roy233.tvcast.ui.designsystem
 import android.graphics.Bitmap
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
+import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -26,13 +28,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -96,10 +95,8 @@ fun GlassAlert(
     destructive: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val primaryFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        runCatching { primaryFocus.requestFocus() }
-    }
+    val primaryFocus = rememberFocusTarget()
+    RequestFocusWhenReady(activation = title, target = primaryFocus)
 
     Box(
         modifier = modifier
@@ -156,7 +153,7 @@ fun GlassAlert(
                         onClick = onPrimary,
                         primary = !destructive,
                         destructive = destructive,
-                        focusRequester = primaryFocus,
+                        focusTarget = primaryFocus,
                     )
                 }
             }

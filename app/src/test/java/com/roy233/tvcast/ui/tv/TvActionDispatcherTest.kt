@@ -168,6 +168,20 @@ class TvActionDispatcherTest {
         assertEquals(7L, stateHolder.read().featuredRecent?.aid)
     }
 
+    @Test
+    fun returningHomeAfterPlaybackAlwaysTargetsThePrimaryAction() {
+        val returned = TvUiState(
+            destination = TvDestination.SETTINGS,
+            sidebarVisible = true,
+            focusedRecentAid = 7L,
+        ).returnToHomeAfterPlayback()
+
+        assertEquals(TvDestination.HOME, returned.destination)
+        assertFalse(returned.sidebarVisible)
+        assertEquals(null, returned.focusedRecentAid)
+        assertEquals(UiFocusAnchor.HOME_PRIMARY, returned.focusRequest.anchor)
+    }
+
     private fun recentCast(aid: Long, title: String) = com.roy233.tvcast.feature.cast.domain.RecentCast(
         aid = aid,
         cid = aid * 10,

@@ -993,7 +993,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             audios = emptyList(),
             toast = "播放结束",
             showContinue = ui.rememberPlaybackContent,
-        ).withMenuClosed()
+        ).returnToHomeAfterPlayback()
     }
     override fun updateVideoSize(width: Int, height: Int) {
         videoWidth = width
@@ -1357,7 +1357,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             tracks = emptyList(),
             audios = emptyList(),
             showContinue = ui.rememberPlaybackContent,
-        )
+        ).returnToHomeAfterPlayback()
     }
     override fun showStoppedState() {
         ui = ui.copy(
@@ -1385,7 +1385,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             audios = emptyList(),
             showContinue = ui.rememberPlaybackContent,
             toast = "投屏已停止",
-        ).withMenuClosed()
+        ).returnToHomeAfterPlayback()
     }
     override fun showErrorState(title: String, message: String, code: String, canRetry: Boolean) {
         ui = ui.copy(
@@ -1432,7 +1432,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             audios = emptyList(),
             toast = "投屏已结束",
             showContinue = ui.rememberPlaybackContent,
-        )
+        ).returnToHomeAfterPlayback()
     }
 
     /** 首页连续两次返回退出，首按显示明确提示。 */

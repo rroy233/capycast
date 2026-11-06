@@ -1,22 +1,20 @@
 package com.roy233.tvcast.ui.tv.home
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
-import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.tv.TvRoot
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -69,29 +67,66 @@ class HomeFocusTest {
         composeRule.onNodeWithText("扫码登录").assertIsFocused()
     }
 
-    /** 电视视口只有 960x540dp，货架曾被挤到屏幕外而无法到达。 */
+    /** 首页声明主操作、次操作与最近投屏货架之间的二维焦点关系。 */
     @Test
-    fun recentShelfIsReachableWithDownKeyOnATvViewport() {
-        var castedTitle: String? = null
+    fun homeFocusGraphMovesBetweenActionsAndRecentCards() {
         composeRule.setContent {
-            Box(Modifier.size(width = 960.dp, height = 540.dp)) {
-                HomeScreen(
-                    state = TvUiState(
-                        loggedIn = true,
-                        recents = listOf(recentCast(1), recentCast(2)),
-                    ),
-                    actions = TvActions(onRecast = { castedTitle = it.title }),
-                )
-            }
+            HomeScreen(
+                state = TvUiState(
+                    loggedIn = true,
+                    recents = listOf(recentCast(1), recentCast(2)),
+                ),
+                actions = TvActions(),
+            )
         }
 
         composeRule.onNodeWithText("继续播放").assertIsFocused()
         composeRule.onNodeWithText("继续播放")
             .performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithText("最近投屏 2").assertIsFocused()
+        composeRule.onNodeWithTag("recent-card-1-10").assertIsFocused()
 
-        composeRule.onNodeWithText("最近投屏 2").performClick()
-        composeRule.runOnIdle { assert(castedTitle == "最近投屏 2") }
+        composeRule.onNodeWithTag("recent-card-1-10")
+            .performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.onNodeWithTag("recent-card-2-20").assertIsFocused()
+
+        composeRule.onNodeWithTag("recent-card-2-20")
+            .performKeyInput { pressKey(Key.DirectionLeft) }
+        composeRule.onNodeWithTag("recent-card-1-10").assertIsFocused()
+
+        composeRule.onNodeWithTag("recent-card-1-10")
+            .performKeyInput { pressKey(Key.DirectionUp) }
+        composeRule.onNodeWithText("继续播放").assertIsFocused()
+
+        composeRule.onNodeWithText("继续播放")
+            .performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.onNodeWithText("返回").assertIsFocused()
+    }
+
+    @Test
+    fun leftFromHomePrimaryOpensTheSidebarAtThePageBoundary() {
+        composeRule.setContent {
+            val state = remember {
+                mutableStateOf(
+                    TvUiState(
+                        loggedIn = true,
+                        recents = listOf(recentCast(1), recentCast(2)),
+                    ),
+                )
+            }
+            TvRoot(
+                state = state.value,
+                actions = TvActions(
+                    onOpenSidebar = { state.value = state.value.withMenuOpen() },
+                    onCloseSidebar = { state.value = state.value.withMenuClosed() },
+                ),
+            )
+        }
+
+        composeRule.onNodeWithText("继续播放").assertIsFocused()
+        composeRule.onNodeWithText("继续播放")
+            .performKeyInput { pressKey(Key.DirectionLeft) }
+        composeRule.onNodeWithTag("sidebar-panel").assertExists()
+        composeRule.onNodeWithText("Bilibili 投屏").assertIsFocused()
     }
 
     private fun recentCast(aid: Long) = RecentCast(

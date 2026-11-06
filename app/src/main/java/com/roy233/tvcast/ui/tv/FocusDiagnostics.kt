@@ -176,6 +176,15 @@ internal object FocusDiagnostics {
         }
     }
 
+    /** 临时表面的初始焦点请求结果。 */
+    fun transientFocusResult(focused: Boolean) {
+        if (focused) {
+            LogHub.d(TAG, "transient focus granted")
+        } else {
+            LogHub.w(TAG, "transient focus rejected")
+        }
+    }
+
     /** 栈顶焦点交还给页面。 */
     fun pageFocusReclaimed(state: TvUiState) {
         LogHub.d(TAG, "focus back to page ${stackSnapshot(state)}")

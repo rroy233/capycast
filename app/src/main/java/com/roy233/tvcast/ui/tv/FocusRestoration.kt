@@ -118,3 +118,21 @@ internal fun RestoreFocus(
         FocusDiagnostics.focusResult(request.anchor, focused)
     }
 }
+
+/**
+ * 为临时表面请求其初始焦点。
+ *
+ * 弹窗、登录层与播放控制栏不参与页面路由锚点；它们仍必须等自身可聚焦节点真实挂载后
+ * 才能调用 Compose 的 [FocusRequester.requestFocus]。用 [activation] 标记一次表面切换，
+ * 能避免以延时或轮询猜测动画、布局与窗口焦点的时序。
+ */
+@Composable
+internal fun RequestFocusWhenReady(activation: Any?, target: FocusTarget) {
+    val targetReady = target.isReady
+    LaunchedEffect(activation, targetReady) {
+        if (targetReady) {
+            val focused = runCatching { target.requester.requestFocus() }.getOrDefault(false)
+            FocusDiagnostics.transientFocusResult(focused)
+        }
+    }
+}

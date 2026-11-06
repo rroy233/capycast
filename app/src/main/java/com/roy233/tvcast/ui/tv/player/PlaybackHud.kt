@@ -11,7 +11,6 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -31,6 +30,7 @@ import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
+import com.roy233.tvcast.ui.tv.FocusTarget
 
 @Composable
 internal fun PlaybackHud(
@@ -38,8 +38,8 @@ internal fun PlaybackHud(
     actions: TvActions,
     enabled: Boolean,
     displayedPositionMs: Long,
-    progressFocus: FocusRequester,
-    playFocus: FocusRequester,
+    progressFocus: FocusTarget,
+    playFocus: FocusTarget,
     seekAccelerator: PlaybackSeekAccelerator,
 ) {
     AnimatedVisibility(
@@ -116,8 +116,8 @@ internal fun PlaybackHud(
                                     positionMs = displayedPositionMs,
                                     durationMs = state.durationMs,
                                     isSeeking = state.seekPreviewPositionMs != null,
-                                    focusRequester = progressFocus,
-                                    playFocusRequester = playFocus,
+                                    focusTarget = progressFocus,
+                                    playFocusTarget = playFocus,
                                     seekAccelerator = seekAccelerator,
                                     onPreviewSeekBy = actions.onPreviewSeekBy,
                                     onConfirmSeek = actions.onConfirmSeek,
@@ -153,10 +153,10 @@ internal fun PlaybackHud(
                                     isPlaying = state.isPlaying,
                                     onClick = actions.onPlayPause,
                                     modifier = Modifier.focusProperties {
-                                        if (!state.isLive) up = progressFocus
+                                        if (!state.isLive) up = progressFocus.requester
                                     },
                                     size = 64.dp,
-                                    focusRequester = playFocus,
+                                    focusTarget = playFocus,
                                 )
                                 Spacer(Modifier.weight(1f))
                                 Row(
