@@ -7,14 +7,14 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.21" apply false
 }
 
-// 统一格式化应用源码与所有 Gradle Kotlin DSL；format 与 format-check 使用完全相同的范围。
+// 统一格式化应用源码与项目自己的构建脚本；format 与 format-check 使用完全相同的范围。
 configure<SpotlessExtension> {
     kotlin {
         target("app/src/**/*.kt")
         ktfmt("0.65").kotlinlangStyle()
     }
     kotlinGradle {
-        target("**/*.gradle.kts")
+        target("*.gradle.kts", "app/*.gradle.kts")
         ktfmt("0.65").kotlinlangStyle()
     }
 }

@@ -7,6 +7,7 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuAiShield
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuRenderer
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
 import com.roy233.tvcast.feature.danmaku.domain.MediaClock
 import java.util.concurrent.atomic.AtomicLong
@@ -35,7 +36,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
 class DfmDanmakuEngine(
     val view: DanmakuView,
     private val clock: MediaClock,
-) {
+) : DanmakuRenderer {
 
     /** 供代码创建视图的便捷构造器。 */
     constructor(context: Context, clock: MediaClock) : this(DanmakuView(context), clock)
@@ -127,12 +128,12 @@ class DfmDanmakuEngine(
      *
      * @param heightPx 视频内容高度（不含黑边），单位像素。
      */
-    fun setContentHeight(heightPx: Int) {
+    override fun setContentHeight(heightPx: Int) {
         if (heightPx > 0) contentHeightPx = heightPx
     }
 
     /** 视图完成布局后调用；可重复调用，内部只 prepare 一次。 */
-    fun prepare() {
+    override fun prepare() {
         if (prepared || view.width <= 0 || view.height <= 0) {
             LogHub.i(TAG, "prepare skip prepared=$prepared size=${view.width}x${view.height}")
             return
@@ -154,7 +155,7 @@ class DfmDanmakuEngine(
      * @param items 原始条目。
      * @param level 智能云屏蔽档位。
      */
-    fun addSegment(items: List<DanmakuItem>, level: AiShieldLevel) {
+    override fun addSegment(items: List<DanmakuItem>, level: AiShieldLevel) {
         if (!settings.enabled) return
         val filtered = DanmakuAiShield.filter(items, level)
         LogHub.d(
@@ -172,7 +173,7 @@ class DfmDanmakuEngine(
     }
 
     /** 替换当前分段（设置变化/seek 后重建）。 */
-    fun replaceSegment(items: List<DanmakuItem>, level: AiShieldLevel) {
+    override fun replaceSegment(items: List<DanmakuItem>, level: AiShieldLevel) {
         pending.clear()
         if (prepared) view.removeAllDanmakus(true)
         addSegment(items, level)
@@ -184,7 +185,7 @@ class DfmDanmakuEngine(
     }
 
     /** 应用显示设置。 */
-    fun applySettings(newSettings: DanmakuSettings) {
+    override fun applySettings(newSettings: DanmakuSettings) {
         if (newSettings.opacity != settings.opacity) {
             danmakuContext.setDanmakuTransparency(newSettings.opacity)
         }
@@ -204,7 +205,7 @@ class DfmDanmakuEngine(
     }
 
     /** 暂停。 */
-    fun pause() {
+    override fun pause() {
         paused = true
         if (prepared) {
             LogHub.d(TAG, "pause t=${view.currentTime}")
@@ -213,7 +214,7 @@ class DfmDanmakuEngine(
     }
 
     /** 恢复。 */
-    fun resume() {
+    override fun resume() {
         paused = false
         if (prepared) {
             LogHub.d(TAG, "resume t=${view.currentTime} prepared=${view.isPrepared}")
@@ -222,7 +223,7 @@ class DfmDanmakuEngine(
     }
 
     /** 跳到指定媒体时间。 */
-    fun seekTo(mediaMs: Long) {
+    override fun seekTo(mediaMs: Long) {
         if (prepared) {
             LogHub.d(TAG, "seekTo $mediaMs from t=${view.currentTime}")
             view.seekTo(mediaMs)
@@ -240,7 +241,7 @@ class DfmDanmakuEngine(
     }
 
     /** 清空屏幕上的弹幕与等待队列。 */
-    fun clear() {
+    override fun clear() {
         LogHub.d(TAG, "clear before " + diagnosticState())
         pending.clear()
         if (prepared) view.removeAllDanmakus(true)
@@ -269,7 +270,7 @@ class DfmDanmakuEngine(
             "lastSubmitted=$lastSubmittedTimeMs lastShown=$lastShownTimeMs"
 
     /** 释放 DFM 资源。 */
-    fun release() {
+    override fun release() {
         if (prepared) {
             view.release()
             prepared = false
