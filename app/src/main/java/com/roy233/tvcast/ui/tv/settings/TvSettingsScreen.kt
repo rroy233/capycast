@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -26,6 +25,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -53,14 +54,8 @@ import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
-import com.roy233.tvcast.ui.tv.FocusBinding
-import com.roy233.tvcast.ui.tv.FocusTarget
-import com.roy233.tvcast.ui.tv.RestoreFocus
-import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.home.WhiteButton
-import com.roy233.tvcast.ui.tv.rememberFocusTarget
-import com.roy233.tvcast.ui.tv.tvFocusRegion
 
 /** 账号信息中可选的平台；保留枚举以便后续接入其他平台。 */
 private enum class AccountPlatform(val label: String) {
@@ -70,10 +65,9 @@ private enum class AccountPlatform(val label: String) {
 /** 显示由账号、软件与设备信息组成的设置首页。 */
 @Composable
 internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
-    val platformFocus = rememberFocusTarget()
+    val platformFocus = remember { FocusRequester() }
     val loginFocus = remember { FocusRequester() }
-    val updateEntryFocus = rememberFocusTarget()
-    val rootListState = rememberLazyListState()
+    val updateEntryFocus = remember { FocusRequester() }
     var selectedPlatform by remember { mutableStateOf(AccountPlatform.BILIBILI) }
 
     when (state.settingsPage) {
@@ -90,25 +84,14 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
         SettingsPage.ROOT -> Unit
     }
 
-    RestoreFocus(
-        request = state.focusRequest,
-        listState = rootListState,
-        bindings =
-            listOf(
-                FocusBinding(
-                    anchor = UiFocusAnchor.SETTINGS_PLATFORM,
-                    itemIndex = ACCOUNT_INFO_ITEM_INDEX,
-                    target = platformFocus,
-                ),
-                FocusBinding(
-                    anchor = UiFocusAnchor.SETTINGS_UPDATE_ENTRY,
-                    itemIndex = SOFTWARE_INFO_ITEM_INDEX,
-                    target = updateEntryFocus,
-                ),
-            ),
-        // 账号区块在未登录时收起为登录按钮，可聚焦内容随之变化。
-        contentKey = state.loggedIn,
-    )
+    // 官方建议在页面出现时通过副作用请求一次初始焦点；页面内的恢复交给
+    // LazyColumn.focusRestorer，不观察条目挂载、回收或滚动状态。
+    LaunchedEffect(Unit) {
+        when (state.focusRequest.anchor) {
+            UiFocusAnchor.SETTINGS_UPDATE_ENTRY -> updateEntryFocus.requestFocus()
+            else -> platformFocus.requestFocus()
+        }
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < 500.dp
@@ -117,7 +100,6 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
         val sectionGap = if (compact) 14.dp else 20.dp
 
         LazyColumn(
-            state = rootListState,
             modifier =
                 Modifier.width(
                         (maxWidth - horizontalPadding * 2).coerceAtMost(TvDimens.pageMaxWidth),
@@ -125,7 +107,8 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     .fillMaxHeight()
                     .align(Alignment.Center)
                     .padding(vertical = verticalPadding)
-                    .tvFocusRegion(),
+                    // LazyColumn 本身是焦点组；官方 focusRestorer 负责记住最后的子项。
+                    .focusRestorer(platformFocus),
             verticalArrangement = Arrangement.spacedBy(sectionGap),
         ) {
             item {
@@ -134,7 +117,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                         selectedPlatform = selectedPlatform,
                         loggedIn = state.loggedIn,
                         compact = compact,
-                        focusTarget = platformFocus,
+                        focusRequester = platformFocus,
                         onPlatformSelected = { selectedPlatform = it },
                     )
                     SettingsRowDivider()
@@ -157,7 +140,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     FocusableRow(
                         title = "检查更新",
                         onClick = actions.onOpenUpdateSettings,
-                        focusTarget = updateEntryFocus,
+                        focusRequester = updateEntryFocus,
                         rowHeight = if (compact) 56.dp else 64.dp,
                     )
                 }
@@ -188,7 +171,7 @@ private fun PlatformGallery(
     selectedPlatform: AccountPlatform,
     loggedIn: Boolean,
     compact: Boolean,
-    focusTarget: FocusTarget,
+    focusRequester: FocusRequester,
     onPlatformSelected: (AccountPlatform) -> Unit,
 ) {
     Column(Modifier.padding(start = 20.dp, top = if (compact) 12.dp else 16.dp, bottom = 14.dp)) {
@@ -203,7 +186,6 @@ private fun PlatformGallery(
         )
         Spacer(Modifier.height(10.dp))
         LazyRow(
-            modifier = Modifier.tvFocusRegion(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(AccountPlatform.entries.size) { index ->
@@ -213,7 +195,8 @@ private fun PlatformGallery(
                     selected = platform == selectedPlatform,
                     loggedIn = loggedIn,
                     compact = compact,
-                    focusTarget = if (platform == AccountPlatform.BILIBILI) focusTarget else null,
+                    focusRequester =
+                        if (platform == AccountPlatform.BILIBILI) focusRequester else null,
                     onClick = { onPlatformSelected(platform) },
                 )
             }
@@ -228,7 +211,7 @@ private fun PlatformTile(
     selected: Boolean,
     loggedIn: Boolean,
     compact: Boolean,
-    focusTarget: FocusTarget?,
+    focusRequester: FocusRequester?,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -256,7 +239,10 @@ private fun PlatformTile(
         modifier =
             Modifier.width(if (compact) 136.dp else 164.dp)
                 .height(if (compact) 82.dp else 96.dp)
-                .focusTarget(focusTarget)
+                .then(
+                    if (focusRequester != null) Modifier.focusRequester(focusRequester)
+                    else Modifier,
+                )
                 .focusTrace("platform:${platform.label}")
                 .clip(shape)
                 .background(cardColor)
@@ -366,6 +352,3 @@ private fun BilibiliAccountSettings(
 /** 将语义版本与 Android version code 作为同一条软件版本信息呈现。 */
 private fun versionDisplay(state: TvUiState): String =
     "${state.version.ifBlank { "未知版本" }} (${state.versionCode})"
-
-private const val ACCOUNT_INFO_ITEM_INDEX = 0
-private const val SOFTWARE_INFO_ITEM_INDEX = 1
