@@ -22,6 +22,7 @@ class PlaybackEventRouterTest {
                 "setCastEnded",
                 "runOnMain",
                 "vodDanmakuClose",
+                "vodSubtitleClose",
                 "liveDanmakuClose",
                 "updateEnded",
             ),

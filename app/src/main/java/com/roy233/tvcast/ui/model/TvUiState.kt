@@ -5,6 +5,8 @@ import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationPhase
 import com.roy233.tvcast.feature.display.CalibrationState
+import com.roy233.tvcast.feature.subtitle.domain.SubtitleSettings
+import com.roy233.tvcast.feature.subtitle.domain.SubtitleTrackKey
 import com.roy233.tvcast.feature.update.UpdateUiState
 
 /** 最近投屏卡片的精确焦点身份；同一稿件的不同分 P 也必须区分。 */
@@ -124,6 +126,12 @@ data class TvUiState(
     val helpVisible: Boolean = false,
     val tracks: List<TrackOption> = emptyList(),
     val audios: List<AudioOption> = emptyList(),
+    val subtitleTracks: List<SubtitleTrackOption> = emptyList(),
+    val selectedSubtitleKey: SubtitleTrackKey? = null,
+    val subtitleSummary: String = "",
+    val subtitleLines: List<String> = emptyList(),
+    val subtitleFontScale: Float = 1f,
+    val subtitleBottomMarginRatio: Float = SubtitleSettings.DEFAULT_BOTTOM_MARGIN,
     val selectedQn: Int = 0,
     val selectedAudioId: Int = 0,
     val toast: String? = null,

@@ -186,6 +186,10 @@ class CastSessionCoordinatorTest {
 
         override fun onVodDanmakuOpen(aid: Long, cid: Long, durationMs: Long, seekToMs: Long) = Unit
 
+        override fun onVodSubtitleOpen(request: PlaybackRequest) = Unit
+
+        override fun onSubtitleClose() = Unit
+
         override fun onDanmakuPlaybackRate(rate: Float) = Unit
 
         override fun onDanmakuSettings() = Unit

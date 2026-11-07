@@ -33,6 +33,8 @@ interface PlaybackSessionHost {
 
     fun stopPlaybackForSession(reason: String)
 
+    fun closeSubtitleSession()
+
     fun clearSessionIdentity(clearCastMetadata: Boolean, clearResolving: Boolean)
 
     fun markCastFailed(code: String)
@@ -59,6 +61,13 @@ interface PlaybackSessionHost {
 /** 保留错误、重试与用户停止各自的终止顺序。 */
 class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
     private var retryAction: (() -> Unit)? = null
+
+    /** 停止播放器并结束字幕会话；三个终止路径共用同一次清理。 */
+    private fun stopPlayback(reason: String) {
+        if (host.isEngineInitialized()) host.stopPlaybackForSession(reason)
+        else LogHub.w(TAG, "$reason without player engine")
+        host.closeSubtitleSession()
+    }
 
     fun setRetry(action: (() -> Unit)?) {
         retryAction = action
@@ -88,8 +97,7 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
         )
         host.finishSessionHistory("dismiss-error")
         host.clearLiveSession("dismiss-error")
-        if (host.isEngineInitialized()) host.stopPlaybackForSession("dismiss-error")
-        else LogHub.w(TAG, "dismiss error without player engine")
+        stopPlayback("dismiss-error")
         host.clearSessionIdentity(clearCastMetadata = false, clearResolving = true)
         retryAction = null
         host.showDismissedState()
@@ -105,8 +113,7 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
         host.finishSessionHistory("user-stop")
         host.clearLiveSession("user-stop")
         host.resetPendingPlayback()
-        if (host.isEngineInitialized()) host.stopPlaybackForSession("user-stop")
-        else LogHub.w(TAG, "stopCasting without player engine")
+        stopPlayback("user-stop")
         host.clearSessionIdentity(clearCastMetadata = true, clearResolving = true)
         retryAction = null
         runCatching { host.markCastFailed("user-stop") }
@@ -120,8 +127,7 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
         host.clearPendingPause()
         host.finishSessionHistory("dlna-stop")
         host.clearLiveSession("dlna-stop")
-        if (host.isEngineInitialized()) host.stopPlaybackForSession("dlna-stop")
-        else LogHub.w(TAG, "dlna stop ignored: player engine unavailable")
+        stopPlayback("dlna-stop")
         host.clearSessionIdentity(clearCastMetadata = false, clearResolving = false)
         LogHub.setCast("")
         LogHub.setPlay("")
@@ -132,6 +138,7 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
         if (host.hasCurrentRequest()) host.flushHistoryPosition()
         host.closeHistory()
         host.clearLiveSession("activity-destroy")
+        host.closeSubtitleSession()
         PlaybackDiagnostics.closeSession("activity-destroyed")
         retryAction = null
     }

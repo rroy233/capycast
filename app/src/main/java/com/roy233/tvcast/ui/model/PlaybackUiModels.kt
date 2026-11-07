@@ -1,5 +1,7 @@
 package com.roy233.tvcast.ui.model
 
+import com.roy233.tvcast.feature.subtitle.domain.SubtitleTrackKey
+
 /** 表示电视端播放器当前所处的显示与播放模式。 */
 enum class TvMode {
     IDLE,
@@ -13,6 +15,7 @@ enum class PanelKind {
     ROOT,
     QUALITY,
     AUDIO,
+    SUBTITLE,
     SPEED,
     DANMAKU,
     LIVE_QUALITY,
@@ -57,6 +60,25 @@ data class TrackOption(
 data class LiveQualityOption(
     val qn: Int,
     val label: String,
+)
+
+/**
+ * 描述一条可选字幕轨道。
+ *
+ * @property key 轨道身份，用于回传选择结果。
+ * @property label 语言与来源名称。
+ * @property detail 语言代码、来源与可用性说明。
+ * @property ai 是否为 AI 生成的字幕。
+ * @property locked 服务端标记为不可选择。
+ * @property selected 是否为当前轨道。
+ */
+data class SubtitleTrackOption(
+    val key: SubtitleTrackKey,
+    val label: String,
+    val detail: String,
+    val ai: Boolean,
+    val locked: Boolean,
+    val selected: Boolean,
 )
 
 /**

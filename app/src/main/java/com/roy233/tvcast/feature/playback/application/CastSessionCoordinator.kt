@@ -89,6 +89,10 @@ interface CastSessionHost : RecentCastHost {
 
     fun onVodDanmakuOpen(aid: Long, cid: Long, durationMs: Long, seekToMs: Long)
 
+    fun onVodSubtitleOpen(request: PlaybackRequest)
+
+    fun onSubtitleClose()
+
     fun onDanmakuPlaybackRate(rate: Float)
 
     fun onDanmakuSettings()
@@ -408,6 +412,7 @@ class CastSessionCoordinator(
         }
 
         if (request.isLive) {
+            playback.onSubtitleClose()
             playback.onLivePlaybackOpened(request.cid)
         } else {
             playback.onLiveDanmakuClose()
@@ -417,6 +422,7 @@ class CastSessionCoordinator(
                 request.durationSec * 1000,
                 seekToMs,
             )
+            playback.onVodSubtitleOpen(request)
             playback.onDanmakuPlaybackRate(playback.playbackSpeed())
             playback.onDanmakuSettings()
             playback.onDanmakuLayout()

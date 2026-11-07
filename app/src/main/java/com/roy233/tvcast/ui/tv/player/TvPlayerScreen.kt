@@ -120,6 +120,12 @@ internal fun PlayingScreen(
             LoadingSpinner(Modifier.align(Alignment.Center))
         }
 
+        SubtitleOverlay(
+            lines = state.subtitleLines,
+            fontScale = state.subtitleFontScale,
+            bottomMarginRatio = state.subtitleBottomMarginRatio,
+        )
+
         PlaybackHud(
             state = state,
             actions = actions,

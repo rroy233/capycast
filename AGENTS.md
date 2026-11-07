@@ -82,6 +82,7 @@ Android host + app composition → platform adapters ← data adapters
 | Cast request lifecycle and NVA resolution | `CastSessionCoordinator`, `CastRequestResolver`, `feature/cast/*` | `DlnaRenderer` and `MainActivity` |
 | DLNA/UPnP wire protocol | `platform/dlna/*`; callback translation in `app/DlnaCastListenerAdapter.kt` | feature policy in SOAP/HTTP code |
 | VOD/live danmaku sessions | `feature/danmaku/application/*`; DFM rendering in `feature/danmaku/presentation/*` | player adapters and UI composables |
+| VOD subtitle tracks, AI/manual distinction and cue sync | `feature/subtitle/application/*`, `feature/subtitle/domain/*`; Bilibili fetching in `data/bili/subtitle/*`; overlay in `ui/tv/player/SubtitleOverlay.kt` | player adapters, feature policy in `MainActivity` |
 | Bilibili, storage and HTTP implementations | `data/*` | UI, platform-player, and feature application APIs |
 | Account, update and history workflows | their feature coordinators; implementations are assembled in `CapyCastContainer` | unrelated feature coordinators |
 | Android-only device, installer, QR services | `platform/device`, `platform/installer`, `platform/qr` | feature domain/model packages |

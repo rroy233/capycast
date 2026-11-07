@@ -8,15 +8,20 @@ import com.roy233.tvcast.data.bili.BiliAccountNavigator
 import com.roy233.tvcast.data.bili.BiliLivePlaybackResolver
 import com.roy233.tvcast.data.bili.BiliPlaybackResolver
 import com.roy233.tvcast.data.bili.PlaybackHistoryApi
+import com.roy233.tvcast.data.bili.WbiSigner
+import com.roy233.tvcast.data.bili.subtitle.BiliSubtitleApi
+import com.roy233.tvcast.data.bili.subtitle.BiliSubtitleRepository
 import com.roy233.tvcast.data.local.DanmakuPreferences
 import com.roy233.tvcast.data.local.DisplayCalibrationPreferences
 import com.roy233.tvcast.data.local.PersistentPlaybackHistoryOutbox
 import com.roy233.tvcast.data.local.RecentCastStore
+import com.roy233.tvcast.data.local.SubtitlePreferences
 import com.roy233.tvcast.data.local.UiPreferences
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
 import com.roy233.tvcast.feature.account.AccountUiState
 import com.roy233.tvcast.feature.history.PlaybackHistoryCoordinator
 import com.roy233.tvcast.feature.playback.model.LivePlaybackResolver
+import com.roy233.tvcast.feature.subtitle.domain.SubtitleRepository
 import com.roy233.tvcast.feature.update.UpdateCoordinator
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.platform.device.DeviceInfoProvider
@@ -51,6 +56,19 @@ class CapyCastContainer(
 
     /** 弹幕设置读取器。 */
     val danmakuPreferences: DanmakuPreferences by lazy { DanmakuPreferences(context) }
+
+    /** 字幕设置读取器。 */
+    val subtitlePreferences: SubtitlePreferences by lazy { SubtitlePreferences(context) }
+
+    /** 字幕轨道与正文读取器。 */
+    val subtitleRepository: SubtitleRepository by lazy {
+        BiliSubtitleRepository(
+            BiliSubtitleApi(
+                sessionReader = authTokenStore,
+                wbiSigner = WbiSigner(authTokenStore::cookie),
+            ),
+        )
+    }
 
     /** 最近投屏记录存储。 */
     val recentCastStore: RecentCastStore by lazy { RecentCastStore(context) }

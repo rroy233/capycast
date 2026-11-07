@@ -183,6 +183,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                     PanelKind.ROOT -> "播放设置"
                                     PanelKind.QUALITY -> "清晰度"
                                     PanelKind.AUDIO -> "音轨"
+                                    PanelKind.SUBTITLE -> "字幕"
                                     PanelKind.SPEED -> "播放速度"
                                     PanelKind.DANMAKU -> "弹幕设置"
                                     PanelKind.LIVE_QUALITY -> "直播画质"
@@ -230,6 +231,12 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         title = "音轨",
                                         value = state.audioLabel.ifBlank { "自动" },
                                         onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
+                                    )
+                                    FocusableRow(
+                                        title = "字幕",
+                                        value = state.subtitleSummary.ifBlank { "无字幕" },
+                                        enabled = state.subtitleTracks.isNotEmpty(),
+                                        onClick = { actions.onOpenPanel(PanelKind.SUBTITLE) },
                                     )
                                     FocusableRow(
                                         title = "播放速度",
@@ -294,6 +301,25 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                         selected = audio.id == state.selectedAudioId,
                                         onClick = { actions.onSelectAudio(audio.id) },
                                         focusTarget = if (index == 0) firstFocus else null,
+                                    )
+                                }
+                            }
+
+                            PanelKind.SUBTITLE -> {
+                                FocusableRow(
+                                    title = "关闭字幕",
+                                    value = if (state.selectedSubtitleKey == null) "当前" else null,
+                                    selected = state.selectedSubtitleKey == null,
+                                    onClick = { actions.onSelectSubtitleTrack(null) },
+                                    focusTarget = firstFocus,
+                                )
+                                state.subtitleTracks.forEach { option ->
+                                    FocusableRow(
+                                        title = option.label,
+                                        value = if (option.selected) "当前" else option.detail,
+                                        selected = option.selected,
+                                        enabled = !option.locked,
+                                        onClick = { actions.onSelectSubtitleTrack(option.key) },
                                     )
                                 }
                             }

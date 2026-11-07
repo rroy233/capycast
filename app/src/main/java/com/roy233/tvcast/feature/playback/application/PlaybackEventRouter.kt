@@ -70,6 +70,8 @@ interface PlaybackEventHost {
 
     fun vodDanmakuClose()
 
+    fun vodSubtitleClose()
+
     fun reportPlaybackError(
         title: String,
         message: String,
@@ -124,6 +126,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
         host.runOnMain {
             host.updateStopped()
             host.vodDanmakuClose()
+            host.vodSubtitleClose()
             host.liveDanmakuClose()
         }
     }
@@ -149,6 +152,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
         host.setCastEnded()
         host.runOnMain {
             host.vodDanmakuClose()
+            host.vodSubtitleClose()
             host.liveDanmakuClose()
             host.updateEnded()
         }
@@ -202,6 +206,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
             keepVideo = true,
         )
         host.vodDanmakuClose()
+        host.vodSubtitleClose()
     }
 
     private companion object {

@@ -4,6 +4,7 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationDirection
+import com.roy233.tvcast.feature.subtitle.domain.SubtitleTrackKey
 import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.RecentCastFocus
@@ -83,6 +84,8 @@ interface TvActionHost {
     fun selectQuality(qn: Int)
 
     fun selectAudio(id: Int)
+
+    fun selectSubtitleTrack(key: SubtitleTrackKey?)
 
     fun requestRetry()
 
@@ -308,6 +311,7 @@ class TvActionDispatcher(
             },
             onSelectQuality = { qn -> host.selectQuality(qn) },
             onSelectAudio = { id -> host.selectAudio(id) },
+            onSelectSubtitleTrack = { key -> host.selectSubtitleTrack(key) },
             onRetry = { host.requestRetry() },
             onDismissError = { host.requestDismissError() },
             onRequestStopCast = {

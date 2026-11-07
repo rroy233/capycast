@@ -21,6 +21,7 @@ import com.roy233.tvcast.app.CapyCastContainer
 import com.roy233.tvcast.app.DlnaCastListenerAdapter
 import com.roy233.tvcast.app.MainThreadPlaybackAccess
 import com.roy233.tvcast.app.PlaybackEngineHost
+import com.roy233.tvcast.app.SubtitleOverlayHost
 import com.roy233.tvcast.app.VideoViewportHost
 import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
 import com.roy233.tvcast.core.diagnostics.LogHub
@@ -73,6 +74,14 @@ import com.roy233.tvcast.feature.playback.model.LiveSession
 import com.roy233.tvcast.feature.playback.model.LiveStreamCandidate
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
+import com.roy233.tvcast.feature.subtitle.application.SubtitleController
+import com.roy233.tvcast.feature.subtitle.application.SubtitleSessionHost
+import com.roy233.tvcast.feature.subtitle.application.SubtitleSessionState
+import com.roy233.tvcast.feature.subtitle.application.SubtitleSyncDriver
+import com.roy233.tvcast.feature.subtitle.domain.SubtitleContent
+import com.roy233.tvcast.feature.subtitle.domain.SubtitleSettings
+import com.roy233.tvcast.feature.subtitle.domain.SubtitleTrackKey
+import com.roy233.tvcast.feature.subtitle.presentation.SubtitleTrackMapper
 import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.platform.dlna.DlnaRenderer
 import com.roy233.tvcast.platform.player.MediaTrackFormat
@@ -173,6 +182,23 @@ class MainActivity :
     private val danmakuClock = MediaClock()
     /** 当前弹幕设置。 */
     private var danmakuSettings = DanmakuSettings()
+    /** 字幕会话控制器。 */
+    private lateinit var subtitleController: SubtitleController
+    /** 字幕同步驱动器。 */
+    private lateinit var subtitleSyncDriver: SubtitleSyncDriver
+    /** 当前字幕设置。 */
+    private var subtitleSettings = SubtitleSettings()
+    /** 字幕会话到界面的投影端口。 */
+    private val subtitleSessionHost =
+        object : SubtitleSessionHost {
+            override fun publishSubtitleSession(state: SubtitleSessionState) =
+                applySubtitleSession(state)
+
+            override fun persistSubtitleSettings(settings: SubtitleSettings) {
+                subtitleSettings = settings
+                container.subtitlePreferences.save(settings)
+            }
+        }
     /** 最近一次已知的视频宽高。 */
     private var videoWidth = 0
     private var videoHeight = 0
@@ -452,6 +478,11 @@ class MainActivity :
     override fun selectQuality(qn: Int) = switchQuality(qn)
 
     override fun selectAudio(id: Int) = switchAudio(id)
+
+    /** 选择字幕轨道；null 表示关闭字幕。 */
+    override fun selectSubtitleTrack(key: SubtitleTrackKey?) {
+        if (::subtitleController.isInitialized) subtitleController.selectTrack(key)
+    }
 
     override fun requestRetry() = retryLastAction()
 
@@ -855,6 +886,30 @@ class MainActivity :
         }
     }
 
+    /** 打开点播字幕会话。 */
+    override fun onVodSubtitleOpen(request: PlaybackRequest) {
+        if (!::subtitleController.isInitialized) return
+        subtitleController.applySettings(subtitleSettings)
+        subtitleController.open(
+            SubtitleContent(
+                aid = request.aid,
+                cid = request.cid,
+                bvid = request.bvid,
+                epId = request.epId,
+            ),
+        )
+        subtitleSyncDriver.start()
+    }
+
+    /** 播放终止路径统一关闭字幕会话。 */
+    override fun closeSubtitleSession() = onSubtitleClose()
+
+    /** 关闭点播字幕会话。 */
+    override fun onSubtitleClose() {
+        if (::subtitleSyncDriver.isInitialized) subtitleSyncDriver.stop()
+        if (::subtitleController.isInitialized) subtitleController.close()
+    }
+
     /** 同步弹幕速度。 */
     override fun onDanmakuPlaybackRate(rate: Float) {
         if (::danmakuController.isInitialized) danmakuController.onPlaybackRateChanged(rate)
@@ -998,6 +1053,7 @@ class MainActivity :
             )
         danmakuView = findViewById(R.id.danmakuView)
         danmakuSettings = danmakuPreferences.load()
+        subtitleSettings = container.subtitlePreferences.load()
         composeUi = findViewById(R.id.composeUi)
         composeUi.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
@@ -1027,6 +1083,8 @@ class MainActivity :
                 danmakuOpacity = danmakuSettings.opacity,
                 danmakuFontScale = danmakuSettings.fontScale,
                 danmakuDurationSec = danmakuSettings.durationSec,
+                subtitleFontScale = subtitleSettings.fontScale,
+                subtitleBottomMarginRatio = subtitleSettings.bottomMarginRatio,
             )
         updateCoordinator.initialize()
 
@@ -1059,6 +1117,20 @@ class MainActivity :
                     )
                 danmakuController.applySettings(danmakuSettings)
                 liveDanmakuController.applySettings(danmakuSettings)
+                subtitleController =
+                    SubtitleController(
+                        scope = scope,
+                        renderer = SubtitleOverlayHost(::applySubtitleLines),
+                        repository = container.subtitleRepository,
+                        host = subtitleSessionHost,
+                    )
+                subtitleSyncDriver =
+                    SubtitleSyncDriver(
+                        scope = scope,
+                        positionMs = ::playerPositionMs,
+                        onPosition = subtitleController::onPlayerTime,
+                    )
+                subtitleController.applySettings(subtitleSettings)
                 danmakuView.visibility = if (danmakuSettings.enabled) View.VISIBLE else View.GONE
                 playerView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                     layoutDanmaku()
@@ -1222,6 +1294,21 @@ class MainActivity :
                 .returnToHomeAfterPlayback()
     }
 
+    /** 把字幕会话状态投影到界面。 */
+    private fun applySubtitleSession(state: SubtitleSessionState) {
+        ui =
+            ui.copy(
+                subtitleTracks = SubtitleTrackMapper.options(state),
+                selectedSubtitleKey = state.selected?.key,
+                subtitleSummary = SubtitleTrackMapper.summary(state),
+            )
+    }
+
+    /** 把当前字幕行投影到界面。 */
+    private fun applySubtitleLines(lines: List<String>) {
+        ui = ui.copy(subtitleLines = lines)
+    }
+
     override fun updateVideoSize(width: Int, height: Int) {
         videoWidth = width
         videoHeight = height
@@ -1249,6 +1336,8 @@ class MainActivity :
     override fun vodDanmakuClose() {
         if (::danmakuController.isInitialized) danmakuController.close()
     }
+
+    override fun vodSubtitleClose() = onSubtitleClose()
 
     override fun liveDanmakuClose() {
         if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
@@ -1943,6 +2032,8 @@ class MainActivity :
         resolveJob?.cancel()
         playbackTicker.stop()
         runCatching { if (::danmakuController.isInitialized) danmakuController.release() }
+        runCatching { if (::subtitleSyncDriver.isInitialized) subtitleSyncDriver.stop() }
+        runCatching { if (::subtitleController.isInitialized) subtitleController.release() }
         runCatching { if (::liveDanmakuController.isInitialized) liveDanmakuController.release() }
         scope.cancel()
         runCatching { if (::playbackEngineHost.isInitialized) playbackEngineHost.release() }
