@@ -101,6 +101,10 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
 
     private fun playing() {
         val seek = host.consumePendingSeekMs()
+        LogHub.d(
+            TAG,
+            "event playing seek=$seek live=${host.currentPlaybackRequest()?.isLive == true}",
+        )
         host.runOnMain {
             val live = host.currentPlaybackRequest()?.isLive == true
             host.updatePlaying(seek)
@@ -114,6 +118,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
     }
 
     private fun paused() {
+        LogHub.d(TAG, "event paused live=${host.currentPlaybackRequest()?.isLive == true}")
         host.runOnMain {
             val live = host.currentPlaybackRequest()?.isLive == true
             host.updatePaused()
@@ -132,6 +137,10 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
     }
 
     private fun buffering(buffering: Boolean) {
+        LogHub.d(
+            TAG,
+            "event buffering=$buffering live=${host.currentPlaybackRequest()?.isLive == true}",
+        )
         host.runOnMain {
             val live = host.currentPlaybackRequest()?.isLive == true
             host.updateBuffering(buffering)

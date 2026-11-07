@@ -55,6 +55,14 @@ class DfmDanmakuEngine(
     private val drawingFinishedCount = AtomicLong()
     private val liveSubmittedCount = AtomicLong()
     private val liveShownCount = AtomicLong()
+    /** 已提交给 DFM 的条目数。 */
+    private val submittedTotal = AtomicLong()
+    /** 真正开始显示的条目数；为 0 说明 DFM 没有绘制任何弹幕。 */
+    private val shownTotal = AtomicLong()
+    /** 提交后立即被判过期（出生即失效）的条目数。 */
+    private val expiredAtAdd = AtomicLong()
+    /** DFM 报告“当场弹幕全部结束”的次数。 */
+    private val allFinishedTotal = AtomicLong()
     @Volatile private var lastSubmittedTimeMs = -1L
     @Volatile private var lastShownTimeMs = -1L
     @Volatile private var liveTraceRoomId: Long? = null
@@ -86,6 +94,7 @@ class DfmDanmakuEngine(
                 override fun updateTimer(timer: DanmakuTimer) = Unit
 
                 override fun danmakuShown(danmaku: BaseDanmaku) {
+                    shownTotal.incrementAndGet()
                     if (liveTraceRoomId != null) {
                         lastShownTimeMs = danmaku.time
                         val count = liveShownCount.incrementAndGet()
@@ -97,6 +106,7 @@ class DfmDanmakuEngine(
                 }
 
                 override fun drawingFinished() {
+                    allFinishedTotal.incrementAndGet()
                     if (liveTraceRoomId == null) return
                     val count = drawingFinishedCount.incrementAndGet()
                     if (count <= 3 || count % 100L == 0L) {
@@ -158,11 +168,14 @@ class DfmDanmakuEngine(
     override fun addSegment(items: List<DanmakuItem>, level: AiShieldLevel) {
         if (!settings.enabled) return
         val filtered = DanmakuAiShield.filter(items, level)
+        val minTime = filtered.minOfOrNull { it.progressMs }
+        val maxTime = filtered.maxOfOrNull { it.progressMs }
+        val now = clock.nowMs()
         LogHub.d(
             TAG,
-            "addSegment items=${items.size} filtered=${filtered.size} " +
-                "level=$level times=${filtered.firstOrNull()?.progressMs ?: "none"}.." +
-                "${filtered.lastOrNull()?.progressMs ?: "none"} " +
+            "addSegment items=${items.size} filtered=${filtered.size} level=$level " +
+                "minTime=${minTime ?: "none"} maxTime=${maxTime ?: "none"} " +
+                "dueNow=${filtered.count { it.progressMs <= now }} " +
                 diagnosticState(),
         )
         if (!prepared || !dfmReady) {
@@ -245,6 +258,10 @@ class DfmDanmakuEngine(
         LogHub.d(TAG, "clear before " + diagnosticState())
         pending.clear()
         if (prepared) view.removeAllDanmakus(true)
+        submittedTotal.set(0)
+        shownTotal.set(0)
+        expiredAtAdd.set(0)
+        allFinishedTotal.set(0)
         LogHub.d(TAG, "clear after " + diagnosticState())
     }
 
@@ -268,6 +285,16 @@ class DfmDanmakuEngine(
             "alpha=${view.alpha} size=${view.width}x${view.height} pending=${pending.size} " +
             "submitted=${liveSubmittedCount.get()} shownCount=${liveShownCount.get()} " +
             "lastSubmitted=$lastSubmittedTimeMs lastShown=$lastShownTimeMs"
+
+    /** 渲染器自检快照：时间轴、暂停状态与提交计数。 */
+    override fun renderDiagnostics(): String =
+        "clock=${clock.nowMs()} frozen=${clock.isFrozen} timer=${mediaTimer.currMillisecond} " +
+            "viewTime=${view.currentTime} enginePaused=$paused viewPaused=${view.isPaused} " +
+            "prepared=$prepared ready=$dfmReady pending=${pending.size} " +
+            "submitted=${submittedTotal.get()} shown=${shownTotal.get()} " +
+            "expiredAtAdd=${expiredAtAdd.get()} allFinished=${allFinishedTotal.get()} " +
+            "visible=${view.visibility} attached=${view.isAttachedToWindow} " +
+            "size=${view.width}x${view.height}"
 
     /** 释放 DFM 资源。 */
     override fun release() {
@@ -294,6 +321,8 @@ class DfmDanmakuEngine(
             )
         }
         view.addDanmaku(danmaku)
+        submittedTotal.incrementAndGet()
+        if (danmaku.isTimeOut) expiredAtAdd.incrementAndGet()
         if (liveTraceRoomId != null) {
             lastSubmittedTimeMs = item.progressMs.toLong()
             liveSubmittedCount.incrementAndGet()

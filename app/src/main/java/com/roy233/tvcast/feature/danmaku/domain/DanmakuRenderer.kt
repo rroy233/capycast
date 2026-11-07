@@ -35,4 +35,7 @@ interface DanmakuRenderer {
 
     /** 释放渲染资源。 */
     fun release()
+
+    /** 渲染器自检快照，用于排查时间轴与暂停状态；实现可返回空串。 */
+    fun renderDiagnostics(): String = ""
 }
