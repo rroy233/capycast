@@ -1,3 +1,4 @@
+import com.diffplug.gradle.spotless.SpotlessExtension
 import java.util.Properties
 
 /** 用户可见的语义化版本号，发布时按实际改动更新。 */
@@ -12,12 +13,14 @@ private val semanticVersionPattern = Regex("^\\d+\\.\\d+\\.\\d+(?:-beta\\.\\d+)?
 require(semanticVersionPattern.matches(APP_VERSION_NAME)) {
     "APP_VERSION_NAME must follow MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-beta.N"
 }
+
 require(APP_VERSION_CODE > 0) {
     "APP_VERSION_CODE must be a positive integer"
 }
 
 plugins {
     id("com.android.application")
+    id("com.diffplug.spotless")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
@@ -42,12 +45,13 @@ android {
     }
 
     /** 读取未纳入版本控制的发布签名配置。 */
-    val releaseKeystoreProperties = Properties().apply {
-        val propertiesFile = rootProject.file("keystore.properties")
-        if (propertiesFile.isFile) {
-            propertiesFile.inputStream().use { input -> load(input) }
+    val releaseKeystoreProperties =
+        Properties().apply {
+            val propertiesFile = rootProject.file("keystore.properties")
+            if (propertiesFile.isFile) {
+                propertiesFile.inputStream().use { input -> load(input) }
+            }
         }
-    }
 
     signingConfigs {
         create("release") {
@@ -131,6 +135,19 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("junit:junit:4.13.2")
+}
+
+// 使用 Kotlin language style 格式化 Kotlin 与 Gradle Kotlin DSL；检查任务不会修改工作区。
+configure<SpotlessExtension> {
+    ratchetFrom("origin/main")
+    kotlin {
+        target("src/**/*.kt")
+        ktfmt("0.65").kotlinlangStyle()
+    }
+    kotlinGradle {
+        target("build.gradle.kts")
+        ktfmt("0.65").kotlinlangStyle()
+    }
 }
 
 /** 输出工作流校验与发布所需的版本元数据。 */
