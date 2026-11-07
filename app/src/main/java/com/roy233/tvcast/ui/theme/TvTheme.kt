@@ -10,9 +10,8 @@ import androidx.compose.ui.unit.sp
 /**
  * tvOS-inspired tokens.
  *
- * The type scale is deliberately restrained: on a TV the hero is large, but
- * controls and labels stay close to the 10-foot minimum rather than turning
- * into oversized Android buttons.
+ * The type scale is deliberately restrained: on a TV the hero is large, but controls and labels
+ * stay close to the 10-foot minimum rather than turning into oversized Android buttons.
  */
 object TvColors {
     /** 基础黑色背景。 */
@@ -62,77 +61,85 @@ object TvType {
     private val family = FontFamily.SansSerif
 
     /** 首页主标题样式。 */
-    val hero = TextStyle(
-        fontFamily = family,
-        fontSize = 52.sp,
-        lineHeight = 58.sp,
-        fontWeight = FontWeight.Medium,
-        letterSpacing = (-0.8).sp,
-        color = TvColors.textPrimary,
-    )
+    val hero =
+        TextStyle(
+            fontFamily = family,
+            fontSize = 52.sp,
+            lineHeight = 58.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = (-0.8).sp,
+            color = TvColors.textPrimary,
+        )
 
     /** 页面标题样式。 */
-    val title = TextStyle(
-        fontFamily = family,
-        fontSize = 30.sp,
-        lineHeight = 36.sp,
-        fontWeight = FontWeight.SemiBold,
-        color = TvColors.textPrimary,
-    )
+    val title =
+        TextStyle(
+            fontFamily = family,
+            fontSize = 30.sp,
+            lineHeight = 36.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TvColors.textPrimary,
+        )
 
     /** 区块标题样式。 */
-    val section = TextStyle(
-        fontFamily = family,
-        fontSize = 24.sp,
-        lineHeight = 30.sp,
-        fontWeight = FontWeight.Medium,
-        color = TvColors.textPrimary,
-    )
+    val section =
+        TextStyle(
+            fontFamily = family,
+            fontSize = 24.sp,
+            lineHeight = 30.sp,
+            fontWeight = FontWeight.Medium,
+            color = TvColors.textPrimary,
+        )
 
     /** 正文样式。 */
-    val body = TextStyle(
-        fontFamily = family,
-        fontSize = 21.sp,
-        lineHeight = 28.sp,
-        fontWeight = FontWeight.Normal,
-        color = TvColors.textPrimary,
-    )
+    val body =
+        TextStyle(
+            fontFamily = family,
+            fontSize = 21.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.Normal,
+            color = TvColors.textPrimary,
+        )
 
     /** 中等字重正文样式。 */
-    val bodyMedium = TextStyle(
-        fontFamily = family,
-        fontSize = 21.sp,
-        lineHeight = 28.sp,
-        fontWeight = FontWeight.Medium,
-        color = TvColors.textPrimary,
-    )
+    val bodyMedium =
+        TextStyle(
+            fontFamily = family,
+            fontSize = 21.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.Medium,
+            color = TvColors.textPrimary,
+        )
 
     /** 按钮文本样式。 */
-    val button = TextStyle(
-        fontFamily = family,
-        fontSize = 18.sp,
-        lineHeight = 22.sp,
-        fontWeight = FontWeight.Medium,
-        color = TvColors.textPrimary,
-    )
+    val button =
+        TextStyle(
+            fontFamily = family,
+            fontSize = 18.sp,
+            lineHeight = 22.sp,
+            fontWeight = FontWeight.Medium,
+            color = TvColors.textPrimary,
+        )
 
     /** 辅助说明文字样式。 */
-    val caption = TextStyle(
-        fontFamily = family,
-        fontSize = 15.sp,
-        lineHeight = 20.sp,
-        fontWeight = FontWeight.Normal,
-        color = TvColors.textSecondary,
-    )
+    val caption =
+        TextStyle(
+            fontFamily = family,
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.Normal,
+            color = TvColors.textSecondary,
+        )
 
     /** 小号说明文字样式。 */
-    val tiny = TextStyle(
-        fontFamily = family,
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
-        fontWeight = FontWeight.Normal,
-        color = TvColors.textTertiary,
-    )
+    val tiny =
+        TextStyle(
+            fontFamily = family,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Normal,
+            color = TvColors.textTertiary,
+        )
 }
 
 /** 电视界面使用的尺寸常量集合。 */

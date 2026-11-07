@@ -6,8 +6,7 @@ import com.roy233.tvcast.feature.playback.presentation.PlaybackSpeed
 /**
  * 协调通用播放控制：暂停/恢复、进度调整、倍速与音量。
  *
- * 只承载与具体内容类型无关的传输操作；直播/点播会话、线路恢复和投屏解析由
- * 各自的协调器负责。
+ * 只承载与具体内容类型无关的传输操作；直播/点播会话、线路恢复和投屏解析由 各自的协调器负责。
  */
 class PlaybackCoordinator(
     private val canControl: () -> Boolean,
@@ -73,8 +72,7 @@ class PlaybackCoordinator(
     /**
      * 预览性地跳转到新位置。
      *
-     * 每次方向键输入都会立即驱动播放器跳转，以便画面加载目标位置；待确认状态只用于
-     * 控制进度条显示与自动提交，不会延后播放器的实际定位。
+     * 每次方向键输入都会立即驱动播放器跳转，以便画面加载目标位置；待确认状态只用于 控制进度条显示与自动提交，不会延后播放器的实际定位。
      */
     fun previewSeekBy(ms: Long) {
         if (isLive()) return

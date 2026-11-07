@@ -10,8 +10,9 @@ class LivePlayUrlResolverTest {
 
     @Test
     fun `parses v2 fmp4 hevc and avc routes using composed official URLs`() {
-        val data = JsonParser.parseString(
-            """{
+        val data =
+            JsonParser.parseString(
+                    """{
                 "quality":10000,
                 "accept_quality":[10000,400,250,150,80],
                 "live_stream_v2":[
@@ -28,7 +29,8 @@ class LivePlayUrlResolverTest {
                   ]}
                 ]
             }""",
-        ).asJsonObject
+                )
+                .asJsonObject
 
         val live = LivePlayUrlResolver.parse(data, roomId = 23459804L)
 
@@ -37,15 +39,19 @@ class LivePlayUrlResolverTest {
         assertEquals(3, live.qualityCandidates.size)
         assertEquals("fmp4", live.qualityCandidates.first().format)
         assertEquals(12, live.qualityCandidates.first().codecid)
-        assertEquals("https://cdn-a.bilivideo.com/live-bvc/stream-hevc.m3u8?token=secret-a", live.qualityCandidates.first().url)
+        assertEquals(
+            "https://cdn-a.bilivideo.com/live-bvc/stream-hevc.m3u8?token=secret-a",
+            live.qualityCandidates.first().url,
+        )
         assertEquals(1920, live.qualityCandidates.first().width)
         assertTrue(live.qualityCandidates.all { it.quality == 10000 })
     }
 
     @Test
     fun `parses legacy live stream and durl backup routes`() {
-        val data = JsonParser.parseString(
-            """{
+        val data =
+            JsonParser.parseString(
+                    """{
                 "quality":10000,
                 "live_stream":[
                   {"format_name":"flv","codec_name":"avc","current_qn":10000,
@@ -57,7 +63,8 @@ class LivePlayUrlResolverTest {
                    "backup_url":["https://durl-b.bilivideo.com/live.flv?sig=b"]}
                 ]
             }""",
-        ).asJsonObject
+                )
+                .asJsonObject
 
         val live = LivePlayUrlResolver.parse(data, roomId = 88L)
 
@@ -70,8 +77,9 @@ class LivePlayUrlResolverTest {
 
     @Test
     fun `AVC fallback filters out HEVC candidates at unchanged quality`() {
-        val data = JsonParser.parseString(
-            """{
+        val data =
+            JsonParser.parseString(
+                    """{
                 "quality":10000,
                 "live_stream_v2":[
                   {"format_name":"fmp4","codec":[
@@ -80,7 +88,8 @@ class LivePlayUrlResolverTest {
                   ]}
                 ]
             }""",
-        ).asJsonObject
+                )
+                .asJsonObject
 
         val live = LivePlayUrlResolver.parse(data, roomId = 88L, forceAvc = true)
 
@@ -92,8 +101,9 @@ class LivePlayUrlResolverTest {
 
     @Test
     fun `HEVC stream path overrides stale AVC codec metadata`() {
-        val data = JsonParser.parseString(
-            """{
+        val data =
+            JsonParser.parseString(
+                    """{
                 "quality":10000,
                 "live_stream_v2":[
                   {"format_name":"fmp4","codec":[
@@ -102,7 +112,8 @@ class LivePlayUrlResolverTest {
                   ]}
                 ]
             }""",
-        ).asJsonObject
+                )
+                .asJsonObject
 
         val live = LivePlayUrlResolver.parse(data, roomId = 88L)
 

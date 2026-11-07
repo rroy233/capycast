@@ -1,14 +1,15 @@
 package com.roy233.tvcast.feature.playback.application
 
+import android.os.SystemClock
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.playback.MediaTrack
 import com.roy233.tvcast.core.playback.PlaybackRequest
-import com.roy233.tvcast.feature.playback.model.RankedVodRoute
 import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
 import com.roy233.tvcast.feature.playback.domain.VodRecoveryController
 import com.roy233.tvcast.feature.playback.model.PendingVodRouteSwitch
+import com.roy233.tvcast.feature.playback.model.RankedVodRoute
 import com.roy233.tvcast.feature.playback.model.VodSession
 import com.roy233.tvcast.feature.playback.routing.CdnRouteRules
 import com.roy233.tvcast.feature.playback.routing.VodCdnCoordinator
@@ -20,17 +21,23 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import android.os.SystemClock
 
 /** 点播会话需要宿主提供的播放能力与界面状态。 */
 interface VodPlaybackHost {
     fun showRouteToast(message: String)
+
     fun isPausedWithoutBuffering(): Boolean
+
     fun currentRequest(): PlaybackRequest?
+
     fun setCurrent(request: PlaybackRequest)
+
     fun isCastActive(): Boolean
+
     fun positionMs(): Long
+
     fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean
+
     val coroutineScope: CoroutineScope
 }
 
@@ -85,10 +92,7 @@ class VodPlaybackCoordinator(
         pendingSwitch = null
     }
 
-    /**
-     * 将播放器缓冲事件交给恢复状态机。初始化和定位阶段的缓冲只保留诊断，稳定
-     * 播放后持续达到阈值的两次缓冲才会触发线路恢复。
-     */
+    /** 将播放器缓冲事件交给恢复状态机。初始化和定位阶段的缓冲只保留诊断，稳定 播放后持续达到阈值的两次缓冲才会触发线路恢复。 */
     fun observeBuffering(buffering: Boolean) {
         val session = activeSession ?: return
         val update = session.recovery.onBufferingChanged(buffering, SystemClock.elapsedRealtime())
@@ -103,22 +107,25 @@ class VodPlaybackCoordinator(
                 )
                 handleFailure(VodPlaybackRules.recoveryReason(update.failure))
             }
-            update.countedRebuffer -> LogHub.w(
-                TAG,
-                "VOD severe rebuffer count=${session.recovery.rebufferCount} duration=${update.durationMs}ms " +
-                "qn=${session.request.video.id} host=$host ${session.recovery.snapshot()}",
-            )
-            update.ignored && buffering -> LogHub.d(
-                TAG,
-                "VOD buffering ignored during ${update.phase} qn=${session.request.video.id} host=$host " +
-                    session.recovery.snapshot(),
-            )
+            update.countedRebuffer ->
+                LogHub.w(
+                    TAG,
+                    "VOD severe rebuffer count=${session.recovery.rebufferCount} duration=${update.durationMs}ms " +
+                        "qn=${session.request.video.id} host=$host ${session.recovery.snapshot()}",
+                )
+            update.ignored && buffering ->
+                LogHub.d(
+                    TAG,
+                    "VOD buffering ignored during ${update.phase} qn=${session.request.video.id} host=$host " +
+                        session.recovery.snapshot(),
+                )
         }
     }
 
     /** 自动恢复网络/缓冲故障時切到同一画质与表示层的下一条 CDN。 */
     fun handleFailure(reason: String, preferCodecFallback: Boolean = false): Boolean {
-        if (playback.currentRequest()?.isLive == true || !playback.isCastActive() || switching) return false
+        if (playback.currentRequest()?.isLive == true || !playback.isCastActive() || switching)
+            return false
         val session = activeSession ?: return false
         val request = playback.currentRequest() ?: return false
         pendingSwitch?.let { pending ->
@@ -129,7 +136,8 @@ class VodPlaybackCoordinator(
             )
             pendingSwitch = null
         }
-        if (preferCodecFallback && scheduleVodRepresentationFallback(reason, session, request)) return true
+        if (preferCodecFallback && scheduleVodRepresentationFallback(reason, session, request))
+            return true
         if (preferCodecFallback) {
             session.attemptedRepresentations += VodPlaybackRules.representationKey(request.video)
             LogHub.w(
@@ -140,43 +148,51 @@ class VodPlaybackCoordinator(
         }
         val fromUrl = request.video.url
         session.attemptedUrls += fromUrl
-        val next = cdn.nextSameRepresentation(
-            ordered = session.videoRoutes,
-            activeUrl = fromUrl,
-            attemptedUrls = session.attemptedUrls,
-            allowPcdn = VodPlaybackRules.isSubstantiveVodFailure(reason),
-        ) ?: run {
-            LogHub.e(
-                TAG,
-                "VOD CDN switch exhausted reason=$reason qn=${request.video.id} " +
-                    "attempted=${session.attemptedUrls.size} routes=${session.videoRoutes.size}",
+        val next =
+            cdn.nextSameRepresentation(
+                ordered = session.videoRoutes,
+                activeUrl = fromUrl,
+                attemptedUrls = session.attemptedUrls,
+                allowPcdn = VodPlaybackRules.isSubstantiveVodFailure(reason),
             )
-            return scheduleVodRepresentationFallback(reason, session, request)
-        }
+                ?: run {
+                    LogHub.e(
+                        TAG,
+                        "VOD CDN switch exhausted reason=$reason qn=${request.video.id} " +
+                            "attempted=${session.attemptedUrls.size} routes=${session.videoRoutes.size}",
+                    )
+                    return scheduleVodRepresentationFallback(reason, session, request)
+                }
         val activeAudio = request.audio
         if (activeAudio != null) session.attemptedAudioUrls += activeAudio.url
         val nextAudioRoute = activeAudio?.let { audio ->
-            session.audioRoutes.firstOrNull { it.url != audio.url && it.url !in session.attemptedAudioUrls }
+            session.audioRoutes.firstOrNull {
+                it.url != audio.url && it.url !in session.attemptedAudioUrls
+            }
         }
-        val nextAudio = if (activeAudio != null && nextAudioRoute != null) {
-            cdn.applyRoute(activeAudio, nextAudioRoute, session.audioRoutes)
-        } else {
-            activeAudio
-        }
+        val nextAudio =
+            if (activeAudio != null && nextAudioRoute != null) {
+                cdn.applyRoute(activeAudio, nextAudioRoute, session.audioRoutes)
+            } else {
+                activeAudio
+            }
         switching = true
         session.recovery.onSwitching()
         val position = playback.positionMs()
         val nextTrack = cdn.applyRoute(request.video, next, session.videoRoutes)
         val nextRequest = request.copy(video = nextTrack, audio = nextAudio)
-        pendingSwitch = PendingVodRouteSwitch(
-            reason = reason,
-            fromUrl = fromUrl,
-            target = next,
-            quality = request.video.id,
-            codecId = request.video.codecId,
-            positionMs = position,
-        )
-        val opened = runCatching { playback.openPlayback(nextRequest, position) }
+        pendingSwitch =
+            PendingVodRouteSwitch(
+                reason = reason,
+                fromUrl = fromUrl,
+                target = next,
+                quality = request.video.id,
+                codecId = request.video.codecId,
+                positionMs = position,
+            )
+        val opened = runCatching {
+            playback.openPlayback(nextRequest, position)
+        }
             .onFailure { error ->
                 LogHub.e(TAG, "VOD CDN switch open failed reason=$reason", error, stack = true)
             }
@@ -205,7 +221,8 @@ class VodPlaybackCoordinator(
         request: PlaybackRequest,
     ): Boolean {
         session.attemptedRepresentations += VodPlaybackRules.representationKey(request.video)
-        val candidate = nextVodRepresentation(request, session.attemptedRepresentations) ?: return false
+        val candidate =
+            nextVodRepresentation(request, session.attemptedRepresentations) ?: return false
         if (switching) return false
         switching = true
         session.recovery.onSwitching()
@@ -219,9 +236,15 @@ class VodPlaybackCoordinator(
         playback.coroutineScope.launch {
             var opened = false
             try {
-                val routes = withContext(Dispatchers.IO) { cdn.rankTrack(candidate) }
-                    .ifEmpty { listOf(RankedVodRoute(candidate.url)) }
-                if (activeSession !== session || playback.currentRequest()?.video?.url != request.video.url || !playback.isCastActive()) return@launch
+                val routes =
+                    withContext(Dispatchers.IO) { cdn.rankTrack(candidate) }
+                        .ifEmpty { listOf(RankedVodRoute(candidate.url)) }
+                if (
+                    activeSession !== session ||
+                        playback.currentRequest()?.video?.url != request.video.url ||
+                        !playback.isCastActive()
+                )
+                    return@launch
                 val selected = cdn.applyRoute(candidate, routes.first(), routes)
                 val nextRequest = request.copy(video = selected)
                 val previousRoutes = session.videoRoutes
@@ -236,7 +259,8 @@ class VodPlaybackCoordinator(
                 if (!opened) {
                     session.request = previousRequest
                     session.videoRoutes = previousRoutes
-                    session.attemptedRepresentations += VodPlaybackRules.representationKey(candidate)
+                    session.attemptedRepresentations +=
+                        VodPlaybackRules.representationKey(candidate)
                     playback.setCurrent(previousRequest)
                     LogHub.e(
                         TAG,
@@ -280,14 +304,17 @@ class VodPlaybackCoordinator(
         attempted: Set<String>,
     ): MediaTrack? {
         val currentTrack = request.video
-        val remaining = request.videos.filter { track ->
-            VodPlaybackRules.representationKey(track) !in attempted && track.url.isNotBlank() &&
-                track.codecId in SUPPORTED_VIDEO_CODECS
-        }
+        val remaining =
+            request.videos.filter { track ->
+                VodPlaybackRules.representationKey(track) !in attempted &&
+                    track.url.isNotBlank() &&
+                    track.codecId in SUPPORTED_VIDEO_CODECS
+            }
         val sameQuality = remaining.filter { it.id == currentTrack.id }
-        if (sameQuality.isNotEmpty()) return sameQuality.maxByOrNull {
-            VodPlaybackRules.videoCodecRank(it)
-        }
+        if (sameQuality.isNotEmpty())
+            return sameQuality.maxByOrNull {
+                VodPlaybackRules.videoCodecRank(it)
+            }
 
         val currentRank = request.acceptedQualities.indexOf(currentTrack.id)
         val lowerQuality = remaining.filter { track ->
@@ -296,13 +323,15 @@ class VodPlaybackCoordinator(
         }
         return if (currentRank >= 0) {
             lowerQuality.minWithOrNull(
-                compareBy<MediaTrack> { request.acceptedQualities.indexOf(it.id).takeIf { rank -> rank >= 0 } ?: Int.MAX_VALUE }
+                compareBy<MediaTrack> {
+                        request.acceptedQualities.indexOf(it.id).takeIf { rank -> rank >= 0 }
+                            ?: Int.MAX_VALUE
+                    }
                     .thenByDescending { VodPlaybackRules.videoCodecRank(it) },
             )
         } else {
             lowerQuality.maxWithOrNull(
-                compareBy<MediaTrack> { it.id }
-                    .thenBy { VodPlaybackRules.videoCodecRank(it) },
+                compareBy<MediaTrack> { it.id }.thenBy { VodPlaybackRules.videoCodecRank(it) },
             )
         }
     }
@@ -318,11 +347,12 @@ class VodPlaybackCoordinator(
         switching = false
         val host = LogRedaction.host(switched.target.url)
         val probe = switched.target.result
-        val detail = "reason=${switched.reason} qn=${switched.quality} codec=${switched.codecId} " +
-            "from=${LogRedaction.host(switched.fromUrl)} to=$host " +
-            "pcdn=${CdnRouteRules.isPcdn(switched.target.url)} " +
-            "ttfb=${probe?.firstByteMs ?: -1}ms throughput=${probe?.throughputBytesPerSecond ?: 0}Bps " +
-            "position=${switched.positionMs}ms"
+        val detail =
+            "reason=${switched.reason} qn=${switched.quality} codec=${switched.codecId} " +
+                "from=${LogRedaction.host(switched.fromUrl)} to=$host " +
+                "pcdn=${CdnRouteRules.isPcdn(switched.target.url)} " +
+                "ttfb=${probe?.firstByteMs ?: -1}ms throughput=${probe?.throughputBytesPerSecond ?: 0}Bps " +
+                "position=${switched.positionMs}ms"
         LogHub.i(TAG, "VOD CDN switch succeeded $detail")
         PlaybackDiagnostics.event("VodRouteSwitchSuccess", detail)
         playback.showRouteToast("播放线路已切换：$host")
@@ -383,33 +413,43 @@ class VodPlaybackCoordinator(
     /** 每 30 秒刷新备用线路排序，不更改当前播放地址。 */
     fun startBackupRefresh() {
         backupRefreshJob?.cancel()
-        backupRefreshJob = playback.coroutineScope.launch {
-            while (isActive) {
-                delay(VOD_BACKUP_REFRESH_INTERVAL_MS)
-                val session = activeSession ?: return@launch
-                val activeUrl = session.request.video.url
-                val refreshed = runCatching {
-                    withContext(Dispatchers.IO) {
-                        cdn.refreshBackups(
-                            track = session.request.video,
-                            activeUrl = activeUrl,
-                            excludedUrls = session.attemptedUrls,
-                        )
+        backupRefreshJob =
+            playback.coroutineScope.launch {
+                while (isActive) {
+                    delay(VOD_BACKUP_REFRESH_INTERVAL_MS)
+                    val session = activeSession ?: return@launch
+                    val activeUrl = session.request.video.url
+                    val refreshed = runCatching {
+                        withContext(Dispatchers.IO) {
+                            cdn.refreshBackups(
+                                track = session.request.video,
+                                activeUrl = activeUrl,
+                                excludedUrls = session.attemptedUrls,
+                            )
+                        }
                     }
-                }.onFailure { error ->
-                    LogHub.e(TAG, "VOD backup CDN refresh failed ${LogRedaction.reason(error)}", error)
-                }.getOrDefault(emptyList())
-                if (activeSession !== session || refreshed.isEmpty()) continue
-                val active = session.videoRoutes.firstOrNull { it.url == activeUrl }
-                session.videoRoutes = refreshed + listOfNotNull(active)
-                    .filterNot { route -> refreshed.any { it.url == route.url } }
-                LogHub.i(
-                    TAG,
-                    "VOD backup CDN ranking refreshed active=${LogRedaction.host(activeUrl)} " +
-                        "routes=${session.videoRoutes.take(8).joinToString(",") { LogRedaction.host(it.url) }}",
-                )
+                        .onFailure { error ->
+                            LogHub.e(
+                                TAG,
+                                "VOD backup CDN refresh failed ${LogRedaction.reason(error)}",
+                                error,
+                            )
+                        }
+                        .getOrDefault(emptyList())
+                    if (activeSession !== session || refreshed.isEmpty()) continue
+                    val active = session.videoRoutes.firstOrNull { it.url == activeUrl }
+                    session.videoRoutes =
+                        refreshed +
+                            listOfNotNull(active).filterNot { route ->
+                                refreshed.any { it.url == route.url }
+                            }
+                    LogHub.i(
+                        TAG,
+                        "VOD backup CDN ranking refreshed active=${LogRedaction.host(activeUrl)} " +
+                            "routes=${session.videoRoutes.take(8).joinToString(",") { LogRedaction.host(it.url) }}",
+                    )
+                }
             }
-        }
     }
 
     private companion object {

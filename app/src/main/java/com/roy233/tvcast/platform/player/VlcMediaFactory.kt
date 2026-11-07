@@ -4,16 +4,15 @@ import androidx.core.net.toUri
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
-import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
+import com.roy233.tvcast.core.playback.PlaybackRequest
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 
 /**
  * 根据解析后的播放信息构建 libVLC 媒体，并记录媒体选项和候选轨道。
  *
- * 构建失败时会把已经创建的 [Media] 释放后重新抛出，避免打开失败路径泄漏
- * 原生媒体对象。
+ * 构建失败时会把已经创建的 [Media] 释放后重新抛出，避免打开失败路径泄漏 原生媒体对象。
  *
  * @param libVlc 用于创建媒体的 libVLC 实例。
  */
@@ -90,7 +89,8 @@ internal class VlcMediaFactory(private val libVlc: LibVLC) {
                 "videos=${info.videos.size} audios=${info.audios.size} backups=${video.backupUrls.size}",
         )
         val videoUrl = info.progressiveUrl ?: video.url
-        val safeVideoUrl = if (info.isLive) LogRedaction.host(videoUrl) else LogRedaction.url(videoUrl)
+        val safeVideoUrl =
+            if (info.isLive) LogRedaction.host(videoUrl) else LogRedaction.url(videoUrl)
         LogHub.i(TAG, "open videoUrl=$safeVideoUrl")
         info.audio?.let { audio ->
             LogHub.i(TAG, "open audioUrl=${LogRedaction.url(audio.url)}")

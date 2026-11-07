@@ -1,83 +1,24 @@
 package com.roy233.tvcast.ui.tv
 
-import com.roy233.tvcast.ui.tv.home.HomeScreen
-import com.roy233.tvcast.ui.tv.account.LoginDialog
-import com.roy233.tvcast.ui.tv.navigation.Sidebar
-import com.roy233.tvcast.ui.tv.overlay.HelpSheet
-import com.roy233.tvcast.ui.tv.overlay.QuickPanel
-import com.roy233.tvcast.ui.tv.player.LoadingScreen
-import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
-import com.roy233.tvcast.ui.tv.player.PlayingScreen
-import com.roy233.tvcast.ui.tv.settings.SettingsScreen
-import com.roy233.tvcast.ui.tv.settings.CalibrationAdjustScreen
-import com.roy233.tvcast.feature.display.CalibrationPhase
-
-import android.graphics.Bitmap
-import com.roy233.tvcast.ui.theme.TvColors
-import com.roy233.tvcast.ui.theme.TvType
-import com.roy233.tvcast.ui.model.AudioOption
-import com.roy233.tvcast.ui.model.PanelKind
-import com.roy233.tvcast.feature.cast.domain.RecentCast
-import com.roy233.tvcast.ui.model.TrackOption
-import com.roy233.tvcast.ui.model.TvActions
-import com.roy233.tvcast.ui.model.TvDestination
-import com.roy233.tvcast.ui.model.TvError
-import com.roy233.tvcast.ui.model.TvMode
-import com.roy233.tvcast.ui.model.TvUiState
-import com.roy233.tvcast.ui.designsystem.*
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.Icon
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Audiotrack
-import androidx.compose.material.icons.rounded.Cast
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Forward10
-import androidx.compose.material.icons.rounded.HighQuality
-import androidx.compose.material.icons.rounded.Logout
-import androidx.compose.material.icons.rounded.Replay10
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -87,22 +28,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -111,30 +40,35 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import android.os.Build
 import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.feature.display.CalibrationPhase
+import com.roy233.tvcast.ui.designsystem.*
 import com.roy233.tvcast.ui.designsystem.FrostedBackdrop
 import com.roy233.tvcast.ui.designsystem.LocalFrostedBackdrop
 import com.roy233.tvcast.ui.designsystem.progressiveBlur
+import com.roy233.tvcast.ui.model.TvActions
+import com.roy233.tvcast.ui.model.TvDestination
+import com.roy233.tvcast.ui.model.TvMode
+import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.tv.account.LoginDialog
+import com.roy233.tvcast.ui.tv.home.HomeScreen
+import com.roy233.tvcast.ui.tv.navigation.Sidebar
+import com.roy233.tvcast.ui.tv.overlay.HelpSheet
+import com.roy233.tvcast.ui.tv.overlay.QuickPanel
+import com.roy233.tvcast.ui.tv.player.LoadingScreen
+import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
+import com.roy233.tvcast.ui.tv.player.PlayingScreen
+import com.roy233.tvcast.ui.tv.settings.CalibrationAdjustScreen
+import com.roy233.tvcast.ui.tv.settings.SettingsScreen
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /** 背景截取前的等待时长：等背景完成一次绘制。 */
 private const val FROST_CAPTURE_DELAY_MS = 160L
@@ -150,9 +84,16 @@ private const val FROST_CAPTURE_REFRESH_MS = 900L
  */
 @Composable
 fun TvRoot(state: TvUiState, actions: TvActions) {
-    if (state.calibration.phase == CalibrationPhase.ADJUST || state.calibration.phase == CalibrationPhase.CONFIRM) {
+    if (
+        state.calibration.phase == CalibrationPhase.ADJUST ||
+            state.calibration.phase == CalibrationPhase.CONFIRM
+    ) {
         Box(Modifier.fillMaxSize()) {
-            CalibrationAdjustScreen(state, actions, interactive = state.calibration.phase == CalibrationPhase.ADJUST)
+            CalibrationAdjustScreen(
+                state,
+                actions,
+                interactive = state.calibration.phase == CalibrationPhase.ADJUST,
+            )
             if (state.calibration.phase == CalibrationPhase.CONFIRM) {
                 GlassAlert(
                     title = "完成画面校准？",
@@ -174,11 +115,12 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
     val seekAccelerator = remember { PlaybackSeekAccelerator() }
     val density = LocalDensity.current
     val swipeThreshold = with(density) { 72.dp.toPx() }
-    val sidebarDepth by animateFloatAsState(
-        targetValue = if (state.mode == TvMode.IDLE && state.sidebarVisible) 1f else 0f,
-        animationSpec = tween(260),
-        label = "sidebar-depth",
-    )
+    val sidebarDepth by
+        animateFloatAsState(
+            targetValue = if (state.mode == TvMode.IDLE && state.sidebarVisible) 1f else 0f,
+            animationSpec = tween(260),
+            label = "sidebar-depth",
+        )
     val recede = Modifier.graphicsLayer {
         scaleX = 1f - 0.035f * sidebarDepth
         scaleY = 1f - 0.035f * sidebarDepth
@@ -235,13 +177,14 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                 LogHub.w("TvGlass", "frost capture failed for destination=${state.destination}")
                 return@forEach
             }
-            val blurred = withContext(Dispatchers.Default) {
-                FrostedBackdrop(
-                    image = snapshot.progressiveBlur(),
-                    windowWidth = snapshot.width,
-                    windowHeight = snapshot.height,
-                )
-            }
+            val blurred =
+                withContext(Dispatchers.Default) {
+                    FrostedBackdrop(
+                        image = snapshot.progressiveBlur(),
+                        windowWidth = snapshot.width,
+                        windowHeight = snapshot.height,
+                    )
+                }
             frostedBackdrop = blurred
             LogHub.d(
                 "TvGlass",
@@ -256,9 +199,11 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
         LocalFrostedBackdrop provides frostedBackdrop,
     ) {
         Box(
-            Modifier
-                .fillMaxSize()
-                .then(if (state.mode == TvMode.PLAYING) Modifier else Modifier.background(TvColors.black))
+            Modifier.fillMaxSize()
+                .then(
+                    if (state.mode == TvMode.PLAYING) Modifier
+                    else Modifier.background(TvColors.black),
+                )
                 .then(
                     if (state.mode == TvMode.IDLE && !modal && !state.sidebarVisible) {
                         Modifier.pointerInput(state.sidebarVisible) {
@@ -278,20 +223,17 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                         }
                     } else {
                         Modifier
-                    }
+                    },
                 )
                 .onPreviewKeyEvent { event ->
                     TvKeyHandler.handle(event, state, actions, modal, seekAccelerator) ||
                         handleLeftEdge(event, state, actions, focusManager)
-                }
+                },
         ) {
             if (ambient) {
                 // 首页自己的封面背景绘制在页面内，这里只保留玻璃表面采样的背景层。
                 TvBackground(
-                    Modifier
-                        .matchParentSize()
-                        .then(recede)
-                        .layerBackdrop(backdrop),
+                    Modifier.matchParentSize().then(recede).layerBackdrop(backdrop),
                 )
             } else if (state.mode == TvMode.ERROR && !state.castActive) {
                 TvBackground(Modifier.matchParentSize())
@@ -317,24 +259,25 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                         exit = fadeOut(tween(160)),
                     ) {
                         Box(
-                            Modifier
-                                .fillMaxSize()
+                            Modifier.fillMaxSize()
                                 .background(Color.Black.copy(alpha = 0.56f))
                                 .pointerInput(Unit) {
                                     detectTapGestures { actions.onCloseSidebar() }
-                                }
+                                },
                         )
                     }
                     AnimatedVisibility(
                         visible = state.sidebarVisible,
-                        enter = slideInHorizontally(
-                            initialOffsetX = { width -> -width },
-                            animationSpec = tween(240),
-                        ) + fadeIn(tween(180)),
-                        exit = slideOutHorizontally(
-                            targetOffsetX = { width -> -width },
-                            animationSpec = tween(200),
-                        ) + fadeOut(tween(160)),
+                        enter =
+                            slideInHorizontally(
+                                initialOffsetX = { width -> -width },
+                                animationSpec = tween(240),
+                            ) + fadeIn(tween(180)),
+                        exit =
+                            slideOutHorizontally(
+                                targetOffsetX = { width -> -width },
+                                animationSpec = tween(200),
+                            ) + fadeOut(tween(160)),
                     ) {
                         Sidebar(state, actions)
                     }
@@ -342,21 +285,23 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
 
                 TvMode.LOADING -> LoadingScreen()
 
-                TvMode.PLAYING -> PlayingScreen(
-                    state = state,
-                    actions = actions,
-                    enabled = !modal,
-                    seekAccelerator = seekAccelerator,
-                )
-
-                TvMode.ERROR -> if (state.castActive) {
+                TvMode.PLAYING ->
                     PlayingScreen(
-                        state = state.copy(hudVisible = false),
+                        state = state,
                         actions = actions,
-                        enabled = false,
+                        enabled = !modal,
                         seekAccelerator = seekAccelerator,
                     )
-                }
+
+                TvMode.ERROR ->
+                    if (state.castActive) {
+                        PlayingScreen(
+                            state = state.copy(hudVisible = false),
+                            actions = actions,
+                            enabled = false,
+                            seekAccelerator = seekAccelerator,
+                        )
+                    }
             }
 
             AnimatedVisibility(
@@ -397,14 +342,15 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
             }
 
             when (state.calibration.phase) {
-                CalibrationPhase.INTRO -> GlassAlert(
-                    title = "校准电视画面？",
-                    message = "如果视频超出屏幕边缘，可以用遥控器调整四边。跳过后不会再次自动提示，仍可从设置中打开。",
-                    primaryLabel = "开始校准",
-                    onPrimary = actions.onStartCalibration,
-                    secondaryLabel = "跳过",
-                    onSecondary = actions.onCancelCalibration,
-                )
+                CalibrationPhase.INTRO ->
+                    GlassAlert(
+                        title = "校准电视画面？",
+                        message = "如果视频超出屏幕边缘，可以用遥控器调整四边。跳过后不会再次自动提示，仍可从设置中打开。",
+                        primaryLabel = "开始校准",
+                        onPrimary = actions.onStartCalibration,
+                        secondaryLabel = "跳过",
+                        onSecondary = actions.onCancelCalibration,
+                    )
                 else -> Unit
             }
 
@@ -412,9 +358,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                 visible = state.toast != null,
                 enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 2 },
                 exit = fadeOut(tween(180)) + slideOutVertically(tween(220)) { it / 2 },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 48.dp, bottom = 40.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = 40.dp),
             ) {
                 GlassPill(text = state.toast.orEmpty(), emphasized = true)
             }
@@ -437,13 +381,14 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
         state.mode,
         state.seekPreviewPositionMs,
     ) {
-        if (state.mode == TvMode.PLAYING &&
-            state.hudVisible &&
-            state.isPlaying &&
-            state.panel == null &&
-            state.error == null &&
-            !state.stopCastConfirm &&
-            state.seekPreviewPositionMs == null
+        if (
+            state.mode == TvMode.PLAYING &&
+                state.hudVisible &&
+                state.isPlaying &&
+                state.panel == null &&
+                state.error == null &&
+                !state.stopCastConfirm &&
+                state.seekPreviewPositionMs == null
         ) {
             delay(4000)
             actions.onHideHud()

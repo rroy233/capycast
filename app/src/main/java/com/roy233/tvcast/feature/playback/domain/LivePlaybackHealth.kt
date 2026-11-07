@@ -53,16 +53,23 @@ class LivePlaybackStallWatchdog(
         buffering: Boolean,
     ): Boolean {
         if (!playing || buffering) {
-            updateSample(positionMs, readBytes, demuxReadBytes, decodedVideoFrames, displayedPictures)
+            updateSample(
+                positionMs,
+                readBytes,
+                demuxReadBytes,
+                decodedVideoFrames,
+                displayedPictures,
+            )
             lastProgressAtMs = nowMs
             failureReported = false
             return false
         }
-        val progressed = isAdvanced(positionMs, lastPositionMs) ||
-            isAdvanced(readBytes, lastReadBytes) ||
-            isAdvanced(demuxReadBytes, lastDemuxReadBytes) ||
-            isAdvanced(decodedVideoFrames, lastDecodedFrames) ||
-            isAdvanced(displayedPictures, lastDisplayedPictures)
+        val progressed =
+            isAdvanced(positionMs, lastPositionMs) ||
+                isAdvanced(readBytes, lastReadBytes) ||
+                isAdvanced(demuxReadBytes, lastDemuxReadBytes) ||
+                isAdvanced(decodedVideoFrames, lastDecodedFrames) ||
+                isAdvanced(displayedPictures, lastDisplayedPictures)
         updateSample(positionMs, readBytes, demuxReadBytes, decodedVideoFrames, displayedPictures)
         if (lastProgressAtMs == 0L || progressed) {
             lastProgressAtMs = nowMs
@@ -84,7 +91,13 @@ class LivePlaybackStallWatchdog(
         failureReported = false
     }
 
-    private fun updateSample(positionMs: Long, readBytes: Long, demuxReadBytes: Long, decodedVideoFrames: Long, displayedPictures: Long) {
+    private fun updateSample(
+        positionMs: Long,
+        readBytes: Long,
+        demuxReadBytes: Long,
+        decodedVideoFrames: Long,
+        displayedPictures: Long,
+    ) {
         if (positionMs >= 0L) lastPositionMs = positionMs
         if (readBytes >= 0L) lastReadBytes = readBytes
         if (demuxReadBytes >= 0L) lastDemuxReadBytes = demuxReadBytes
@@ -92,7 +105,10 @@ class LivePlaybackStallWatchdog(
         if (displayedPictures >= 0L) lastDisplayedPictures = displayedPictures
     }
 
-    private fun isAdvanced(current: Long, previous: Long): Boolean = current >= 0L && previous >= 0L && current > previous
+    private fun isAdvanced(current: Long, previous: Long): Boolean =
+        current >= 0L && previous >= 0L && current > previous
 
-    private companion object { const val STALL_TIMEOUT_MS = 5_000L }
+    private companion object {
+        const val STALL_TIMEOUT_MS = 5_000L
+    }
 }

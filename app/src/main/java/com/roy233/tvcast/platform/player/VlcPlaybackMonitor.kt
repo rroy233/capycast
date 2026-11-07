@@ -11,8 +11,7 @@ import org.videolan.libvlc.interfaces.IMedia
 /**
  * 周期性检查播放启动、视频输出、进度停滞和统计异常。
  *
- * 监控任务只在主线程处理器上运行；打开、停止和失败路径通过 [start] / [stop]
- * 统一管理生命周期，避免多个监控任务并发写同一份状态。
+ * 监控任务只在主线程处理器上运行；打开、停止和失败路径通过 [start] / [stop] 统一管理生命周期，避免多个监控任务并发写同一份状态。
  *
  * @param player 播放器实例。
  * @param state 当前播放会话状态。
@@ -29,17 +28,18 @@ internal class VlcPlaybackMonitor(
 ) {
 
     /** 周期性播放监控任务。 */
-    private val monitor = object : Runnable {
-        /** 执行一次监控检查并重新调度。 */
-        override fun run() {
-            if (!state.active) return
-            runCatching { monitorTick() }
-                .onFailure {
-                    LogHub.e(TAG, "monitor tick failed", it, stack = true)
-                }
-            if (state.active) handler.postDelayed(this, VLC_MONITOR_INTERVAL_MS)
+    private val monitor =
+        object : Runnable {
+            /** 执行一次监控检查并重新调度。 */
+            override fun run() {
+                if (!state.active) return
+                runCatching { monitorTick() }
+                    .onFailure {
+                        LogHub.e(TAG, "monitor tick failed", it, stack = true)
+                    }
+                if (state.active) handler.postDelayed(this, VLC_MONITOR_INTERVAL_MS)
+            }
         }
-    }
 
     /** 启动周期监控。 */
     fun start() {
@@ -73,22 +73,23 @@ internal class VlcPlaybackMonitor(
             }
             return
         }
-        val sample = JSONObject().apply {
-            put("atMs", now - state.mediaOpenedAt)
-            put("positionMs", runCatching { player.time }.getOrDefault(-1L))
-            put("readBytes", stats.readBytes)
-            put("inputBitrate", stats.inputBitrate.toDouble())
-            put("demuxReadBytes", stats.demuxReadBytes)
-            put("demuxBitrate", stats.demuxBitrate.toDouble())
-            put("demuxCorrupted", stats.demuxCorrupted)
-            put("demuxDiscontinuity", stats.demuxDiscontinuity)
-            put("decodedVideo", stats.decodedVideo)
-            put("decodedAudio", stats.decodedAudio)
-            put("displayedPictures", stats.displayedPictures)
-            put("lostPictures", stats.lostPictures)
-            put("playedAbuffers", stats.playedAbuffers)
-            put("lostAbuffers", stats.lostAbuffers)
-        }
+        val sample =
+            JSONObject().apply {
+                put("atMs", now - state.mediaOpenedAt)
+                put("positionMs", runCatching { player.time }.getOrDefault(-1L))
+                put("readBytes", stats.readBytes)
+                put("inputBitrate", stats.inputBitrate.toDouble())
+                put("demuxReadBytes", stats.demuxReadBytes)
+                put("demuxBitrate", stats.demuxBitrate.toDouble())
+                put("demuxCorrupted", stats.demuxCorrupted)
+                put("demuxDiscontinuity", stats.demuxDiscontinuity)
+                put("decodedVideo", stats.decodedVideo)
+                put("decodedAudio", stats.decodedAudio)
+                put("displayedPictures", stats.displayedPictures)
+                put("lostPictures", stats.lostPictures)
+                put("playedAbuffers", stats.playedAbuffers)
+                put("lostAbuffers", stats.lostAbuffers)
+            }
         state.lastStats = sample
         PlaybackDiagnostics.stats(sample)
         if (!state.statsFirstLogged) {
@@ -158,10 +159,11 @@ internal class VlcPlaybackMonitor(
             reporter.logNativeLogTail("watchdog-no-playing", 25)
         }
         checkVideoOutput(now)
-        if (state.playingSeen &&
-            runCatching { player.isPlaying }.getOrDefault(false) &&
-            state.lastProgressAt > 0L &&
-            now - state.lastProgressAt > VLC_STALL_MS
+        if (
+            state.playingSeen &&
+                runCatching { player.isPlaying }.getOrDefault(false) &&
+                state.lastProgressAt > 0L &&
+                now - state.lastProgressAt > VLC_STALL_MS
         ) {
             warnThrottled(
                 "stalled",
@@ -171,9 +173,10 @@ internal class VlcPlaybackMonitor(
             sampleStats(force = true)
             reporter.logNativeLogTail("watchdog-stalled", 25)
         }
-        if (!state.vlcLogWarningLogged &&
-            openElapsed > VLC_NO_NATIVE_LOG_MS &&
-            PlaybackDiagnostics.vlcLogBytes() <= 0L
+        if (
+            !state.vlcLogWarningLogged &&
+                openElapsed > VLC_NO_NATIVE_LOG_MS &&
+                PlaybackDiagnostics.vlcLogBytes() <= 0L
         ) {
             state.vlcLogWarningLogged = true
             LogHub.w(
@@ -192,8 +195,7 @@ internal class VlcPlaybackMonitor(
     /**
      * 检查是否已经建立有效视频输出，并在解码成功而画面无法显示时请求重建。
      *
-     * `Vout` 事件的数量为 0 只代表旧输出被移除，不能视为视频输出就绪。这里以
-     * 正数输出数和 displayedPictures 为准，避免播放器继续处于“有声音、无画面”的状态。
+     * `Vout` 事件的数量为 0 只代表旧输出被移除，不能视为视频输出就绪。这里以 正数输出数和 displayedPictures 为准，避免播放器继续处于“有声音、无画面”的状态。
      */
     private fun checkVideoOutput(now: Long) {
         if (!state.playingSeen || state.voutRecoveryRequested) return
@@ -274,10 +276,11 @@ internal class VlcPlaybackMonitor(
                     "(displayed=${stats.displayedPictures} lost=${stats.lostPictures})",
             )
         }
-        if (playing &&
-            positionMoved &&
-            stats.playedAbuffers == 0 &&
-            runCatching { player.audioTracksCount }.getOrDefault(0) > 0
+        if (
+            playing &&
+                positionMoved &&
+                stats.playedAbuffers == 0 &&
+                runCatching { player.audioTracksCount }.getOrDefault(0) > 0
         ) {
             warnThrottled(
                 "noAudio",
@@ -285,9 +288,10 @@ internal class VlcPlaybackMonitor(
                     "${runCatching { player.audioTracksCount }.getOrDefault(0)})",
             )
         }
-        if (now - state.mediaOpenedAt > 30_000L &&
-            stats.decodedVideo == 0 &&
-            stats.displayedPictures == 0
+        if (
+            now - state.mediaOpenedAt > 30_000L &&
+                stats.decodedVideo == 0 &&
+                stats.displayedPictures == 0
         ) {
             warnThrottled(
                 "noVideoStats",

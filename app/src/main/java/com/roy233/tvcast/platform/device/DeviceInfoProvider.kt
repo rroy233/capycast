@@ -17,31 +17,33 @@ import java.util.UUID
 class DeviceInfoProvider(private val context: Context) {
 
     /** 保存设备身份兜底标识的偏好存储。 */
-    private val identityPrefs = context.applicationContext.getSharedPreferences(
-        IDENTITY_PREFS,
-        Context.MODE_PRIVATE,
-    )
+    private val identityPrefs =
+        context.applicationContext.getSharedPreferences(
+            IDENTITY_PREFS,
+            Context.MODE_PRIVATE,
+        )
 
     /** 获取当前连接的 Wi-Fi 名称，无法读取时返回通用名称。 */
     fun wifiName(): String = runCatching {
-        val wm = context.applicationContext
-            .getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val ssid = wm.connectionInfo?.ssid?.trim('"')
         if (ssid.isNullOrBlank() || ssid == "<unknown ssid>") "Wi-Fi" else ssid
-    }.getOrDefault("Wi-Fi")
+    }
+        .getOrDefault("Wi-Fi")
 
     /** 获取当前应用版本名，无法读取时返回默认版本。 */
     fun versionName(): String = runCatching {
-        context.packageManager
-            .getPackageInfo(context.packageName, 0)
-            .versionName ?: DEFAULT_VERSION_NAME
-    }.getOrDefault(DEFAULT_VERSION_NAME)
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            ?: DEFAULT_VERSION_NAME
+    }
+        .getOrDefault(DEFAULT_VERSION_NAME)
 
     /** 获取当前应用版本号，无法读取时返回默认值。 */
     fun versionCode(): Long = runCatching {
         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
         PackageInfoCompat.getLongVersionCode(packageInfo)
-    }.getOrDefault(DEFAULT_VERSION_CODE)
+    }
+        .getOrDefault(DEFAULT_VERSION_CODE)
 
     /**
      * 为投屏设备名称追加稳定的短设备标识。
@@ -61,19 +63,24 @@ class DeviceInfoProvider(private val context: Context) {
                 context.contentResolver,
                 Settings.Secure.ANDROID_ID,
             )
-        }.getOrNull().orEmpty()
+        }
+            .getOrNull()
+            .orEmpty()
         val identity = androidId.ifBlank { persistedInstallId() }
-        val fingerprint = listOf(
-            Build.MANUFACTURER,
-            Build.MODEL,
-            Build.DEVICE,
-            Build.PRODUCT,
-            identity,
-        ).joinToString("|")
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(fingerprint.toByteArray(Charsets.UTF_8))
-        return digest.take(SHORT_ID_BYTES)
-            .joinToString("") { byte -> "%02X".format(Locale.US, byte.toInt() and 0xFF) }
+        val fingerprint =
+            listOf(
+                    Build.MANUFACTURER,
+                    Build.MODEL,
+                    Build.DEVICE,
+                    Build.PRODUCT,
+                    identity,
+                )
+                .joinToString("|")
+        val digest =
+            MessageDigest.getInstance("SHA-256").digest(fingerprint.toByteArray(Charsets.UTF_8))
+        return digest.take(SHORT_ID_BYTES).joinToString("") { byte ->
+            "%02X".format(Locale.US, byte.toInt() and 0xFF)
+        }
     }
 
     /** 获取或创建无 Android ID 时使用的应用内安装标识。 */

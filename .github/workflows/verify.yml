@@ -19,8 +19,6 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Detect files requiring Android verification
         id: scope
@@ -94,7 +92,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Verify formatting, unit tests, lint and debug APK
-        run: ./gradlew :app:spotlessCheck :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+        run: ./gradlew spotlessCheck :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 
       - name: Upload debug APK
         if: github.event_name == 'workflow_dispatch'

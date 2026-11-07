@@ -9,41 +9,51 @@ import com.roy233.tvcast.feature.history.PlaybackHistoryApiException
 import com.roy233.tvcast.feature.history.PlaybackHistoryReport
 import com.roy233.tvcast.feature.history.PlaybackHistoryRepository
 import com.roy233.tvcast.feature.history.WebHistoryAuth
-import okhttp3.FormBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import okhttp3.FormBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 /** 调用 B 站 Web 播放历史接口及 TV 直播在线心跳接口。 */
 class PlaybackHistoryApi(
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
-        .build(),
+    private val client: OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .build(),
 ) : PlaybackHistoryRepository {
 
     /** 按 Web 播放心跳协议上报点播播放进度。 */
     override fun reportProgress(auth: WebHistoryAuth, report: PlaybackHistoryReport) {
-        val fields = linkedMapOf(
-            "cid" to report.cid.toString(),
-            "mid" to auth.mid.toString(),
-            "played_time" to report.progressSeconds.coerceAtLeast(0L).toString(),
-            "real_played_time" to report.playDurationSeconds.coerceAtLeast(0L).toString(),
-            "realtime" to report.playDurationSeconds.coerceAtLeast(0L).toString(),
-            "start_ts" to (report.startTsSec.takeIf { it > 0L }
-                ?: (report.updatedAtMs / 1_000L)).coerceAtLeast(0L).toString(),
-            "type" to report.type.toString(),
-            "dt" to "2",
-            "outer" to "0",
-            "play_type" to if (report.progressSeconds <= 0L && report.playDurationSeconds <= 0L) "1" else "0",
-            "spmid" to "333.788.0.0",
-            "from_spmid" to report.fromSpmid,
-            "refer_url" to report.bvid.takeIf(String::isNotBlank)?.let { "https://www.bilibili.com/video/$it" }.orEmpty(),
-            "csrf" to auth.csrf,
-        )
+        val fields =
+            linkedMapOf(
+                "cid" to report.cid.toString(),
+                "mid" to auth.mid.toString(),
+                "played_time" to report.progressSeconds.coerceAtLeast(0L).toString(),
+                "real_played_time" to report.playDurationSeconds.coerceAtLeast(0L).toString(),
+                "realtime" to report.playDurationSeconds.coerceAtLeast(0L).toString(),
+                "start_ts" to
+                    (report.startTsSec.takeIf { it > 0L } ?: (report.updatedAtMs / 1_000L))
+                        .coerceAtLeast(0L)
+                        .toString(),
+                "type" to report.type.toString(),
+                "dt" to "2",
+                "outer" to "0",
+                "play_type" to
+                    if (report.progressSeconds <= 0L && report.playDurationSeconds <= 0L) "1"
+                    else "0",
+                "spmid" to "333.788.0.0",
+                "from_spmid" to report.fromSpmid,
+                "refer_url" to
+                    report.bvid
+                        .takeIf(String::isNotBlank)
+                        ?.let { "https://www.bilibili.com/video/$it" }
+                        .orEmpty(),
+                "csrf" to auth.csrf,
+            )
         report.aid.takeIf { it > 0L }?.let { fields["aid"] = it.toString() }
         report.bvid.takeIf(String::isNotBlank)?.let { fields["bvid"] = it }
         report.sid.takeIf { it > 0L }?.let { fields["sid"] = it.toString() }
@@ -61,13 +71,14 @@ class PlaybackHistoryApi(
     override fun reportLiveEntry(auth: WebHistoryAuth, roomId: Long) {
         post(
             path = "/xlive/web-room/v1/index/roomEntryAction",
-            fields = linkedMapOf(
-                "room_id" to roomId.toString(),
-                "platform" to "pc",
-                "csrf" to auth.csrf,
-                "csrf_token" to auth.csrf,
-                "visit_id" to "",
-            ),
+            fields =
+                linkedMapOf(
+                    "room_id" to roomId.toString(),
+                    "platform" to "pc",
+                    "csrf" to auth.csrf,
+                    "csrf_token" to auth.csrf,
+                    "visit_id" to "",
+                ),
             cookie = auth.cookie,
             baseUrl = "https://api.live.bilibili.com",
             referer = "https://live.bilibili.com/$roomId",
@@ -80,25 +91,27 @@ class PlaybackHistoryApi(
         accessKey: String,
         request: LiveHeartbeatRequest,
     ): LiveHeartbeatResponse {
-        val fields = linkedMapOf(
-            "access_key" to accessKey,
-            "build" to request.build.toString(),
-            "buvid" to request.buvid,
-            "room_id" to request.roomId.toString(),
-            "play_url" to request.playUrl,
-            "auty" to "-2",
-            "udse" to "1",
-            "tils" to request.timestampMs.toString(),
-            "reye" to request.reye,
-            "urcs" to request.urcs.joinToString(","),
-            "edno" to request.edno,
-            "daqs" to request.sequence.toString(),
-            "p2p" to "0",
-            "caton" to "",
-            "nsti" to liveHeartbeatSignature(request),
-        )
-        val data = post("/x/tv/live/heartbeat/report", fields).getAsJsonObject("data")
-            ?: throw IOException("live heartbeat response omitted data")
+        val fields =
+            linkedMapOf(
+                "access_key" to accessKey,
+                "build" to request.build.toString(),
+                "buvid" to request.buvid,
+                "room_id" to request.roomId.toString(),
+                "play_url" to request.playUrl,
+                "auty" to "-2",
+                "udse" to "1",
+                "tils" to request.timestampMs.toString(),
+                "reye" to request.reye,
+                "urcs" to request.urcs.joinToString(","),
+                "edno" to request.edno,
+                "daqs" to request.sequence.toString(),
+                "p2p" to "0",
+                "caton" to "",
+                "nsti" to liveHeartbeatSignature(request),
+            )
+        val data =
+            post("/x/tv/live/heartbeat/report", fields).getAsJsonObject("data")
+                ?: throw IOException("live heartbeat response omitted data")
         return LiveHeartbeatResponse(
             edno = data.stringOrEmpty("edno"),
             reye = data.stringOrEmpty("reye"),
@@ -115,28 +128,35 @@ class PlaybackHistoryApi(
         referer: String = "https://www.bilibili.com/",
         origin: String? = null,
     ): JsonObject {
-        val form = FormBody.Builder().apply {
-            fields.forEach { (name, value) -> add(name, value) }
-        }.build()
-        val request = Request.Builder()
-            .url("$baseUrl$path")
-            .header("User-Agent", BiliApi.UA)
-            .header("Referer", referer)
-            .apply {
-                origin?.let { header("Origin", it) }
-                cookie?.takeIf(String::isNotBlank)?.let { header("Cookie", it) }
-            }
-            .post(form)
-            .build()
+        val form =
+            FormBody.Builder()
+                .apply {
+                    fields.forEach { (name, value) -> add(name, value) }
+                }
+                .build()
+        val request =
+            Request.Builder()
+                .url("$baseUrl$path")
+                .header("User-Agent", BiliApi.UA)
+                .header("Referer", referer)
+                .apply {
+                    origin?.let { header("Origin", it) }
+                    cookie?.takeIf(String::isNotBlank)?.let { header("Cookie", it) }
+                }
+                .post(form)
+                .build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 throw IOException("History API HTTP ${response.code} path=$path")
             }
             val body = response.body?.string().orEmpty()
-            val root = runCatching { JsonParser.parseString(body).asJsonObject }
+            val root = runCatching {
+                JsonParser.parseString(body).asJsonObject
+            }
                 .getOrElse { throw IOException("History API returned invalid JSON path=$path", it) }
-            val code = runCatching { root.get("code")?.asInt }.getOrNull()
-                ?: throw IOException("History API response omitted code path=$path")
+            val code =
+                runCatching { root.get("code")?.asInt }.getOrNull()
+                    ?: throw IOException("History API response omitted code path=$path")
             if (code != 0) {
                 val message = sanitizeServerMessage(root.stringOrEmpty("message")).take(160)
                 throw PlaybackHistoryApiException(path = path, code = code, message = message)
@@ -147,58 +167,70 @@ class PlaybackHistoryApi(
 
     private fun liveHeartbeatSignature(request: LiveHeartbeatRequest): String {
         if (request.sequence <= 0 || request.urcs.isEmpty()) return ""
-        val payload = """{"auty":-2,"daqs":${request.sequence},"edno":"${request.edno.jsonEscape()}","play_url":"${request.playUrl.jsonEscape()}","room_id":${request.roomId},"tils":${request.timestampMs},"udse":1}"""
+        val payload =
+            """{"auty":-2,"daqs":${request.sequence},"edno":"${request.edno.jsonEscape()}","play_url":"${request.playUrl.jsonEscape()}","room_id":${request.roomId},"tils":${request.timestampMs},"udse":1}"""
         var digestInput = payload.toByteArray(Charsets.UTF_8)
         var result = ""
         for (algorithm in request.urcs) {
-            val algorithmName = when (algorithm) {
-                0 -> "SHA-256"
-                1 -> "SHA-512"
-                2 -> "SHA-224"
-                else -> return ""
-            }
-            result = runCatching {
-                MessageDigest.getInstance(algorithmName).digest(digestInput).toHex()
-            }.getOrElse { return "" }
+            val algorithmName =
+                when (algorithm) {
+                    0 -> "SHA-256"
+                    1 -> "SHA-512"
+                    2 -> "SHA-224"
+                    else -> return ""
+                }
+            result =
+                runCatching {
+                    MessageDigest.getInstance(algorithmName).digest(digestInput).toHex()
+                }
+                    .getOrElse {
+                        return ""
+                    }
             digestInput = result.toByteArray(Charsets.UTF_8)
         }
         return result
     }
 
-    private fun String.jsonEscape(): String = buildString(length) {
-        for (character in this@jsonEscape) {
-            when (character) {
-                '\\' -> append("\\\\")
-                '"' -> append("\\\"")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> if (character.code < 0x20) {
-                    append("\\u%04x".format(character.code))
-                } else {
-                    append(character)
+    private fun String.jsonEscape(): String =
+        buildString(length) {
+            for (character in this@jsonEscape) {
+                when (character) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else ->
+                        if (character.code < 0x20) {
+                            append("\\u%04x".format(character.code))
+                        } else {
+                            append(character)
+                        }
                 }
             }
         }
-    }
 
     private fun ByteArray.toHex(): String = joinToString("") { byte -> "%02x".format(byte) }
 
-    private fun sanitizeServerMessage(message: String): String = LogRedaction.text(message)
-        .replace(SENSITIVE_VALUE_PATTERN) { match -> "${match.groupValues[1]}=***" }
+    private fun sanitizeServerMessage(message: String): String =
+        LogRedaction.text(message).replace(SENSITIVE_VALUE_PATTERN) { match ->
+            "${match.groupValues[1]}=***"
+        }
 
     private fun JsonObject.stringOrEmpty(name: String): String =
         get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
 
-    private fun JsonObject.intOrZero(name: String): Int =
-        runCatching { get(name)?.takeUnless { it.isJsonNull }?.asInt ?: 0 }.getOrDefault(0)
+    private fun JsonObject.intOrZero(name: String): Int = runCatching {
+        get(name)?.takeUnless { it.isJsonNull }?.asInt ?: 0
+    }
+        .getOrDefault(0)
 
-    private fun com.google.gson.JsonElement.asIntOrNull(): Int? =
-        runCatching { asInt }.getOrNull()
+    private fun com.google.gson.JsonElement.asIntOrNull(): Int? = runCatching { asInt }.getOrNull()
 
     private companion object {
-        val SENSITIVE_VALUE_PATTERN = Regex(
-            "(?i)\\b(access_key|access_token|refresh_token|buvid3?|play_url|sessdata|bili_jct|csrf)\\s*[:=]\\s*[^,\\s&]+",
-        )
+        val SENSITIVE_VALUE_PATTERN =
+            Regex(
+                "(?i)\\b(access_key|access_token|refresh_token|buvid3?|play_url|sessdata|bili_jct|csrf)\\s*[:=]\\s*[^,\\s&]+",
+            )
     }
 }

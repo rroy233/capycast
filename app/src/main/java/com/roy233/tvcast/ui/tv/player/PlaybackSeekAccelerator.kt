@@ -7,13 +7,15 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 
 /** 遥控器方向键对应的进度调整方向。 */
-internal enum class PlaybackSeekDirection { BACKWARD, FORWARD }
+internal enum class PlaybackSeekDirection {
+    BACKWARD,
+    FORWARD,
+}
 
 /**
  * 根据同一次长按持续时间计算进度调整步长。
  *
- * 初始步长为 10 秒，之后每秒提升为前一档的 1.5 倍，最大限制为两分钟。
- * 该节奏与 SmartTube 的长按加速逻辑一致，同时能避免超长视频中一次跳转过远。
+ * 初始步长为 10 秒，之后每秒提升为前一档的 1.5 倍，最大限制为两分钟。 该节奏与 SmartTube 的长按加速逻辑一致，同时能避免超长视频中一次跳转过远。
  */
 internal class PlaybackSeekAccelerator(
     private val baseIncrementMs: Long = BASE_INCREMENT_MS,
@@ -36,9 +38,10 @@ internal class PlaybackSeekAccelerator(
         }
         val elapsedMs = (eventTimeMs - startedAtMs).coerceAtLeast(0L)
         val accelerationLevel = (elapsedMs / accelerationPeriodMs).toInt()
-        val increment = (baseIncrementMs * accelerationFactor.pow(accelerationLevel))
-            .toLong()
-            .coerceAtMost(maxIncrementMs)
+        val increment =
+            (baseIncrementMs * accelerationFactor.pow(accelerationLevel))
+                .toLong()
+                .coerceAtMost(maxIncrementMs)
         return if (direction == PlaybackSeekDirection.FORWARD) increment else -increment
     }
 
@@ -99,11 +102,12 @@ internal fun handlePlaybackSeekKey(
         }
 
         Key.DirectionCenter,
-        Key.Enter -> if (isSeeking) {
-            onConfirmSeek()
-            seekAccelerator.reset()
-            return true
-        }
+        Key.Enter ->
+            if (isSeeking) {
+                onConfirmSeek()
+                seekAccelerator.reset()
+                return true
+            }
 
         else -> Unit
     }

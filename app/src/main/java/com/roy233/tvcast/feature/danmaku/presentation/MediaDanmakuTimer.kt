@@ -10,8 +10,7 @@ import master.flame.danmaku.danmaku.model.DanmakuTimer
  * - 正常渲染调用 [add]；
  * - 等待/首帧/seek 时调用 [update]。
  *
- * 两条都必须写入媒体时间，否则墙钟会从 [update] 泄漏进来，导致渲染时间
- * 跑到播放器前面（实测 t=4.5s 而播放位置只有 1.6s）。
+ * 两条都必须写入媒体时间，否则墙钟会从 [update] 泄漏进来，导致渲染时间 跑到播放器前面（实测 t=4.5s 而播放位置只有 1.6s）。
  *
  * @param clock 媒体时钟。
  */

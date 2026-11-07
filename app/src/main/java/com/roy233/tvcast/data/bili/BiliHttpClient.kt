@@ -4,9 +4,9 @@ import android.os.SystemClock
 import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
+import java.io.IOException
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.IOException
 
 /**
  * 发送带公共请求头与登录 Cookie 的 B 站 HTTP 请求。
@@ -30,12 +30,13 @@ internal class BiliHttpClient(
         val safeUrl = LogRedaction.url(url)
         val startedAt = SystemClock.elapsedRealtime()
         LogHub.d(TAG, "http start purpose=$purpose auth=$auth url=$safeUrl")
-        val builder = Request.Builder()
-            .url(url)
-            .header("User-Agent", userAgent)
-            .header("Referer", "https://www.bilibili.com/")
-            .header("Origin", "https://www.bilibili.com")
-            .header("Accept", "application/json, text/plain, */*")
+        val builder =
+            Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgent)
+                .header("Referer", "https://www.bilibili.com/")
+                .header("Origin", "https://www.bilibili.com")
+                .header("Accept", "application/json, text/plain, */*")
         if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
         try {
             client.newCall(builder.build()).execute().use { resp ->
@@ -49,9 +50,9 @@ internal class BiliHttpClient(
                             "body=${LogRedaction.text(body.take(400))}",
                     )
                     val apiMessage = runCatching {
-                        JsonParser.parseString(body).asJsonObject
-                            .get("message")?.asString
-                    }.getOrNull()
+                        JsonParser.parseString(body).asJsonObject.get("message")?.asString
+                    }
+                        .getOrNull()
                     val suffix = apiMessage?.let { " ${LogRedaction.text(it).take(120)}" }.orEmpty()
                     error("HTTP ${resp.code}$suffix ($purpose)")
                 }
@@ -89,12 +90,13 @@ internal class BiliHttpClient(
         val safeUrl = LogRedaction.url(url)
         val startedAt = SystemClock.elapsedRealtime()
         LogHub.d(TAG, "http(bin) start purpose=$purpose auth=$auth url=$safeUrl")
-        val builder = Request.Builder()
-            .url(url)
-            .header("User-Agent", userAgent)
-            .header("Referer", "https://www.bilibili.com/")
-            .header("Origin", "https://www.bilibili.com")
-            .header("Accept", "*/*")
+        val builder =
+            Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgent)
+                .header("Referer", "https://www.bilibili.com/")
+                .header("Origin", "https://www.bilibili.com")
+                .header("Accept", "*/*")
         if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
         try {
             client.newCall(builder.build()).execute().use { resp ->
@@ -130,6 +132,7 @@ internal class BiliHttpClient(
             throw failure
         }
     }
+
     private companion object {
         /** 日志标签。 */
         const val TAG = "BiliApi"

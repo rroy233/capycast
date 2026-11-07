@@ -1,17 +1,15 @@
 package com.roy233.tvcast.data.bili
 
-import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
-
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
 
 /**
  * Minimal Bilibili web API client.
  *
- * Quality policy: use the *web* playurl endpoint and only ever select streams
- * that the server actually returned for this account. We never invent a
- * quality or bypass an entitlement: anonymous gets the free ladder, a logged-in
- * account gets exactly what its cookies are entitled to.
+ * Quality policy: use the *web* playurl endpoint and only ever select streams that the server
+ * actually returned for this account. We never invent a quality or bypass an entitlement: anonymous
+ * gets the free ladder, a logged-in account gets exactly what its cookies are entitled to.
  */
 object BiliApi {
 
@@ -121,64 +119,70 @@ object BiliApi {
             get() {
                 val v = video
                 if (v.width <= 0 || v.height <= 0) return "MP4"
-                val codec = when (v.codecid) {
-                    12 -> "HEVC"
-                    13 -> "AV1"
-                    7 -> "H.264"
-                    else -> "codec ${v.codecid}"
-                }
-                val dynamicRange = when {
-                    v.isDolbyVision -> " · Dolby Vision"
-                    v.isHdr -> " · HDR"
-                    else -> ""
-                }
+                val codec =
+                    when (v.codecid) {
+                        12 -> "HEVC"
+                        13 -> "AV1"
+                        7 -> "H.264"
+                        else -> "codec ${v.codecid}"
+                    }
+                val dynamicRange =
+                    when {
+                        v.isDolbyVision -> " · Dolby Vision"
+                        v.isHdr -> " · HDR"
+                        else -> ""
+                    }
                 return "${v.width}x${v.height} · $codec$dynamicRange"
             }
     }
 
     /** 将画质标识转换为展示文本。 */
-    fun qnLabel(qn: Int): String = when (qn) {
-        127 -> "8K"
-        126 -> "Dolby"
-        125 -> "HDR"
-        120 -> "4K"
-        116 -> "1080P60"
-        112 -> "1080P+"
-        80 -> "1080P"
-        74 -> "720P60"
-        64 -> "720P"
-        32 -> "480P"
-        16 -> "360P"
-        10000 -> "原画"
-        400 -> "蓝光"
-        250 -> "超清"
-        150 -> "高清"
-        else -> "qn=$qn"
-    }
+    fun qnLabel(qn: Int): String =
+        when (qn) {
+            127 -> "8K"
+            126 -> "Dolby"
+            125 -> "HDR"
+            120 -> "4K"
+            116 -> "1080P60"
+            112 -> "1080P+"
+            80 -> "1080P"
+            74 -> "720P60"
+            64 -> "720P"
+            32 -> "480P"
+            16 -> "360P"
+            10000 -> "原画"
+            400 -> "蓝光"
+            250 -> "超清"
+            150 -> "高清"
+            else -> "qn=$qn"
+        }
 
     /** 将音轨标识转换为展示文本。 */
-    fun audioLabelFor(id: Int?): String = when (id) {
-        30250 -> "Dolby Atmos"
-        30280 -> "192K"
-        30232 -> "132K"
-        30216 -> "64K"
-        else -> id?.let { "audio=$it" } ?: "no audio"
-    }
+    fun audioLabelFor(id: Int?): String =
+        when (id) {
+            30250 -> "Dolby Atmos"
+            30280 -> "192K"
+            30232 -> "132K"
+            30216 -> "64K"
+            else -> id?.let { "audio=$it" } ?: "no audio"
+        }
 
     /** 根据轨道尺寸和编码生成详情文本。 */
     fun trackDetail(track: Track): String {
         if (track.width <= 0 || track.height <= 0) return "MP4"
-        val codec = when (track.codecid) {
-            12 -> "HEVC"
-            13 -> "AV1"
-            7 -> "H.264"
-            else -> "codec ${track.codecid}"
-        }
-        val dynamicRange = when {
-            track.isDolbyVision -> " · Dolby Vision"
-            track.isHdr -> " · HDR"
-            else -> ""
-        }
+        val codec =
+            when (track.codecid) {
+                12 -> "HEVC"
+                13 -> "AV1"
+                7 -> "H.264"
+                else -> "codec ${track.codecid}"
+            }
+        val dynamicRange =
+            when {
+                track.isDolbyVision -> " · Dolby Vision"
+                track.isHdr -> " · HDR"
+                else -> ""
+            }
         return "${track.width}x${track.height} · $codec$dynamicRange"
     }
 
@@ -192,15 +196,20 @@ object BiliApi {
         }
     }
 
-    internal fun qualityLabelFromFormat(format: JsonObject): String = listOf(
-        format.stringOrEmpty("new_description"),
-        format.stringOrEmpty("display_desc"),
-        format.stringOrEmpty("description"),
-        format.stringOrEmpty("format"),
-    ).firstOrNull(String::isNotBlank).orEmpty()
+    internal fun qualityLabelFromFormat(format: JsonObject): String =
+        listOf(
+                format.stringOrEmpty("new_description"),
+                format.stringOrEmpty("display_desc"),
+                format.stringOrEmpty("description"),
+                format.stringOrEmpty("format"),
+            )
+            .firstOrNull(String::isNotBlank)
+            .orEmpty()
 
-    private fun JsonObject.stringOrEmpty(name: String): String =
-        runCatching { get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty() }.getOrDefault("")
+    private fun JsonObject.stringOrEmpty(name: String): String = runCatching {
+        get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+    }
+        .getOrDefault("")
 
     /** 将 JSON 数组压缩为短文本。 */
     internal fun jsonArrayText(array: com.google.gson.JsonArray?): String =
@@ -208,7 +217,6 @@ object BiliApi {
 
     /** 用于端到端播放验证的示例 BV 标识。 */
     const val SAMPLE_BVID = "BV1GJ411x7h7"
-
 }
 
 /**

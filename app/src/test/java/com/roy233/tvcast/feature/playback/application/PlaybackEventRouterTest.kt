@@ -17,8 +17,13 @@ class PlaybackEventRouterTest {
 
         assertEquals(
             listOf(
-                "finishHistory", "clearLiveSession", "setCastEnded", "runOnMain",
-                "vodDanmakuClose", "liveDanmakuClose", "updateEnded",
+                "finishHistory",
+                "clearLiveSession",
+                "setCastEnded",
+                "runOnMain",
+                "vodDanmakuClose",
+                "liveDanmakuClose",
+                "updateEnded",
             ),
             calls,
         )
@@ -32,7 +37,13 @@ class PlaybackEventRouterTest {
         router.dispatch(PlaybackBackend.MEDIA3, PlaybackEvent.Ended)
 
         assertEquals(
-            listOf("finishHistory", "clearLiveSession", "setCastEnded", "vodDanmakuClose", "updateEnded"),
+            listOf(
+                "finishHistory",
+                "clearLiveSession",
+                "setCastEnded",
+                "vodDanmakuClose",
+                "updateEnded",
+            ),
             calls,
         )
     }
@@ -47,8 +58,7 @@ class PlaybackEventRouterTest {
                 "currentPlaybackRequest" -> null
                 "runOnMain" -> {
                     calls += method.name
-                    @Suppress("UNCHECKED_CAST")
-                    (args!![0] as Function0<Unit>).invoke()
+                    @Suppress("UNCHECKED_CAST") (args!![0] as Function0<Unit>).invoke()
                     null
                 }
                 else -> {

@@ -29,9 +29,10 @@ class PlaybackEngineHost(
     private val onEvent: (PlaybackBackend, PlaybackEvent) -> Unit,
     private val onHdrWindowChanged: (Boolean) -> Unit,
 ) {
-    private val vlc = VlcPlayerEngine(context, vlcView) { event ->
-        onEvent(PlaybackBackend.VLC, event)
-    }
+    private val vlc =
+        VlcPlayerEngine(context, vlcView) { event ->
+            onEvent(PlaybackBackend.VLC, event)
+        }
     private val vlcEngine = VlcPlaybackEngineAdapter(vlc)
     private var media3: Media3PlayerEngine? = null
     private val media3Engine = Media3PlaybackEngineAdapter { media3 }
@@ -41,14 +42,18 @@ class PlaybackEngineHost(
 
     fun open(request: PlaybackRequest, seekToMs: Long): Boolean {
         backend = PlaybackBackendSelector.select(request)
-        val output: Surface? = if (request.isDrm || request.video.isHdr || request.video.isDolbyVision) {
-            if (viewportHost.hasCompensation()) {
-                LogHub.w("VideoViewport", "pixel compensation unavailable for protected or HDR output")
+        val output: Surface? =
+            if (request.isDrm || request.video.isHdr || request.video.isDolbyVision) {
+                if (viewportHost.hasCompensation()) {
+                    LogHub.w(
+                        "VideoViewport",
+                        "pixel compensation unavailable for protected or HDR output",
+                    )
+                }
+                null
+            } else {
+                viewportHost.playbackDecoderSurface()
             }
-            null
-        } else {
-            viewportHost.playbackDecoderSurface()
-        }
         val compensated = output != null
         if (compensated) {
             if (backend == PlaybackBackend.MEDIA3) {
@@ -57,8 +62,13 @@ class PlaybackEngineHost(
                 viewportHost.setMedia3ContentAspect(0, 0)
             }
         }
-        if (viewportHost.hasCompensation() && !compensated && !request.isDrm &&
-            !request.video.isHdr && !request.video.isDolbyVision) {
+        if (
+            viewportHost.hasCompensation() &&
+                !compensated &&
+                !request.isDrm &&
+                !request.video.isHdr &&
+                !request.video.isDolbyVision
+        ) {
             LogHub.e("VideoViewport", "pixel compensation unavailable; using direct output")
         }
         return when (backend) {
@@ -123,19 +133,26 @@ class PlaybackEngineHost(
         vlcEngine.release()
     }
 
-    private fun activeEngine(): PlaybackEngine = when (backend) {
-        PlaybackBackend.VLC -> vlcEngine
-        PlaybackBackend.MEDIA3 -> media3Engine
-    }
+    private fun activeEngine(): PlaybackEngine =
+        when (backend) {
+            PlaybackBackend.VLC -> vlcEngine
+            PlaybackBackend.MEDIA3 -> media3Engine
+        }
 
-    private fun media3Engine(): Media3PlayerEngine = media3 ?: Media3PlayerEngine(
-        context = vlcView.context,
-        playerView = media3View,
-        onEvent = { event ->
-            if (backend == PlaybackBackend.MEDIA3 && event is PlaybackEvent.VideoSizeChanged) {
-                viewportHost.setMedia3ContentAspect(event.width, event.height)
-            }
-            onEvent(PlaybackBackend.MEDIA3, event)
-        },
-    ).also { media3 = it }
+    private fun media3Engine(): Media3PlayerEngine =
+        media3
+            ?: Media3PlayerEngine(
+                    context = vlcView.context,
+                    playerView = media3View,
+                    onEvent = { event ->
+                        if (
+                            backend == PlaybackBackend.MEDIA3 &&
+                                event is PlaybackEvent.VideoSizeChanged
+                        ) {
+                            viewportHost.setMedia3ContentAspect(event.width, event.height)
+                        }
+                        onEvent(PlaybackBackend.MEDIA3, event)
+                    },
+                )
+                .also { media3 = it }
 }

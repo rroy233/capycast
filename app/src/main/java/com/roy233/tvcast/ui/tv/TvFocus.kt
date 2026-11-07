@@ -8,8 +8,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRestorer
 
 /** Groups related controls and restores the last focused child when focus returns. */
-fun Modifier.tvFocusRegion(): Modifier =
-    focusGroup().focusRestorer()
+fun Modifier.tvFocusRegion(): Modifier = focusGroup().focusRestorer()
 
 /** Keeps directional focus inside a modal region. */
 @OptIn(ExperimentalComposeUiApi::class)

@@ -7,8 +7,7 @@ import com.roy233.tvcast.feature.danmaku.domain.DmViewInfo
 /**
  * 弹幕数据缓存。
  *
- * 分段按访问顺序保留最近 4 段；元数据保留最近 4 个 cid。
- * 网络请求在锁外执行，避免预取阻塞当前段读取。
+ * 分段按访问顺序保留最近 4 段；元数据保留最近 4 个 cid。 网络请求在锁外执行，避免预取阻塞当前段读取。
  */
 class BiliDanmakuRepository(
     private val api: DanmakuApi,
@@ -20,7 +19,9 @@ class BiliDanmakuRepository(
     /** 读取元数据；已缓存则直接返回。 */
     override fun view(cid: Long): DmViewInfo {
         synchronized(viewCache) {
-            viewCache[cid]?.let { return it }
+            viewCache[cid]?.let {
+                return it
+            }
         }
         val loaded = api.fetchView(cid)
         synchronized(viewCache) {
@@ -33,7 +34,9 @@ class BiliDanmakuRepository(
     /** 读取分段；已缓存则直接返回。 */
     override fun segment(aid: Long, cid: Long, segmentIndex: Int): DmSegment {
         synchronized(segmentCache) {
-            segmentCache[segmentIndex]?.let { return it }
+            segmentCache[segmentIndex]?.let {
+                return it
+            }
         }
         val loaded = api.fetchSegment(aid, cid, segmentIndex)
         synchronized(segmentCache) {

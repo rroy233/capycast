@@ -6,11 +6,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DisplayCalibrationCoordinatorTest {
-    private class MemoryStore(initial: SavedCalibration = SavedCalibration(false, DisplayCorners())) : DisplayCalibrationStore {
+    private class MemoryStore(
+        initial: SavedCalibration = SavedCalibration(false, DisplayCorners()),
+    ) : DisplayCalibrationStore {
         var value = initial
         var saves = 0
+
         override fun load() = value
-        override fun savePrompted() { value = value.copy(prompted = true) }
+
+        override fun savePrompted() {
+            value = value.copy(prompted = true)
+        }
+
         override fun save(corners: DisplayCorners) {
             value = SavedCalibration(true, corners, true)
             saves++
@@ -21,9 +28,15 @@ class DisplayCalibrationCoordinatorTest {
     fun `first launch prompts once and skipping preserves the full frame`() {
         val store = MemoryStore()
         val applied = mutableListOf<Pair<DisplayCorners, Boolean>>()
-        val coordinator = DisplayCalibrationCoordinator(store, { 1920 to 1080 }, {}, { corners, completed ->
-            applied += corners to completed
-        })
+        val coordinator =
+            DisplayCalibrationCoordinator(
+                store,
+                { 1920 to 1080 },
+                {},
+                { corners, completed ->
+                    applied += corners to completed
+                },
+            )
         coordinator.initialize()
         assertEquals(CalibrationPhase.INTRO, coordinator.state.phase)
         coordinator.skipOrCancel()
@@ -32,9 +45,15 @@ class DisplayCalibrationCoordinatorTest {
         assertEquals(0, store.saves)
         assertFalse(store.value.completed)
 
-        val restarted = DisplayCalibrationCoordinator(store, { 1920 to 1080 }, {}, { corners, completed ->
-            applied += corners to completed
-        })
+        val restarted =
+            DisplayCalibrationCoordinator(
+                store,
+                { 1920 to 1080 },
+                {},
+                { corners, completed ->
+                    applied += corners to completed
+                },
+            )
         restarted.initialize()
         assertEquals(CalibrationPhase.HIDDEN, restarted.state.phase)
         assertEquals(DisplayCorners() to false, applied.last())
@@ -44,9 +63,15 @@ class DisplayCalibrationCoordinatorTest {
     fun `each corner moves independently and saves only after confirmation`() {
         val store = MemoryStore()
         val applied = mutableListOf<Pair<DisplayCorners, Boolean>>()
-        val coordinator = DisplayCalibrationCoordinator(store, { 100 to 100 }, {}, { corners, completed ->
-            applied += corners to completed
-        })
+        val coordinator =
+            DisplayCalibrationCoordinator(
+                store,
+                { 100 to 100 },
+                {},
+                { corners, completed ->
+                    applied += corners to completed
+                },
+            )
         coordinator.initialize()
         coordinator.start()
         coordinator.adjust(CalibrationDirection.RIGHT)
@@ -107,11 +132,15 @@ class DisplayCalibrationCoordinatorTest {
 
     @Test
     fun `corner positions clamp invalid values`() {
-        assertEquals(DisplayCorners(), DisplayCorners(
-            topLeft = CalibrationPoint(Float.NaN, Float.POSITIVE_INFINITY),
-            topRight = CalibrationPoint(2f, -1f),
-            bottomRight = CalibrationPoint(Float.NEGATIVE_INFINITY, 3f),
-            bottomLeft = CalibrationPoint(-1f, 2f),
-        ).sanitized())
+        assertEquals(
+            DisplayCorners(),
+            DisplayCorners(
+                    topLeft = CalibrationPoint(Float.NaN, Float.POSITIVE_INFINITY),
+                    topRight = CalibrationPoint(2f, -1f),
+                    bottomRight = CalibrationPoint(Float.NEGATIVE_INFINITY, 3f),
+                    bottomLeft = CalibrationPoint(-1f, 2f),
+                )
+                .sanitized(),
+        )
     }
 }

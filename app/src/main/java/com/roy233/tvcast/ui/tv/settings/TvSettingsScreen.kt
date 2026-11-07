@@ -47,19 +47,19 @@ import androidx.compose.ui.unit.sp
 import com.roy233.tvcast.ui.designsystem.BilibiliTvLogo
 import com.roy233.tvcast.ui.designsystem.FocusableRow
 import com.roy233.tvcast.ui.model.SettingsPage
-import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
-import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.FocusBinding
 import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.focusTrace
+import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.rememberFocusTarget
-import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.tvFocusRegion
 
 /** 账号信息中可选的平台；保留枚举以便后续接入其他平台。 */
@@ -93,18 +93,19 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
     RestoreFocus(
         request = state.focusRequest,
         listState = rootListState,
-        bindings = listOf(
-            FocusBinding(
-                anchor = UiFocusAnchor.SETTINGS_PLATFORM,
-                itemIndex = ACCOUNT_INFO_ITEM_INDEX,
-                target = platformFocus,
+        bindings =
+            listOf(
+                FocusBinding(
+                    anchor = UiFocusAnchor.SETTINGS_PLATFORM,
+                    itemIndex = ACCOUNT_INFO_ITEM_INDEX,
+                    target = platformFocus,
+                ),
+                FocusBinding(
+                    anchor = UiFocusAnchor.SETTINGS_UPDATE_ENTRY,
+                    itemIndex = SOFTWARE_INFO_ITEM_INDEX,
+                    target = updateEntryFocus,
+                ),
             ),
-            FocusBinding(
-                anchor = UiFocusAnchor.SETTINGS_UPDATE_ENTRY,
-                itemIndex = SOFTWARE_INFO_ITEM_INDEX,
-                target = updateEntryFocus,
-            ),
-        ),
         // 账号区块在未登录时收起为登录按钮，可聚焦内容随之变化。
         contentKey = state.loggedIn,
     )
@@ -117,12 +118,14 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
 
         LazyColumn(
             state = rootListState,
-            modifier = Modifier
-                .width((maxWidth - horizontalPadding * 2).coerceAtMost(TvDimens.pageMaxWidth))
-                .fillMaxHeight()
-                .align(Alignment.Center)
-                .padding(vertical = verticalPadding)
-                .tvFocusRegion(),
+            modifier =
+                Modifier.width(
+                        (maxWidth - horizontalPadding * 2).coerceAtMost(TvDimens.pageMaxWidth),
+                    )
+                    .fillMaxHeight()
+                    .align(Alignment.Center)
+                    .padding(vertical = verticalPadding)
+                    .tvFocusRegion(),
             verticalArrangement = Arrangement.spacedBy(sectionGap),
         ) {
             item {
@@ -136,12 +139,13 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     )
                     SettingsRowDivider()
                     when (selectedPlatform) {
-                        AccountPlatform.BILIBILI -> BilibiliAccountSettings(
-                            state = state,
-                            actions = actions,
-                            loginFocus = loginFocus,
-                            compact = compact,
-                        )
+                        AccountPlatform.BILIBILI ->
+                            BilibiliAccountSettings(
+                                state = state,
+                                actions = actions,
+                                loginFocus = loginFocus,
+                                compact = compact,
+                            )
                     }
                 }
             }
@@ -190,11 +194,12 @@ private fun PlatformGallery(
     Column(Modifier.padding(start = 20.dp, top = if (compact) 12.dp else 16.dp, bottom = 14.dp)) {
         BasicText(
             text = "平台",
-            style = TvType.caption.copy(
-                color = TvColors.textSecondary,
-                fontSize = if (compact) 16.sp else 18.sp,
-                fontWeight = FontWeight.Medium,
-            ),
+            style =
+                TvType.caption.copy(
+                    color = TvColors.textSecondary,
+                    fontSize = if (compact) 16.sp else 18.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
         )
         Spacer(Modifier.height(10.dp))
         LazyRow(
@@ -229,46 +234,48 @@ private fun PlatformTile(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(if (compact) 16.dp else 18.dp)
-    val cardColor = when {
-        focused && loggedIn -> Color.White.copy(alpha = 0.14f)
-        focused -> Color.White.copy(alpha = 0.16f)
-        !loggedIn && selected -> Color.White.copy(alpha = 0.12f)
-        !loggedIn -> Color.White.copy(alpha = 0.055f)
-        selected -> TvColors.blue.copy(alpha = 0.20f)
-        else -> Color.White.copy(alpha = 0.065f)
-    }
-    val borderColor = when {
-        focused -> TvColors.accent
-        selected && loggedIn -> TvColors.accent.copy(alpha = 0.82f)
-        selected -> Color.White.copy(alpha = 0.34f)
-        else -> Color.White.copy(alpha = 0.10f)
-    }
+    val cardColor =
+        when {
+            focused && loggedIn -> Color.White.copy(alpha = 0.14f)
+            focused -> Color.White.copy(alpha = 0.16f)
+            !loggedIn && selected -> Color.White.copy(alpha = 0.12f)
+            !loggedIn -> Color.White.copy(alpha = 0.055f)
+            selected -> TvColors.blue.copy(alpha = 0.20f)
+            else -> Color.White.copy(alpha = 0.065f)
+        }
+    val borderColor =
+        when {
+            focused -> TvColors.accent
+            selected && loggedIn -> TvColors.accent.copy(alpha = 0.82f)
+            selected -> Color.White.copy(alpha = 0.34f)
+            else -> Color.White.copy(alpha = 0.10f)
+        }
     val textColor = if (loggedIn) TvColors.textPrimary else TvColors.textDisabled
 
     Box(
-        modifier = Modifier
-            .width(if (compact) 136.dp else 164.dp)
-            .height(if (compact) 82.dp else 96.dp)
-            .focusTarget(focusTarget)
-            .focusTrace("platform:${platform.label}")
-            .clip(shape)
-            .background(cardColor)
-            .border(if (focused) 2.dp else 1.dp, borderColor, shape)
-            .selectable(
-                selected = selected,
-                interactionSource = interaction,
-                indication = null,
-                role = Role.RadioButton,
-                onClick = onClick,
-            )
-            .semantics {
-                contentDescription = buildString {
-                    append(platform.label)
-                    append(if (selected) "，已选择" else "，未选择")
-                    append(if (loggedIn) "，已登录" else "，未登录")
+        modifier =
+            Modifier.width(if (compact) 136.dp else 164.dp)
+                .height(if (compact) 82.dp else 96.dp)
+                .focusTarget(focusTarget)
+                .focusTrace("platform:${platform.label}")
+                .clip(shape)
+                .background(cardColor)
+                .border(if (focused) 2.dp else 1.dp, borderColor, shape)
+                .selectable(
+                    selected = selected,
+                    interactionSource = interaction,
+                    indication = null,
+                    role = Role.RadioButton,
+                    onClick = onClick,
+                )
+                .semantics {
+                    contentDescription = buildString {
+                        append(platform.label)
+                        append(if (selected) "，已选择" else "，未选择")
+                        append(if (loggedIn) "，已登录" else "，未登录")
+                    }
                 }
-            }
-            .testTag("platform-bilibili"),
+                .testTag("platform-bilibili"),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -282,11 +289,12 @@ private fun PlatformTile(
             Spacer(Modifier.height(if (compact) 5.dp else 7.dp))
             BasicText(
                 text = platform.label,
-                style = TvType.caption.copy(
-                    color = textColor,
-                    fontSize = if (compact) 14.sp else 16.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
+                style =
+                    TvType.caption.copy(
+                        color = textColor,
+                        fontSize = if (compact) 14.sp else 16.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -296,10 +304,10 @@ private fun PlatformTile(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = null,
                 tint = if (loggedIn) TvColors.accent else TvColors.textSecondary,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp)
-                    .size(if (compact) 15.dp else 17.dp),
+                modifier =
+                    Modifier.align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(if (compact) 15.dp else 17.dp),
             )
         }
     }
@@ -315,9 +323,9 @@ private fun BilibiliAccountSettings(
 ) {
     if (!state.loggedIn) {
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = if (compact) 14.dp else 18.dp),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = if (compact) 14.dp else 18.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
             WhiteButton(

@@ -9,8 +9,9 @@ class DanmakuProtoTest {
 
     private fun resource(name: String): ByteArray {
         return checkNotNull(javaClass.classLoader?.getResourceAsStream(name)) {
-            "missing test resource: $name"
-        }.use { it.readBytes() }
+                "missing test resource: $name"
+            }
+            .use { it.readBytes() }
     }
 
     @Test

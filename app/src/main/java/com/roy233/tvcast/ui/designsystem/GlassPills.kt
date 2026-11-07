@@ -1,11 +1,6 @@
 package com.roy233.tvcast.ui.designsystem
 
 import android.graphics.Bitmap
-import com.roy233.tvcast.ui.theme.TvColors
-import com.roy233.tvcast.ui.theme.TvType
-import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
-import com.roy233.tvcast.ui.tv.rememberFocusTarget
-import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -28,10 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -40,6 +33,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.theme.TvType
+import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
+import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 
 /** 绘制带有可选状态圆点的胶囊形标签。 */
 @Composable
@@ -64,17 +62,16 @@ fun GlassPill(
         ) {
             if (dotColor != null) {
                 Box(
-                    Modifier
-                        .size(7.dp)
-                        .background(dotColor, CircleShape)
+                    Modifier.size(7.dp).background(dotColor, CircleShape),
                 )
             }
             BasicText(
                 text = text,
-                style = TvType.caption.copy(
-                    color = if (emphasized) TvColors.textPrimary else TvColors.textSecondary,
-                    fontSize = 15.sp,
-                ),
+                style =
+                    TvType.caption.copy(
+                        color = if (emphasized) TvColors.textPrimary else TvColors.textSecondary,
+                        fontSize = 15.sp,
+                    ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -99,16 +96,12 @@ fun GlassAlert(
     RequestFocusWhenReady(activation = title, target = primaryFocus)
 
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.58f))
-            .tvModalFocusRegion(),
+        modifier =
+            modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)).tvModalFocusRegion(),
         contentAlignment = Alignment.Center,
     ) {
         GlassSurface(
-            modifier = Modifier
-                .widthIn(max = 640.dp)
-                .fillMaxWidth(0.82f),
+            modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth(0.82f),
             material = GlassMaterial.Panel,
             size = GlassSize.Large,
         ) {
@@ -135,9 +128,7 @@ fun GlassAlert(
                     )
                 }
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -168,9 +159,7 @@ fun QrCodeImage(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = modifier
-            .background(Color.White, RoundedCornerShape(16.dp))
-            .padding(10.dp),
+        modifier = modifier.background(Color.White, RoundedCornerShape(16.dp)).padding(10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Image(
@@ -189,24 +178,25 @@ fun PulseDot(
     size: Dp = 7.dp,
 ) {
     val reduceMotion = rememberReduceMotion()
-    val alpha = if (reduceMotion) {
-        1f
-    } else {
-        val transition = rememberInfiniteTransition(label = "pulse")
-        val value by transition.animateFloat(
-            initialValue = 0.35f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1400, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "pulse-alpha",
-        )
-        value
-    }
+    val alpha =
+        if (reduceMotion) {
+            1f
+        } else {
+            val transition = rememberInfiniteTransition(label = "pulse")
+            val value by
+                transition.animateFloat(
+                    initialValue = 0.35f,
+                    targetValue = 1f,
+                    animationSpec =
+                        infiniteRepeatable(
+                            animation = tween(1400, easing = LinearEasing),
+                            repeatMode = RepeatMode.Reverse,
+                        ),
+                    label = "pulse-alpha",
+                )
+            value
+        }
     Box(
-        Modifier
-            .size(size)
-            .background(color.copy(alpha = alpha), CircleShape)
+        Modifier.size(size).background(color.copy(alpha = alpha), CircleShape),
     )
 }

@@ -17,15 +17,26 @@ class DlnaCastListenerAdapter(private val commands: DlnaCastCommands) : DlnaRend
     }
 
     override fun onPlay() = commands.play()
+
     override fun onPause() = commands.pause()
+
     override fun onStop() = commands.stop()
+
     override fun onSeek(positionMs: Long) = commands.seek(positionMs)
+
     override fun isSeekable(): Boolean = commands.isSeekable()
+
     override fun onSetVolume(volume: Int) = commands.setVolume(volume)
+
     override fun positionMs(): Long = commands.positionMs()
+
     override fun durationMs(): Long = commands.durationMs()
+
     override fun isPlaying(): Boolean = commands.isPlaying()
+
     override fun volume(): Int = commands.volume()
 
-    private companion object { const val TAG = "SimpleBili" }
+    private companion object {
+        const val TAG = "SimpleBili"
+    }
 }

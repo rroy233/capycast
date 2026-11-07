@@ -9,40 +9,45 @@ class PlaybackUiStateMappingTest {
 
     @Test
     fun `playback state round trip preserves every root state field`() {
-        val root = TvUiState(
-            loggedIn = true,
-            accountName = "测试账号",
-            mid = 42L,
-            vip = true,
-            version = "0.1.5",
-            versionCode = 15L,
-            update = TvUiState().update.copy(status = UpdateStatus.AVAILABLE),
-            castTitle = "测试投屏",
-            isPlaying = true,
-            positionMs = 12_345L,
-            durationMs = 67_890L,
-            toast = "已连接",
-        )
+        val root =
+            TvUiState(
+                loggedIn = true,
+                accountName = "测试账号",
+                mid = 42L,
+                vip = true,
+                version = "0.1.5",
+                versionCode = 15L,
+                update = TvUiState().update.copy(status = UpdateStatus.AVAILABLE),
+                castTitle = "测试投屏",
+                isPlaying = true,
+                positionMs = 12_345L,
+                durationMs = 67_890L,
+                toast = "已连接",
+            )
 
         assertEquals(root, root.withPlaybackUiState(root.playbackUiState()))
     }
 
     @Test
     fun `playback state updates preserve account update and version fields`() {
-        val root = TvUiState(
-            loggedIn = true,
-            accountName = "测试账号",
-            mid = 42L,
-            vip = true,
-            version = "0.1.5",
-            versionCode = 15L,
-            update = TvUiState().update.copy(status = UpdateStatus.DOWNLOADING),
-        )
-        val playback = root.playbackUiState().copy(
-            isPlaying = true,
-            positionMs = 5_000L,
-            toast = "正在播放",
-        )
+        val root =
+            TvUiState(
+                loggedIn = true,
+                accountName = "测试账号",
+                mid = 42L,
+                vip = true,
+                version = "0.1.5",
+                versionCode = 15L,
+                update = TvUiState().update.copy(status = UpdateStatus.DOWNLOADING),
+            )
+        val playback =
+            root
+                .playbackUiState()
+                .copy(
+                    isPlaying = true,
+                    positionMs = 5_000L,
+                    toast = "正在播放",
+                )
 
         val updated = root.withPlaybackUiState(playback)
 

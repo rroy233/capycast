@@ -9,21 +9,20 @@ import com.roy233.tvcast.feature.account.model.AccountAuthService
 import com.roy233.tvcast.feature.account.model.Poll
 import com.roy233.tvcast.feature.account.model.Qr
 import com.roy233.tvcast.feature.account.model.Token
-import okhttp3.FormBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import okhttp3.FormBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 /**
- * Bilibili TV QR login through the Passport service
- * (`/x/passport-tv-login/qrcode/auth_code` + `/poll`).
+ * Bilibili TV QR login through the Passport service (`/x/passport-tv-login/qrcode/auth_code` +
+ * `/poll`).
  *
- * Why TV login instead of web cookie login: it returns an `access_token`
- * (access_key) which the Moss broadcast channel requires, plus the cookie set
- * used by web playurl.
+ * Why TV login instead of web cookie login: it returns an `access_token` (access_key) which the
+ * Moss broadcast channel requires, plus the cookie set used by web playurl.
  */
 object CastAuth : AccountAuthService {
 
@@ -42,6 +41,7 @@ object CastAuth : AccountAuthService {
     /** 官方 TV 客户端版本号，直播心跳的 build 字段也使用该值。 */
     val tvBuildNumber: Int
         get() = BUILD.toInt()
+
     /** Passport 服务根地址。 */
     private const val PASSPORT = "https://passport.bilibili.com"
     /** 认证请求使用的 User-Agent。 */
@@ -51,10 +51,11 @@ object CastAuth : AccountAuthService {
     private const val PREFS = "bili_cast_auth"
 
     /** 用于请求认证接口的 HTTP 客户端。 */
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
+    private val client: OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
 
     // ------------------------------------------------------------------ //
     // identity used by the signed TV requests
@@ -62,7 +63,9 @@ object CastAuth : AccountAuthService {
     /** 读取或生成设备级 buvid。 */
     private fun buvid(ctx: Context): String {
         val sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        sp.getString("buvid", null)?.let { return it }
+        sp.getString("buvid", null)?.let {
+            return it
+        }
         val v = UUID.randomUUID().toString()
         sp.edit().putString("buvid", v).apply()
         return v
@@ -121,28 +124,27 @@ object CastAuth : AccountAuthService {
         return b.build()
     }
 
-    /**
-     * 构造官方 TV API 使用的公共参数和签名，供需要 GET 查询串的电视接口复用。
-     * 返回值包含签名，但调用方必须确保日志只记录脱敏后的 URL。
-     */
+    /** 构造官方 TV API 使用的公共参数和签名，供需要 GET 查询串的电视接口复用。 返回值包含签名，但调用方必须确保日志只记录脱敏后的 URL。 */
     fun signedParams(extra: Map<String, String>, ctx: Context): Map<String, String> {
         val params = commonParams(ctx).apply { putAll(extra) }
         params["ts"] = (System.currentTimeMillis() / 1000L).toString()
-        val query = params.toSortedMap().entries.joinToString("&") {
-            "${encode(it.key)}=${encode(it.value)}"
-        }
+        val query =
+            params.toSortedMap().entries.joinToString("&") {
+                "${encode(it.key)}=${encode(it.value)}"
+            }
         params["sign"] = md5(query + APPSEC)
         return params
     }
 
     /** 向 Passport 接口发送表单请求并解析 JSON 响应。 */
     private fun post(path: String, body: FormBody, ctx: Context): JsonObject {
-        val req = Request.Builder()
-            .url("$PASSPORT$path")
-            .header("User-Agent", UA)
-            .header("Referer", "https://www.bilibili.com/")
-            .post(body)
-            .build()
+        val req =
+            Request.Builder()
+                .url("$PASSPORT$path")
+                .header("User-Agent", UA)
+                .header("Referer", "https://www.bilibili.com/")
+                .post(body)
+                .build()
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) error("HTTP ${resp.code}: $text")
@@ -156,16 +158,17 @@ object CastAuth : AccountAuthService {
     /** 请求一组新的二维码登录参数。 */
     override fun requestQr(context: Context): Qr {
         val sessionId = UUID.randomUUID().toString()
-        val body = signedBody(
-            mapOf(
-                "gourl" to "",
-                "login_session_id" to sessionId,
-                "spm_id" to "",
-                "extend" to "",
-                "device_tourist_id" to "",
-            ),
-            context
-        )
+        val body =
+            signedBody(
+                mapOf(
+                    "gourl" to "",
+                    "login_session_id" to sessionId,
+                    "spm_id" to "",
+                    "extend" to "",
+                    "device_tourist_id" to "",
+                ),
+                context,
+            )
         val root = post("/x/passport-tv-login/qrcode/auth_code", body, context)
         val code = root.get("code")?.asInt ?: -1
         if (code != 0) error("auth_code code=$code ${root.get("message")?.asString}")
@@ -178,25 +181,24 @@ object CastAuth : AccountAuthService {
 
     /** 轮询二维码登录状态并返回当前登录结果。 */
     override fun poll(context: Context, authCode: String, sessionId: String): Poll {
-        val body = signedBody(
-            mapOf(
-                "auth_code" to authCode,
-                "login_session_id" to sessionId,
-                "spm_id" to "",
-                "extend" to "",
-                "device_tourist_id" to "",
-            ),
-            context
-        )
+        val body =
+            signedBody(
+                mapOf(
+                    "auth_code" to authCode,
+                    "login_session_id" to sessionId,
+                    "spm_id" to "",
+                    "extend" to "",
+                    "device_tourist_id" to "",
+                ),
+                context,
+            )
         val root = post("/x/passport-tv-login/qrcode/poll", body, context)
         val code = root.get("code")?.asInt ?: -1
         val msg = root.get("message")?.asString ?: ""
         if (code != 0) return Poll.Pending(code, msg)
 
         val data = root.getAsJsonObject("data")
-        val access = data.get("access_token")?.asString
-            ?: data.get("access_key")?.asString
-            ?: ""
+        val access = data.get("access_token")?.asString ?: data.get("access_key")?.asString ?: ""
         val mid = data.get("mid")?.asLong ?: 0L
         val refresh = data.get("refresh_token")?.asString ?: ""
         val expires = data.get("expires_in")?.asLong ?: 0L
@@ -218,5 +220,4 @@ object CastAuth : AccountAuthService {
         }
         return parts.joinToString("; ")
     }
-
 }

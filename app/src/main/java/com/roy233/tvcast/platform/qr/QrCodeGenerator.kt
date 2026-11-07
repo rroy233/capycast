@@ -20,12 +20,13 @@ class QrCodeGenerator {
         for (y in 0 until size) {
             val row = y * size
             for (x in 0 until size) {
-                pixels[row + x] = if (bits[x, y]) android.graphics.Color.BLACK
-                else android.graphics.Color.WHITE
+                pixels[row + x] =
+                    if (bits[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
             }
         }
         Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).apply {
             setPixels(pixels, 0, size, 0, 0, size, size)
         }
-    }.getOrNull()
+    }
+        .getOrNull()
 }

@@ -1,7 +1,6 @@
 package com.roy233.tvcast.data.bili
 
 import com.roy233.tvcast.data.bili.pgc.PsshBoxParser
-
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -18,18 +17,42 @@ class PsshBoxParserTest {
 
     @Test
     fun `returns null for an unrelated or truncated pssh box`() {
-        val truncated = byteArrayOf(0, 0, 0, 8, 'p'.code.toByte(), 's'.code.toByte(), 's'.code.toByte(), 'h'.code.toByte())
+        val truncated =
+            byteArrayOf(
+                0,
+                0,
+                0,
+                8,
+                'p'.code.toByte(),
+                's'.code.toByte(),
+                's'.code.toByte(),
+                'h'.code.toByte(),
+            )
 
         assertNull(PsshBoxParser.findWidevinePssh(truncated))
         assertNull(PsshBoxParser.findWidevinePssh(box("free", byteArrayOf(1, 2, 3))))
     }
 
     private fun widevinePssh(): ByteArray {
-        val systemId = byteArrayOf(
-            0xed.toByte(), 0xef.toByte(), 0x8b.toByte(), 0xa9.toByte(),
-            0x79, 0xd6.toByte(), 0x4a, 0xce.toByte(), 0xa3.toByte(), 0xc8.toByte(),
-            0x27, 0xdc.toByte(), 0xd5.toByte(), 0x1d, 0x21, 0xed.toByte(),
-        )
+        val systemId =
+            byteArrayOf(
+                0xed.toByte(),
+                0xef.toByte(),
+                0x8b.toByte(),
+                0xa9.toByte(),
+                0x79,
+                0xd6.toByte(),
+                0x4a,
+                0xce.toByte(),
+                0xa3.toByte(),
+                0xc8.toByte(),
+                0x27,
+                0xdc.toByte(),
+                0xd5.toByte(),
+                0x1d,
+                0x21,
+                0xed.toByte(),
+            )
         val payload = byteArrayOf(1, 2, 3, 4)
         val data = ByteArray(4 + systemId.size + 4 + payload.size)
         systemId.copyInto(data, 4)

@@ -7,11 +7,12 @@ class WbiSignerTest {
 
     @Test
     fun `matches BiliPai WBI encoding filtering ordering and digest`() {
-        val signed = WbiSigner.signWithKey(
-            params = mapOf("z" to "last", "a" to "hello world!*'()~"),
-            mixinKey = "0123456789abcdef0123456789abcdef",
-            timestampSeconds = 123L,
-        )
+        val signed =
+            WbiSigner.signWithKey(
+                params = mapOf("z" to "last", "a" to "hello world!*'()~"),
+                mixinKey = "0123456789abcdef0123456789abcdef",
+                timestampSeconds = 123L,
+            )
 
         assertEquals("hello world~", signed["a"])
         assertEquals("last", signed["z"])

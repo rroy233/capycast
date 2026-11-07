@@ -3,8 +3,8 @@ package com.roy233.tvcast.data.local
 import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.feature.cast.domain.RecentCast
 
 /**
  * 持久化用户可见的最近投屏记录。
@@ -23,34 +23,58 @@ class RecentCastStore(context: Context) {
         val raw = prefs.getString(KEY_ITEMS, "") ?: return emptyList()
         val type = object : TypeToken<List<RecentCast>>() {}.type
         (gson.fromJson<List<RecentCast>>(raw, type) ?: emptyList()).take(MAX_ITEMS)
-    }.getOrDefault(emptyList())
+    }
+        .getOrDefault(emptyList())
 
     /** 将播放器请求加入最近投屏记录并持久化。 */
-    fun add(current: List<RecentCast>, request: PlaybackRequest): List<RecentCast> = add(
-        current,
-        PlaybackRecord(
-            request.aid, request.cid, request.title, request.cover, request.qualityLabel,
-            request.isPgc, request.epId, request.seasonId,
-        ),
-    )
+    fun add(current: List<RecentCast>, request: PlaybackRequest): List<RecentCast> =
+        add(
+            current,
+            PlaybackRecord(
+                request.aid,
+                request.cid,
+                request.title,
+                request.cover,
+                request.qualityLabel,
+                request.isPgc,
+                request.epId,
+                request.seasonId,
+            ),
+        )
 
     private fun add(current: List<RecentCast>, record: PlaybackRecord): List<RecentCast> {
         if (record.aid <= 0 || record.cid <= 0 || record.title.isBlank()) return current
-        val entry = RecentCast(
-            aid = record.aid, cid = record.cid, title = record.title, cover = record.cover,
-            quality = record.quality, isPgc = record.isPgc, epId = record.epId,
-            seasonId = record.seasonId, at = System.currentTimeMillis(),
-        )
-        val list = (listOf(entry) + current.filterNot {
-            it.aid == entry.aid && it.cid == entry.cid
-        }).take(MAX_ITEMS)
+        val entry =
+            RecentCast(
+                aid = record.aid,
+                cid = record.cid,
+                title = record.title,
+                cover = record.cover,
+                quality = record.quality,
+                isPgc = record.isPgc,
+                epId = record.epId,
+                seasonId = record.seasonId,
+                at = System.currentTimeMillis(),
+            )
+        val list =
+            (listOf(entry) +
+                    current.filterNot {
+                        it.aid == entry.aid && it.cid == entry.cid
+                    })
+                .take(MAX_ITEMS)
         runCatching { prefs.edit().putString(KEY_ITEMS, gson.toJson(list)).apply() }
         return list
     }
 
     private data class PlaybackRecord(
-        val aid: Long, val cid: Long, val title: String, val cover: String, val quality: String,
-        val isPgc: Boolean, val epId: Long, val seasonId: Long,
+        val aid: Long,
+        val cid: Long,
+        val title: String,
+        val cover: String,
+        val quality: String,
+        val isPgc: Boolean,
+        val epId: Long,
+        val seasonId: Long,
     )
 
     /** 清除所有已保存的最近投屏记录。 */

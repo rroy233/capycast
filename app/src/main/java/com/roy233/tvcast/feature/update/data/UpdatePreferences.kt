@@ -17,7 +17,8 @@ class UpdatePreferences(context: Context) {
     var channel: UpdateChannel
         get() = runCatching {
             UpdateChannel.valueOf(prefs.getString(KEY_CHANNEL, UpdateChannel.STABLE.name).orEmpty())
-        }.getOrDefault(UpdateChannel.STABLE)
+        }
+            .getOrDefault(UpdateChannel.STABLE)
         set(value) = prefs.edit().putString(KEY_CHANNEL, value.name).apply()
 
     /** 是否在应用启动时执行自动更新检查。 */

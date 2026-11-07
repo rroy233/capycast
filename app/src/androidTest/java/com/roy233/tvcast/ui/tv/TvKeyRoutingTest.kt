@@ -59,10 +59,22 @@ class TvKeyRoutingTest {
 
     @Test
     fun menuKeepsFocusMovementAndClosesOnRight() {
-        assertEquals(MenuKeyAction.FOCUS_PREVIOUS, TvKeyHandler.resolveMenuKeyAction(keyDown(android.view.KeyEvent.KEYCODE_DPAD_UP)))
-        assertEquals(MenuKeyAction.FOCUS_NEXT, TvKeyHandler.resolveMenuKeyAction(keyDown(android.view.KeyEvent.KEYCODE_DPAD_DOWN)))
-        assertEquals(MenuKeyAction.CLOSE_MENU, TvKeyHandler.resolveMenuKeyAction(keyDown(android.view.KeyEvent.KEYCODE_DPAD_RIGHT)))
-        assertEquals(MenuKeyAction.SWALLOW, TvKeyHandler.resolveMenuKeyAction(keyDown(android.view.KeyEvent.KEYCODE_DPAD_LEFT)))
+        assertEquals(
+            MenuKeyAction.FOCUS_PREVIOUS,
+            TvKeyHandler.resolveMenuKeyAction(keyDown(android.view.KeyEvent.KEYCODE_DPAD_UP)),
+        )
+        assertEquals(
+            MenuKeyAction.FOCUS_NEXT,
+            TvKeyHandler.resolveMenuKeyAction(keyDown(android.view.KeyEvent.KEYCODE_DPAD_DOWN)),
+        )
+        assertEquals(
+            MenuKeyAction.CLOSE_MENU,
+            TvKeyHandler.resolveMenuKeyAction(keyDown(android.view.KeyEvent.KEYCODE_DPAD_RIGHT)),
+        )
+        assertEquals(
+            MenuKeyAction.SWALLOW,
+            TvKeyHandler.resolveMenuKeyAction(keyDown(android.view.KeyEvent.KEYCODE_DPAD_LEFT)),
+        )
         // 确认键必须交给已获焦点的菜单条目，否则菜单里“点了没反应”。
         assertEquals(
             MenuKeyAction.ACTIVATE_FOCUSED,
@@ -80,18 +92,26 @@ class TvKeyRoutingTest {
         var moved = 0
         var closed = false
         var selectedPage: UiFocusAnchor? = null
-        val actions = TvActions(
-            onMenuFocusMove = { moved += it },
-            onCloseSidebar = { closed = true },
-            onNavigateSettings = { selectedPage = UiFocusAnchor.SETTINGS_PLATFORM },
-        )
+        val actions =
+            TvActions(
+                onMenuFocusMove = { moved += it },
+                onCloseSidebar = { closed = true },
+                onNavigateSettings = { selectedPage = UiFocusAnchor.SETTINGS_PLATFORM },
+            )
 
         listOf(
-            android.view.KeyEvent.KEYCODE_DPAD_DOWN,
-            android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
-        ).forEach { key ->
-            TvKeyHandler.handle(keyDown(key), state, actions, modal = true, seekAccelerator = seek())
-        }
+                android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT,
+            )
+            .forEach { key ->
+                TvKeyHandler.handle(
+                    keyDown(key),
+                    state,
+                    actions,
+                    modal = true,
+                    seekAccelerator = seek(),
+                )
+            }
 
         assertEquals(1, moved)
         assertTrue(closed)
@@ -104,13 +124,14 @@ class TvKeyRoutingTest {
         var moved = 0
         val actions = TvActions(onMenuFocusMove = { moved += it })
 
-        val consumed = TvKeyHandler.handle(
-            keyDown(android.view.KeyEvent.KEYCODE_DPAD_CENTER),
-            state,
-            actions,
-            modal = true,
-            seekAccelerator = seek(),
-        )
+        val consumed =
+            TvKeyHandler.handle(
+                keyDown(android.view.KeyEvent.KEYCODE_DPAD_CENTER),
+                state,
+                actions,
+                modal = true,
+                seekAccelerator = seek(),
+            )
 
         assertFalse(consumed)
         assertEquals(0, moved)
@@ -141,9 +162,10 @@ class TvKeyRoutingTest {
         assertTrue(closed)
     }
 
-    private fun keyDown(androidKeyCode: Int): KeyEvent = KeyEvent(
-        android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, androidKeyCode),
-    )
+    private fun keyDown(androidKeyCode: Int): KeyEvent =
+        KeyEvent(
+            android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, androidKeyCode),
+        )
 
     private fun seek(): PlaybackSeekAccelerator = PlaybackSeekAccelerator()
 }

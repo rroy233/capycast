@@ -9,10 +9,11 @@ import com.roy233.tvcast.feature.danmaku.domain.DanmakuAiShield
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
 import com.roy233.tvcast.feature.danmaku.domain.MediaClock
+import java.util.concurrent.atomic.AtomicLong
 import master.flame.danmaku.controller.DrawHandler
 import master.flame.danmaku.danmaku.model.BaseDanmaku
-import master.flame.danmaku.danmaku.model.Duration
 import master.flame.danmaku.danmaku.model.DanmakuTimer
+import master.flame.danmaku.danmaku.model.Duration
 import master.flame.danmaku.danmaku.model.FBDanmaku
 import master.flame.danmaku.danmaku.model.FTDanmaku
 import master.flame.danmaku.danmaku.model.IDanmakus
@@ -24,13 +25,12 @@ import master.flame.danmaku.danmaku.model.android.Danmakus
 import master.flame.danmaku.danmaku.parser.BaseDanmakuParser
 import master.flame.danmaku.danmaku.util.DanmakuUtils
 import master.flame.danmaku.ui.widget.DanmakuView
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * DFM 适配层。
  *
- * 负责创建 [DanmakuView]、注入 [MediaDanmakuTimer]、把 [DanmakuItem] 转成
- * DFM 的 [BaseDanmaku]，并应用显示设置。布局、碰撞、绘制全部交给 DFM。
+ * 负责创建 [DanmakuView]、注入 [MediaDanmakuTimer]、把 [DanmakuItem] 转成 DFM 的
+ * [BaseDanmaku]，并应用显示设置。布局、碰撞、绘制全部交给 DFM。
  */
 class DfmDanmakuEngine(
     val view: DanmakuView,
@@ -66,39 +66,44 @@ class DfmDanmakuEngine(
         // 才回调 ready()；我们用空 parser 先 prepare，缓存模式会永远停在
         // dfmReady=false。禁用绘制缓存后 DrawTask.prepare() 同步 ready。
         view.enableDanmakuDrawingCache(false)
-        view.setCallback(object : DrawHandler.Callback {
-            override fun prepared() {
-                LogHub.d(TAG, "dfm callback prepared t=${view.currentTime}")
-                view.post {
-                    if (!prepared) return@post
-                    dfmReady = true
-                    // start() 会清空 handler 队列，必须在 PREPARE 完成后再调用；
-                    // 随后 resume() 才会真正进入 UPDATE 循环。
-                    view.start(clock.nowMs())
-                    if (!paused) view.resume() else view.pause()
-                    flushPending()
-                    LogHub.d(TAG, "dfm started t=${view.currentTime} pending=${pending.size}")
+        view.setCallback(
+            object : DrawHandler.Callback {
+                override fun prepared() {
+                    LogHub.d(TAG, "dfm callback prepared t=${view.currentTime}")
+                    view.post {
+                        if (!prepared) return@post
+                        dfmReady = true
+                        // start() 会清空 handler 队列，必须在 PREPARE 完成后再调用；
+                        // 随后 resume() 才会真正进入 UPDATE 循环。
+                        view.start(clock.nowMs())
+                        if (!paused) view.resume() else view.pause()
+                        flushPending()
+                        LogHub.d(TAG, "dfm started t=${view.currentTime} pending=${pending.size}")
+                    }
                 }
-            }
 
-            override fun updateTimer(timer: DanmakuTimer) = Unit
+                override fun updateTimer(timer: DanmakuTimer) = Unit
 
-            override fun danmakuShown(danmaku: BaseDanmaku) {
-                if (liveTraceRoomId != null) {
-                    lastShownTimeMs = danmaku.time
-                    val count = liveShownCount.incrementAndGet()
-                    LogHub.d(TAG, "shown count=$count itemTime=${danmaku.time} " + diagnosticState())
+                override fun danmakuShown(danmaku: BaseDanmaku) {
+                    if (liveTraceRoomId != null) {
+                        lastShownTimeMs = danmaku.time
+                        val count = liveShownCount.incrementAndGet()
+                        LogHub.d(
+                            TAG,
+                            "shown count=$count itemTime=${danmaku.time} " + diagnosticState(),
+                        )
+                    }
                 }
-            }
 
-            override fun drawingFinished() {
-                if (liveTraceRoomId == null) return
-                val count = drawingFinishedCount.incrementAndGet()
-                if (count <= 3 || count % 100L == 0L) {
-                    LogHub.d(TAG, "drawing finished count=$count " + diagnosticState())
+                override fun drawingFinished() {
+                    if (liveTraceRoomId == null) return
+                    val count = drawingFinishedCount.incrementAndGet()
+                    if (count <= 3 || count % 100L == 0L) {
+                        LogHub.d(TAG, "drawing finished count=$count " + diagnosticState())
+                    }
                 }
-            }
-        })
+            },
+        )
         danmakuContext.setDanmakuStyle(
             IDisplayer.DANMAKU_STYLE_STROKEN,
             view.resources.displayMetrics.density * STROKE_DP,
@@ -126,9 +131,7 @@ class DfmDanmakuEngine(
         if (heightPx > 0) contentHeightPx = heightPx
     }
 
-    /**
-     * 视图完成布局后调用；可重复调用，内部只 prepare 一次。
-     */
+    /** 视图完成布局后调用；可重复调用，内部只 prepare 一次。 */
     fun prepare() {
         if (prepared || view.width <= 0 || view.height <= 0) {
             LogHub.i(TAG, "prepare skip prepared=$prepared size=${view.width}x${view.height}")
@@ -158,7 +161,8 @@ class DfmDanmakuEngine(
             TAG,
             "addSegment items=${items.size} filtered=${filtered.size} " +
                 "level=$level times=${filtered.firstOrNull()?.progressMs ?: "none"}.." +
-                "${filtered.lastOrNull()?.progressMs ?: "none"} " + diagnosticState(),
+                "${filtered.lastOrNull()?.progressMs ?: "none"} " +
+                diagnosticState(),
         )
         if (!prepared || !dfmReady) {
             pending += filtered
@@ -167,9 +171,7 @@ class DfmDanmakuEngine(
         filtered.forEach(::addToView)
     }
 
-    /**
-     * 替换当前分段（设置变化/seek 后重建）。
-     */
+    /** 替换当前分段（设置变化/seek 后重建）。 */
     fun replaceSegment(items: List<DanmakuItem>, level: AiShieldLevel) {
         pending.clear()
         if (prepared) view.removeAllDanmakus(true)
@@ -228,8 +230,7 @@ class DfmDanmakuEngine(
     }
 
     /**
-     * 开始新的媒体时间轴。DFM 的 removeAllDanmakus 只清空条目，保留上一会话的
-     * 渲染窗口起点；必须 seek 才能让从零计时的直播弹幕进入绘制窗口。
+     * 开始新的媒体时间轴。DFM 的 removeAllDanmakus 只清空条目，保留上一会话的 渲染窗口起点；必须 seek 才能让从零计时的直播弹幕进入绘制窗口。
      * 调用方在时间轴重置后根据播放状态调用 resume 或 pause。
      */
     fun resetForSession(positionMs: Long) {
@@ -286,7 +287,10 @@ class DfmDanmakuEngine(
     private fun addToView(item: DanmakuItem) {
         val danmaku = toDfm(item)
         if (liveTraceRoomId != null) {
-            LogHub.d(TAG, "submit itemTime=${item.progressMs} mode=${item.mode} " + diagnosticState())
+            LogHub.d(
+                TAG,
+                "submit itemTime=${item.progressMs} mode=${item.mode} " + diagnosticState(),
+            )
         }
         view.addDanmaku(danmaku)
         if (liveTraceRoomId != null) {
@@ -301,12 +305,13 @@ class DfmDanmakuEngine(
     }
 
     private fun toDfm(item: DanmakuItem): BaseDanmaku {
-        val danmaku = when (item.mode) {
-            4 -> FBDanmaku(fixedDuration)
-            5 -> FTDanmaku(fixedDuration)
-            6 -> L2RDanmaku(scrollDuration)
-            else -> R2LDanmaku(scrollDuration)
-        }
+        val danmaku =
+            when (item.mode) {
+                4 -> FBDanmaku(fixedDuration)
+                5 -> FTDanmaku(fixedDuration)
+                6 -> L2RDanmaku(scrollDuration)
+                else -> R2LDanmaku(scrollDuration)
+            }
         danmaku.text = item.content
         danmaku.textSize = fontPx(item.fontSize)
         danmaku.textColor = 0xFF000000.toInt() or (item.color and 0xFFFFFF)
@@ -317,8 +322,9 @@ class DfmDanmakuEngine(
     }
 
     private fun fontPx(fontSize: Int): Float {
-        return (fontSize * contentHeightPx / REFERENCE_HEIGHT * BASE_FONT_FACTOR)
-            .coerceAtLeast(MIN_FONT_PX)
+        return (fontSize * contentHeightPx / REFERENCE_HEIGHT * BASE_FONT_FACTOR).coerceAtLeast(
+            MIN_FONT_PX,
+        )
     }
 
     private fun isLight(color: Int): Boolean {

@@ -8,6 +8,7 @@ import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
 import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClient
 import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClientFactory
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,13 +22,12 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
-import java.util.concurrent.TimeUnit
 
 /**
  * B 站直播弹幕长连接客户端。
  *
- * 负责 `getDanmuInfo` 准入、WebSocket 建连、进房认证、30 秒心跳、粘包拆包与
- * 断线重连。弹幕解析交给 [LiveDanmakuProtocol]，只向上层回调解码后的条目。
+ * 负责 `getDanmuInfo` 准入、WebSocket 建连、进房认证、30 秒心跳、粘包拆包与 断线重连。弹幕解析交给
+ * [LiveDanmakuProtocol]，只向上层回调解码后的条目。
  *
  * 连接与回调都发生在 [scope] 或 okhttp 回调线程，宿主须自行保证 UI 状态在主线程。
  */
@@ -41,11 +41,12 @@ class BiliLiveDanmakuClient(
     private val onState: (LiveDanmakuClient.State) -> Unit = {},
 ) : LiveDanmakuClient {
 
-    private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .pingInterval(20, TimeUnit.SECONDS)
-        .build()
+    private val httpClient: OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .pingInterval(20, TimeUnit.SECONDS)
+            .build()
 
     private var webSocket: WebSocket? = null
     private var token: String = ""
@@ -89,14 +90,17 @@ class BiliLiveDanmakuClient(
     private suspend fun connect() {
         if (closed) return
         onState(LiveDanmakuClient.State.CONNECTING)
-        val info = try {
-            withContext(Dispatchers.IO) { LiveDanmakuApi.fetchDanmuInfo(context, roomId, cookie) }
-        } catch (failure: Throwable) {
-            LogHub.e(TAG, "getDanmuInfo failed room=$roomId: ${failure.message}")
-            onState(LiveDanmakuClient.State.FAILED)
-            scheduleReconnect()
-            return
-        }
+        val info =
+            try {
+                withContext(Dispatchers.IO) {
+                    LiveDanmakuApi.fetchDanmuInfo(context, roomId, cookie)
+                }
+            } catch (failure: Throwable) {
+                LogHub.e(TAG, "getDanmuInfo failed room=$roomId: ${failure.message}")
+                onState(LiveDanmakuClient.State.FAILED)
+                scheduleReconnect()
+                return
+            }
         if (closed) return
         token = info.token
         buvid = info.buvid3
@@ -108,68 +112,73 @@ class BiliLiveDanmakuClient(
             return
         }
         val host = hosts[hostIndex % hosts.size]
-        LogHub.i(TAG, "connect room=$roomId host=${host.host} index=$hostIndex port=${host.wssPort}")
-        val request = Request.Builder()
-            .url(host.wssUrl)
-            .header("User-Agent", BiliApi.UA)
-            .header("Origin", "https://live.bilibili.com")
-            .build()
+        LogHub.i(
+            TAG,
+            "connect room=$roomId host=${host.host} index=$hostIndex port=${host.wssPort}",
+        )
+        val request =
+            Request.Builder()
+                .url(host.wssUrl)
+                .header("User-Agent", BiliApi.UA)
+                .header("Origin", "https://live.bilibili.com")
+                .build()
         webSocket = httpClient.newWebSocket(request, listener)
     }
 
-    private val listener = object : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) {
-            reconnectAttempt = 0
-            onState(LiveDanmakuClient.State.CONNECTED)
-            val join = LiveDanmakuProtocol.encodeJoin(roomId, token, uid, buvid)
-            val sent = webSocket.send(ByteString.of(*join))
-            LogHub.i(
-                TAG,
-                "live danmaku ws connected room=$roomId status=${response.code} " +
-                    "joinSent=$sent current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
-            )
-        }
+    private val listener =
+        object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                reconnectAttempt = 0
+                onState(LiveDanmakuClient.State.CONNECTED)
+                val join = LiveDanmakuProtocol.encodeJoin(roomId, token, uid, buvid)
+                val sent = webSocket.send(ByteString.of(*join))
+                LogHub.i(
+                    TAG,
+                    "live danmaku ws connected room=$roomId status=${response.code} " +
+                        "joinSent=$sent current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
+                )
+            }
 
-        override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-            val before = buffer.size
-            buffer += bytes.toByteArray()
-            splitBuffer()
-            LogHub.d(
-                TAG,
-                "ws frame room=$roomId bytes=${bytes.size} bufferedBefore=$before " +
-                    "bufferedAfter=${buffer.size} current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
-            )
-        }
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                val before = buffer.size
+                buffer += bytes.toByteArray()
+                splitBuffer()
+                LogHub.d(
+                    TAG,
+                    "ws frame room=$roomId bytes=${bytes.size} bufferedBefore=$before " +
+                        "bufferedAfter=${buffer.size} current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
+                )
+            }
 
-        override fun onMessage(webSocket: WebSocket, text: String) {
-            LogHub.w(TAG, "unexpected text frame room=$roomId bytes=${text.length}")
-        }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                LogHub.w(TAG, "unexpected text frame room=$roomId bytes=${text.length}")
+            }
 
-        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            webSocket.close(code, reason)
-        }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                webSocket.close(code, reason)
+            }
 
-        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            onState(LiveDanmakuClient.State.DISCONNECTED)
-            LogHub.i(
-                TAG,
-                "live danmaku ws closed room=$roomId code=$code " +
-                    "reason=${LogRedaction.text(reason).take(80)} " +
-                    "current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
-            )
-            scheduleReconnect()
-        }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                onState(LiveDanmakuClient.State.DISCONNECTED)
+                LogHub.i(
+                    TAG,
+                    "live danmaku ws closed room=$roomId code=$code " +
+                        "reason=${LogRedaction.text(reason).take(80)} " +
+                        "current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
+                )
+                scheduleReconnect()
+            }
 
-        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            onState(LiveDanmakuClient.State.FAILED)
-            LogHub.e(
-                TAG,
-                "live danmaku ws failed room=$roomId error=${LogRedaction.reason(t)} " +
-                    "current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
-            )
-            scheduleReconnect()
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                onState(LiveDanmakuClient.State.FAILED)
+                LogHub.e(
+                    TAG,
+                    "live danmaku ws failed room=$roomId error=${LogRedaction.reason(t)} " +
+                        "current=${this@BiliLiveDanmakuClient.webSocket === webSocket}",
+                )
+                scheduleReconnect()
+            }
         }
-    }
 
     /** 按 4 字节大端总长逐包切分，处理可能的粘包与拆包。 */
     private fun splitBuffer() {
@@ -201,9 +210,13 @@ class BiliLiveDanmakuClient(
                 LiveDanmakuProtocol.OP_JOIN_REPLY -> {
                     val code = runCatching {
                         JsonParser.parseString(
-                            String(packet.body, Charsets.UTF_8),
-                        ).asJsonObject.get("code")?.asInt ?: -1
-                    }.getOrDefault(-1)
+                                String(packet.body, Charsets.UTF_8),
+                            )
+                            .asJsonObject
+                            .get("code")
+                            ?.asInt ?: -1
+                    }
+                        .getOrDefault(-1)
                     if (code == 0) {
                         onState(LiveDanmakuClient.State.AUTHENTICATED)
                         heartbeat()
@@ -223,8 +236,13 @@ class BiliLiveDanmakuClient(
                     else {
                         val command = runCatching {
                             JsonParser.parseString(String(packet.body, Charsets.UTF_8))
-                                .asJsonObject.get("cmd")?.asString.orEmpty()
-                        }.getOrDefault("").take(64)
+                                .asJsonObject
+                                .get("cmd")
+                                ?.asString
+                                .orEmpty()
+                        }
+                            .getOrDefault("")
+                            .take(64)
                             .takeIf { it.matches(SAFE_COMMAND) }
                             .orEmpty()
                             .ifBlank { "(unknown)" }
@@ -275,9 +293,10 @@ class BiliLiveDanmakuClient(
 
     companion object {
         /** 组合根用于注入的直播弹幕客户端工厂。 */
-        val Factory = LiveDanmakuClientFactory { scope, context, roomId, cookie, uid, onItems, onState ->
-            BiliLiveDanmakuClient(scope, context, roomId, cookie, uid, onItems, onState)
-        }
+        val Factory =
+            LiveDanmakuClientFactory { scope, context, roomId, cookie, uid, onItems, onState ->
+                BiliLiveDanmakuClient(scope, context, roomId, cookie, uid, onItems, onState)
+            }
 
         const val TAG = "LiveDanmakuClient"
         const val HEARTBEAT_INTERVAL_MS = 30_000L

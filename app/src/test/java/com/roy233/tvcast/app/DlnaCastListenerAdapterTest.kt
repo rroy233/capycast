@@ -2,7 +2,6 @@ package com.roy233.tvcast.app
 
 import com.roy233.tvcast.feature.cast.application.DlnaCastCommands
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DlnaCastListenerAdapterTest {
@@ -40,15 +39,49 @@ class DlnaCastListenerAdapterTest {
             calls += "cast:$uri:$title"
         }
 
-        override fun play() { calls += "play" }
-        override fun pause() { calls += "pause" }
-        override fun stop() { calls += "stop" }
-        override fun seek(positionMs: Long) { calls += "seek:$positionMs" }
-        override fun isSeekable(): Boolean { calls += "isSeekable"; return false }
-        override fun setVolume(volume: Int) { calls += "volume:$volume" }
-        override fun positionMs(): Long { calls += "positionMs"; return 0L }
-        override fun durationMs(): Long { calls += "durationMs"; return 0L }
-        override fun isPlaying(): Boolean { calls += "isPlaying"; return false }
-        override fun volume(): Int { calls += "volume"; return 0 }
+        override fun play() {
+            calls += "play"
+        }
+
+        override fun pause() {
+            calls += "pause"
+        }
+
+        override fun stop() {
+            calls += "stop"
+        }
+
+        override fun seek(positionMs: Long) {
+            calls += "seek:$positionMs"
+        }
+
+        override fun isSeekable(): Boolean {
+            calls += "isSeekable"
+            return false
+        }
+
+        override fun setVolume(volume: Int) {
+            calls += "volume:$volume"
+        }
+
+        override fun positionMs(): Long {
+            calls += "positionMs"
+            return 0L
+        }
+
+        override fun durationMs(): Long {
+            calls += "durationMs"
+            return 0L
+        }
+
+        override fun isPlaying(): Boolean {
+            calls += "isPlaying"
+            return false
+        }
+
+        override fun volume(): Int {
+            calls += "volume"
+            return 0
+        }
     }
 }

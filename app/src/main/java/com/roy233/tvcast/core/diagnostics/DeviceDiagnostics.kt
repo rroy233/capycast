@@ -14,22 +14,21 @@ import android.util.Range
 import android.view.Display
 import android.view.WindowManager
 import com.roy233.tvcast.BuildConfig
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.concurrent.thread
 import org.json.JSONArray
 import org.json.JSONObject
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.util.HWDecoderUtil
 import org.videolan.libvlc.util.VLCUtil
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import kotlin.concurrent.thread
 
 /**
  * 采集并缓存电视设备的播放能力。
  *
- * 品牌设备无法播放时，最常见的原因是缺少对应编码的硬件解码器、显示能力不足或
- * libVLC 运行时选择策略不合适。这里一次性采集设备、显示、音频、libVLC 和
- * MediaCodec 解码器信息，供 `/playback` 诊断报告和日志使用。
+ * 品牌设备无法播放时，最常见的原因是缺少对应编码的硬件解码器、显示能力不足或 libVLC 运行时选择策略不合适。这里一次性采集设备、显示、音频、libVLC 和 MediaCodec
+ * 解码器信息，供 `/playback` 诊断报告和日志使用。
  */
 object DeviceDiagnostics {
 
@@ -38,30 +37,30 @@ object DeviceDiagnostics {
     /** 每种编码最多保留的解码器明细数量，避免报告过大。 */
     private const val MAX_DECODERS_PER_MIME = 4
     /** 需要重点检查的视频编码类型。 */
-    private val videoMimes = listOf(
-        "video/avc",
-        "video/hevc",
-        "video/dolby-vision",
-        "video/av01",
-        "video/x-vnd.on2.vp9",
-        "video/mp4v-es",
-    )
+    private val videoMimes =
+        listOf(
+            "video/avc",
+            "video/hevc",
+            "video/dolby-vision",
+            "video/av01",
+            "video/x-vnd.on2.vp9",
+            "video/mp4v-es",
+        )
     /** 需要重点检查的音频编码类型。 */
-    private val audioMimes = listOf(
-        "audio/mp4a-latm",
-        "audio/ac3",
-        "audio/eac3",
-        "audio/eac3-joc",
-        "audio/opus",
-        "audio/flac",
-    )
+    private val audioMimes =
+        listOf(
+            "audio/mp4a-latm",
+            "audio/ac3",
+            "audio/eac3",
+            "audio/eac3-joc",
+            "audio/opus",
+            "audio/flac",
+        )
 
     /** 已缓存的设备能力信息。 */
-    @Volatile
-    private var cached: JSONObject? = null
+    @Volatile private var cached: JSONObject? = null
     /** 是否已经有后台采集任务在运行。 */
-    @Volatile
-    private var collecting = false
+    @Volatile private var collecting = false
 
     /**
      * 返回设备能力快照，尚未采集时同步采集一次。
@@ -70,10 +69,16 @@ object DeviceDiagnostics {
      * @return 设备能力 JSON。
      */
     fun snapshot(context: Context): JSONObject {
-        cached?.let { return it }
+        cached?.let {
+            return it
+        }
         synchronized(this) {
-            cached?.let { return it }
-            val data = runCatching { collect(context.applicationContext) }
+            cached?.let {
+                return it
+            }
+            val data = runCatching {
+                collect(context.applicationContext)
+            }
                 .getOrElse { error ->
                     JSONObject().put("error", LogRedaction.reason(error))
                 }
@@ -117,18 +122,19 @@ object DeviceDiagnostics {
     fun compactSummary(): String = cached?.let(::compactSummaryOf) ?: "(not collected)"
 
     /** 采集当前设备的完整播放能力。 */
-    private fun collect(context: Context): JSONObject = JSONObject().apply {
-        put(
-            "collectedAt",
-            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
-        )
-        put("app", safeSection("app") { appInfo() })
-        put("device", safeSection("device") { deviceInfo(context) })
-        put("display", safeSection("display") { displayInfo(context) })
-        put("audio", safeSection("audio") { audioInfo(context) })
-        put("vlc", safeSection("vlc") { vlcInfo(context) })
-        put("codecs", safeSection("codecs") { codecInfo() })
-    }
+    private fun collect(context: Context): JSONObject =
+        JSONObject().apply {
+            put(
+                "collectedAt",
+                SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
+            )
+            put("app", safeSection("app") { appInfo() })
+            put("device", safeSection("device") { deviceInfo(context) })
+            put("display", safeSection("display") { displayInfo(context) })
+            put("audio", safeSection("audio") { audioInfo(context) })
+            put("vlc", safeSection("vlc") { vlcInfo(context) })
+            put("codecs", safeSection("codecs") { codecInfo() })
+        }
 
     /** 将单个能力分区转换为失败时仍可继续的 JSON。 */
     private fun safeSection(name: String, block: () -> JSONObject): JSONObject =
@@ -137,179 +143,196 @@ object DeviceDiagnostics {
         }
 
     /** 读取应用版本信息。 */
-    private fun appInfo(): JSONObject = JSONObject().apply {
-        put("versionName", BuildConfig.VERSION_NAME)
-        put("versionCode", BuildConfig.VERSION_CODE)
-        put("applicationId", BuildConfig.APPLICATION_ID)
-        put("buildType", BuildConfig.BUILD_TYPE)
-    }
+    private fun appInfo(): JSONObject =
+        JSONObject().apply {
+            put("versionName", BuildConfig.VERSION_NAME)
+            put("versionCode", BuildConfig.VERSION_CODE)
+            put("applicationId", BuildConfig.APPLICATION_ID)
+            put("buildType", BuildConfig.BUILD_TYPE)
+        }
 
     /** 读取设备型号、系统版本和内存信息。 */
-    private fun deviceInfo(context: Context): JSONObject = JSONObject().apply {
-        put("manufacturer", Build.MANUFACTURER)
-        put("brand", Build.BRAND)
-        put("model", Build.MODEL)
-        put("device", Build.DEVICE)
-        put("product", Build.PRODUCT)
-        put("board", Build.BOARD)
-        put("hardware", Build.HARDWARE)
-        put("fingerprint", Build.FINGERPRINT)
-        put("abis", jsonArray(Build.SUPPORTED_ABIS.toList()))
-        put("androidRelease", Build.VERSION.RELEASE)
-        put("sdkInt", Build.VERSION.SDK_INT)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            put("securityPatch", Build.VERSION.SECURITY_PATCH)
+    private fun deviceInfo(context: Context): JSONObject =
+        JSONObject().apply {
+            put("manufacturer", Build.MANUFACTURER)
+            put("brand", Build.BRAND)
+            put("model", Build.MODEL)
+            put("device", Build.DEVICE)
+            put("product", Build.PRODUCT)
+            put("board", Build.BOARD)
+            put("hardware", Build.HARDWARE)
+            put("fingerprint", Build.FINGERPRINT)
+            put("abis", jsonArray(Build.SUPPORTED_ABIS.toList()))
+            put("androidRelease", Build.VERSION.RELEASE)
+            put("sdkInt", Build.VERSION.SDK_INT)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                put("securityPatch", Build.VERSION.SECURITY_PATCH)
+            }
+            put("cpuCores", Runtime.getRuntime().availableProcessors())
+            put("isTv", isTv(context))
+            val activityManager =
+                context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            if (activityManager != null) {
+                put("lowRam", activityManager.isLowRamDevice)
+                put("memoryClassMb", activityManager.memoryClass)
+                val memoryInfo = ActivityManager.MemoryInfo()
+                runCatching { activityManager.getMemoryInfo(memoryInfo) }
+                    .onSuccess {
+                        put("totalMemMb", memoryInfo.totalMem / (1024L * 1024L))
+                        put("availMemMb", memoryInfo.availMem / (1024L * 1024L))
+                    }
+            }
         }
-        put("cpuCores", Runtime.getRuntime().availableProcessors())
-        put("isTv", isTv(context))
-        val activityManager =
-            context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-        if (activityManager != null) {
-            put("lowRam", activityManager.isLowRamDevice)
-            put("memoryClassMb", activityManager.memoryClass)
-            val memoryInfo = ActivityManager.MemoryInfo()
-            runCatching { activityManager.getMemoryInfo(memoryInfo) }
-                .onSuccess {
-                    put("totalMemMb", memoryInfo.totalMem / (1024L * 1024L))
-                    put("availMemMb", memoryInfo.availMem / (1024L * 1024L))
-                }
-        }
-    }
 
     /** 读取 Android 向应用报告的实际画布、显示模式和 HDR 支持情况。 */
-    private fun displayInfo(context: Context): JSONObject = JSONObject().apply {
-        // 厂商可让 Android 的逻辑模式与硬件合成器输出模式不同；这里标明数据来源。
-        put("measurementSource", "Android Display API")
-        val realMetrics = DisplayMetrics()
-        val display = runCatching {
-            (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay
-        }.getOrNull()
-        if (display != null) {
-            runCatching { display.getRealMetrics(realMetrics) }
-                .onFailure { put("realMetricsError", LogRedaction.reason(it)) }
-            val appMetrics = DisplayMetrics()
-            runCatching { display.getMetrics(appMetrics) }
-                .onFailure { put("appMetricsError", LogRedaction.reason(it)) }
-            val realSize = Point()
-            runCatching { display.getRealSize(realSize) }
-                .onFailure { put("realSizeError", LogRedaction.reason(it)) }
-            put("displayId", display.displayId)
-            put("appWidthPx", appMetrics.widthPixels)
-            put("appHeightPx", appMetrics.heightPixels)
-            put("realSizeWidthPx", realSize.x)
-            put("realSizeHeightPx", realSize.y)
-            put("refreshRate", display.refreshRate)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                put(
-                    "mode",
-                    runCatching { display.mode }.getOrNull()?.let {
-                        "${it.physicalWidth}x${it.physicalHeight}@" +
-                            String.format(Locale.US, "%.3f", it.refreshRate)
-                    } ?: "(unknown)",
-                )
-                val supportedModes = runCatching {
-                    display.supportedModes.map { mode ->
-                        "${mode.physicalWidth}x${mode.physicalHeight}@" +
-                            String.format(Locale.US, "%.3f", mode.refreshRate)
+    private fun displayInfo(context: Context): JSONObject =
+        JSONObject().apply {
+            // 厂商可让 Android 的逻辑模式与硬件合成器输出模式不同；这里标明数据来源。
+            put("measurementSource", "Android Display API")
+            val realMetrics = DisplayMetrics()
+            val display = runCatching {
+                (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay
+            }
+                .getOrNull()
+            if (display != null) {
+                runCatching { display.getRealMetrics(realMetrics) }
+                    .onFailure { put("realMetricsError", LogRedaction.reason(it)) }
+                val appMetrics = DisplayMetrics()
+                runCatching { display.getMetrics(appMetrics) }
+                    .onFailure { put("appMetricsError", LogRedaction.reason(it)) }
+                val realSize = Point()
+                runCatching { display.getRealSize(realSize) }
+                    .onFailure { put("realSizeError", LogRedaction.reason(it)) }
+                put("displayId", display.displayId)
+                put("appWidthPx", appMetrics.widthPixels)
+                put("appHeightPx", appMetrics.heightPixels)
+                put("realSizeWidthPx", realSize.x)
+                put("realSizeHeightPx", realSize.y)
+                put("refreshRate", display.refreshRate)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    put(
+                        "mode",
+                        runCatching { display.mode }
+                            .getOrNull()
+                            ?.let {
+                                "${it.physicalWidth}x${it.physicalHeight}@" +
+                                    String.format(Locale.US, "%.3f", it.refreshRate)
+                            } ?: "(unknown)",
+                    )
+                    val supportedModes = runCatching {
+                        display.supportedModes.map { mode ->
+                            "${mode.physicalWidth}x${mode.physicalHeight}@" +
+                                String.format(Locale.US, "%.3f", mode.refreshRate)
+                        }
                     }
-                }.onFailure { put("supportedModesError", LogRedaction.reason(it)) }
-                    .getOrDefault(emptyList())
-                put("supportedModes", jsonArray(supportedModes))
+                        .onFailure { put("supportedModesError", LogRedaction.reason(it)) }
+                        .getOrDefault(emptyList())
+                    put("supportedModes", jsonArray(supportedModes))
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    val hdr = runCatching { display.hdrCapabilities }.getOrNull()
+                    put(
+                        "hdrTypes",
+                        jsonArray(hdr?.supportedHdrTypes?.map(::hdrTypeName).orEmpty()),
+                    )
+                }
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                val hdr = runCatching { display.hdrCapabilities }.getOrNull()
-                put(
-                    "hdrTypes",
-                    jsonArray(hdr?.supportedHdrTypes?.map(::hdrTypeName).orEmpty()),
-                )
-            }
+            put("widthPx", realMetrics.widthPixels)
+            put("heightPx", realMetrics.heightPixels)
+            put("density", realMetrics.density)
+            put("densityDpi", realMetrics.densityDpi)
+            val configuration = context.resources.configuration
+            put("screenWidthDp", configuration.screenWidthDp)
+            put("screenHeightDp", configuration.screenHeightDp)
+            put("smallestWidthDp", configuration.smallestScreenWidthDp)
+            put("orientation", configuration.orientation)
+            put("uiMode", configuration.uiMode)
         }
-        put("widthPx", realMetrics.widthPixels)
-        put("heightPx", realMetrics.heightPixels)
-        put("density", realMetrics.density)
-        put("densityDpi", realMetrics.densityDpi)
-        val configuration = context.resources.configuration
-        put("screenWidthDp", configuration.screenWidthDp)
-        put("screenHeightDp", configuration.screenHeightDp)
-        put("smallestWidthDp", configuration.smallestScreenWidthDp)
-        put("orientation", configuration.orientation)
-        put("uiMode", configuration.uiMode)
-    }
 
     /** 读取音频输出能力和输出设备列表。 */
-    private fun audioInfo(context: Context): JSONObject = JSONObject().apply {
-        val audioManager =
-            context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-        if (audioManager == null) {
-            put("available", false)
-            return@apply
-        }
-        put("available", true)
-        put("sampleRate", audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE))
-        put("framesPerBuffer", audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER))
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val devices = runCatching {
-                audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            }.getOrDefault(emptyArray())
+    private fun audioInfo(context: Context): JSONObject =
+        JSONObject().apply {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audioManager == null) {
+                put("available", false)
+                return@apply
+            }
+            put("available", true)
+            put("sampleRate", audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE))
             put(
-                "outputDevices",
-                jsonArray(
-                    devices.take(8).map { device ->
-                        val encodings = device.encodings.joinToString(",") { encoding ->
-                            audioEncodingName(encoding)
-                        }
-                        "${audioDeviceTypeName(device.type)}:${device.productName}" +
-                            " encodings=$encodings"
-                    },
-                ),
+                "framesPerBuffer",
+                audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER),
             )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val devices = runCatching {
+                    audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                }
+                    .getOrDefault(emptyArray())
+                put(
+                    "outputDevices",
+                    jsonArray(
+                        devices.take(8).map { device ->
+                            val encodings =
+                                device.encodings.joinToString(",") { encoding ->
+                                    audioEncodingName(encoding)
+                                }
+                            "${audioDeviceTypeName(device.type)}:${device.productName}" +
+                                " encodings=$encodings"
+                        },
+                    ),
+                )
+            }
         }
-    }
 
     /** 读取 libVLC 运行时版本和硬件解码策略。 */
-    private fun vlcInfo(context: Context): JSONObject = JSONObject().apply {
-        runCatching { LibVLC.loadLibraries() }
-        put("version", runCatching { LibVLC.version() }.getOrNull() ?: "(unavailable)")
-        put("changeset", runCatching { LibVLC.changeset() }.getOrNull() ?: "(unavailable)")
-        put("compiler", runCatching { LibVLC.compiler() }.getOrNull() ?: "(unavailable)")
-        put(
-            "hardwareDecoder",
-            runCatching { HWDecoderUtil.getDecoderFromDevice()?.name }
-                .getOrNull() ?: "(unavailable)",
-        )
-        put(
-            "audioOutput",
-            runCatching { HWDecoderUtil.getAudioOutputFromDevice()?.name }
-                .getOrNull() ?: "(unavailable)",
-        )
-        put(
-            "compatibleCpu",
-            runCatching { VLCUtil.hasCompatibleCPU(context) }
-                .getOrNull()?.toString() ?: "(unavailable)",
-        )
-        val vlcError = runCatching { VLCUtil.getErrorMsg() }.getOrNull().orEmpty()
-        if (vlcError.isNotBlank()) put("error", vlcError)
-        runCatching { VLCUtil.getMachineSpecs() }.getOrNull()?.let { specs ->
+    private fun vlcInfo(context: Context): JSONObject =
+        JSONObject().apply {
+            runCatching { LibVLC.loadLibraries() }
+            put("version", runCatching { LibVLC.version() }.getOrNull() ?: "(unavailable)")
+            put("changeset", runCatching { LibVLC.changeset() }.getOrNull() ?: "(unavailable)")
+            put("compiler", runCatching { LibVLC.compiler() }.getOrNull() ?: "(unavailable)")
             put(
-                "machine",
-                JSONObject().apply {
-                    put("processors", specs.processors)
-                    put("frequency", specs.frequency)
-                    put("is64bits", specs.is64bits)
-                    put("hasNeon", specs.hasNeon)
-                    put("hasArmV7", specs.hasArmV7)
-                    put("hasX86", specs.hasX86)
-                    put("bogoMips", specs.bogoMIPS)
-                },
+                "hardwareDecoder",
+                runCatching { HWDecoderUtil.getDecoderFromDevice()?.name }.getOrNull()
+                    ?: "(unavailable)",
             )
+            put(
+                "audioOutput",
+                runCatching { HWDecoderUtil.getAudioOutputFromDevice()?.name }.getOrNull()
+                    ?: "(unavailable)",
+            )
+            put(
+                "compatibleCpu",
+                runCatching { VLCUtil.hasCompatibleCPU(context) }.getOrNull()?.toString()
+                    ?: "(unavailable)",
+            )
+            val vlcError = runCatching { VLCUtil.getErrorMsg() }.getOrNull().orEmpty()
+            if (vlcError.isNotBlank()) put("error", vlcError)
+            runCatching { VLCUtil.getMachineSpecs() }
+                .getOrNull()
+                ?.let { specs ->
+                    put(
+                        "machine",
+                        JSONObject().apply {
+                            put("processors", specs.processors)
+                            put("frequency", specs.frequency)
+                            put("is64bits", specs.is64bits)
+                            put("hasNeon", specs.hasNeon)
+                            put("hasArmV7", specs.hasArmV7)
+                            put("hasX86", specs.hasX86)
+                            put("bogoMips", specs.bogoMIPS)
+                        },
+                    )
+                }
         }
-    }
 
     /** 枚举系统提供的硬件和软件解码器。 */
     private fun codecInfo(): JSONObject {
-        val infos = runCatching {
-            MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos
-        }.getOrNull() ?: return JSONObject().put("error", "codec list unavailable")
+        val infos =
+            runCatching {
+                MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos
+            }
+                .getOrNull() ?: return JSONObject().put("error", "codec list unavailable")
         val result = JSONObject()
         result.put("total", infos.size)
         (videoMimes + audioMimes).forEach { mime ->
@@ -344,15 +367,16 @@ object DeviceDiagnostics {
             } else {
                 put("hardwareGuess", !isSoftwareCodecName(info.name))
             }
-            val capabilities = runCatching { info.getCapabilitiesForType(mime) }.getOrNull()
-                ?: return@apply
+            val capabilities =
+                runCatching { info.getCapabilitiesForType(mime) }.getOrNull() ?: return@apply
             put(
                 "secure",
                 runCatching {
-                    capabilities.isFeatureSupported(
-                        MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback,
-                    )
-                }.getOrDefault(false),
+                        capabilities.isFeatureSupported(
+                            MediaCodecInfo.CodecCapabilities.FEATURE_SecurePlayback,
+                        )
+                    }
+                    .getOrDefault(false),
             )
             capabilities.videoCapabilities?.let { video ->
                 put(
@@ -375,7 +399,8 @@ object DeviceDiagnostics {
                     "sampleRates",
                     runCatching {
                         audio.supportedSampleRates.take(8).joinToString(",")
-                    }.getOrElse { "(unknown)" },
+                    }
+                        .getOrElse { "(unknown)" },
                 )
             }
         }
@@ -395,43 +420,48 @@ object DeviceDiagnostics {
         val packageManager = context.packageManager
         packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
             packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION)
-    }.getOrDefault(false)
+    }
+        .getOrDefault(false)
 
     /** 将 HDR 类型转换为可读名称。 */
-    private fun hdrTypeName(type: Int): String = when (type) {
-        Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION -> "dolbyVision"
-        Display.HdrCapabilities.HDR_TYPE_HDR10 -> "hdr10"
-        Display.HdrCapabilities.HDR_TYPE_HLG -> "hlg"
-        Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS -> "hdr10Plus"
-        else -> "type$type"
-    }
+    private fun hdrTypeName(type: Int): String =
+        when (type) {
+            Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION -> "dolbyVision"
+            Display.HdrCapabilities.HDR_TYPE_HDR10 -> "hdr10"
+            Display.HdrCapabilities.HDR_TYPE_HLG -> "hlg"
+            Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS -> "hdr10Plus"
+            else -> "type$type"
+        }
 
     /** 将音频输出设备类型转换为可读名称。 */
-    private fun audioDeviceTypeName(type: Int): String = when (type) {
-        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
-        AudioDeviceInfo.TYPE_HDMI -> "hdmi"
-        AudioDeviceInfo.TYPE_HDMI_ARC -> "hdmiArc"
-        AudioDeviceInfo.TYPE_HDMI_EARC -> "hdmiEarc"
-        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "btA2dp"
-        AudioDeviceInfo.TYPE_USB_DEVICE -> "usb"
-        AudioDeviceInfo.TYPE_USB_HEADSET -> "usbHeadset"
-        AudioDeviceInfo.TYPE_LINE_ANALOG -> "lineAnalog"
-        AudioDeviceInfo.TYPE_LINE_DIGITAL -> "lineDigital"
-        else -> "type$type"
-    }
+    private fun audioDeviceTypeName(type: Int): String =
+        when (type) {
+            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
+            AudioDeviceInfo.TYPE_HDMI -> "hdmi"
+            AudioDeviceInfo.TYPE_HDMI_ARC -> "hdmiArc"
+            AudioDeviceInfo.TYPE_HDMI_EARC -> "hdmiEarc"
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "btA2dp"
+            AudioDeviceInfo.TYPE_USB_DEVICE -> "usb"
+            AudioDeviceInfo.TYPE_USB_HEADSET -> "usbHeadset"
+            AudioDeviceInfo.TYPE_LINE_ANALOG -> "lineAnalog"
+            AudioDeviceInfo.TYPE_LINE_DIGITAL -> "lineDigital"
+            else -> "type$type"
+        }
 
     /** 将可直通的 Android 音频编码转换为可读文本。 */
-    private fun audioEncodingName(encoding: Int): String = when (encoding) {
-        android.media.AudioFormat.ENCODING_AC3 -> "ac3"
-        android.media.AudioFormat.ENCODING_E_AC3 -> "eac3"
-        android.media.AudioFormat.ENCODING_E_AC3_JOC -> "eac3-joc"
-        else -> encoding.toString()
-    }
+    private fun audioEncodingName(encoding: Int): String =
+        when (encoding) {
+            android.media.AudioFormat.ENCODING_AC3 -> "ac3"
+            android.media.AudioFormat.ENCODING_E_AC3 -> "eac3"
+            android.media.AudioFormat.ENCODING_E_AC3_JOC -> "eac3-joc"
+            else -> encoding.toString()
+        }
 
     /** 构造 JSON 数组。 */
-    private fun jsonArray(values: List<*>): JSONArray = JSONArray().apply {
-        values.forEach { put(it) }
-    }
+    private fun jsonArray(values: List<*>): JSONArray =
+        JSONArray().apply {
+            values.forEach { put(it) }
+        }
 
     /** 将列表逐项转换为 JSON 数组。 */
     private fun <T> jsonObjects(values: List<T>, transform: (T) -> JSONObject): JSONArray =
@@ -450,29 +480,35 @@ object DeviceDiagnostics {
             val group = codecs.optJSONObject(mime) ?: continue
             val count = group.optInt("count", 0)
             val first = group.optJSONArray("decoders")?.optJSONObject(0)
-            val hardware = when {
-                first == null -> "?"
-                first.has("hardware") -> if (first.optBoolean("hardware")) "hw" else "sw"
-                first.optBoolean("hardwareGuess") -> "hw?"
-                else -> "sw?"
-            }
+            val hardware =
+                when {
+                    first == null -> "?"
+                    first.has("hardware") -> if (first.optBoolean("hardware")) "hw" else "sw"
+                    first.optBoolean("hardwareGuess") -> "hw?"
+                    else -> "sw?"
+                }
             val size = first?.optString("sizeRange").orEmpty()
             parts += "$mime=$count/$hardware" + if (size.isBlank()) "" else "($size)"
         }
         val decoder = data.optJSONObject("vlc")?.optString("hardwareDecoder").orEmpty()
         val display = data.optJSONObject("display")
-        val resolution = if (display != null) {
-            "${display.optInt("widthPx")}x${display.optInt("heightPx")}@" +
-                display.optDouble("refreshRate", 0.0)
-        } else {
-            "?"
-        }
+        val resolution =
+            if (display != null) {
+                "${display.optInt("widthPx")}x${display.optInt("heightPx")}@" +
+                    display.optDouble("refreshRate", 0.0)
+            } else {
+                "?"
+            }
         return buildString {
             append("displayRealMetrics=").append(resolution)
-            append(" realSize=").append(display?.optInt("realSizeWidthPx"))
-                .append("x").append(display?.optInt("realSizeHeightPx"))
-            append(" appMetrics=").append(display?.optInt("appWidthPx"))
-                .append("x").append(display?.optInt("appHeightPx"))
+            append(" realSize=")
+                .append(display?.optInt("realSizeWidthPx"))
+                .append("x")
+                .append(display?.optInt("realSizeHeightPx"))
+            append(" appMetrics=")
+                .append(display?.optInt("appWidthPx"))
+                .append("x")
+                .append(display?.optInt("appHeightPx"))
             append(" reportedMode=").append(display?.optString("mode"))
             append(" reportedModes=").append(display?.optJSONArray("supportedModes"))
             append(" vlcDecoder=").append(decoder)

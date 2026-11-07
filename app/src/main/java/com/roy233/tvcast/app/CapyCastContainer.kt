@@ -1,22 +1,22 @@
 package com.roy233.tvcast.app
 
 import android.content.Context
+import com.roy233.tvcast.core.playback.PlaybackResolver
 import com.roy233.tvcast.data.auth.AuthTokenStore
 import com.roy233.tvcast.data.auth.CastAuth
-import com.roy233.tvcast.data.bili.BiliPlaybackResolver
-import com.roy233.tvcast.data.bili.BiliLivePlaybackResolver
 import com.roy233.tvcast.data.bili.BiliAccountNavigator
-import com.roy233.tvcast.feature.playback.model.LivePlaybackResolver
-import com.roy233.tvcast.data.local.DanmakuPreferences
+import com.roy233.tvcast.data.bili.BiliLivePlaybackResolver
+import com.roy233.tvcast.data.bili.BiliPlaybackResolver
 import com.roy233.tvcast.data.bili.PlaybackHistoryApi
+import com.roy233.tvcast.data.local.DanmakuPreferences
+import com.roy233.tvcast.data.local.DisplayCalibrationPreferences
 import com.roy233.tvcast.data.local.PersistentPlaybackHistoryOutbox
 import com.roy233.tvcast.data.local.RecentCastStore
 import com.roy233.tvcast.data.local.UiPreferences
-import com.roy233.tvcast.data.local.DisplayCalibrationPreferences
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
 import com.roy233.tvcast.feature.account.AccountUiState
 import com.roy233.tvcast.feature.history.PlaybackHistoryCoordinator
-import com.roy233.tvcast.core.playback.PlaybackResolver
+import com.roy233.tvcast.feature.playback.model.LivePlaybackResolver
 import com.roy233.tvcast.feature.update.UpdateCoordinator
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.platform.device.DeviceInfoProvider
@@ -26,8 +26,7 @@ import kotlinx.coroutines.CoroutineScope
 /**
  * 应用依赖组合根。
  *
- * 集中创建投屏、账号、更新、历史与本地偏好等协作对象，让 `MainActivity` 只负责
- * Android 宿主生命周期与界面装配。各协作对象在首次访问时惰性创建。
+ * 集中创建投屏、账号、更新、历史与本地偏好等协作对象，让 `MainActivity` 只负责 Android 宿主生命周期与界面装配。各协作对象在首次访问时惰性创建。
  */
 class CapyCastContainer(
     private val context: Context,

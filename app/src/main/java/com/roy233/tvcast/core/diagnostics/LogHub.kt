@@ -4,24 +4,23 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import fi.iki.elonen.NanoHTTPD
-import org.json.JSONObject
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONObject
 
 /**
  * Tiny on-device diagnostics channel.
  *
- * The real device has no reliable adb in normal use, so the app exposes its
- * recent runtime state on the LAN:
+ * The real device has no reliable adb in normal use, so the app exposes its recent runtime state on
+ * the LAN:
  *
- *   http://<device-ip>:8098/state   JSON (device, login, current play)
- *   http://<device-ip>:8098/log     recent log lines
- *   http://<device-ip>:8098/playback playback diagnostics (tracks, events, native log)
- *   http://<device-ip>:8098/device  device codec and display capabilities
- *   http://<device-ip>:8098/        HTML, includes the pending QR login URL
+ * http://<device-ip>:8098/state JSON (device, login, current play) http://<device-ip>:8098/log
+ * recent log lines http://<device-ip>:8098/playback playback diagnostics (tracks, events, native
+ * log) http://<device-ip>:8098/device device codec and display capabilities
+ * http://<device-ip>:8098/ HTML, includes the pending QR login URL
  *
  * It deliberately never stores the access_key or cookie values.
  */
@@ -71,7 +70,9 @@ object LogHub {
 
     /** 停止局域网诊断 HTTP 服务。 */
     fun stop() {
-        try { server?.stop() } catch (_: Throwable) {}
+        try {
+            server?.stop()
+        } catch (_: Throwable) {}
         server = null
     }
 
@@ -130,19 +131,39 @@ object LogHub {
     }
 
     /** 更新当前登录账号标识。 */
-    fun setLogin(mid: Long) { loginMid = mid }
+    fun setLogin(mid: Long) {
+        loginMid = mid
+    }
+
     /** 更新当前播放摘要。 */
-    fun setPlay(info: String) { playInfo = info }
+    fun setPlay(info: String) {
+        playInfo = info
+    }
+
     /** 更新二维码登录待处理状态。 */
-    fun setQrPending(pending: Boolean) { qrPending = pending }
+    fun setQrPending(pending: Boolean) {
+        qrPending = pending
+    }
+
     /** 更新二维码登录地址。 */
-    fun setQrUrl(url: String) { qrUrl = url }
+    fun setQrUrl(url: String) {
+        qrUrl = url
+    }
+
     /** 更新 DLNA 描述地址。 */
-    fun setDlna(url: String) { dlnaUrl = url }
+    fun setDlna(url: String) {
+        dlnaUrl = url
+    }
+
     /** 更新当前投屏标题。 */
-    fun setCast(title: String) { castTitle = title }
+    fun setCast(title: String) {
+        castTitle = title
+    }
+
     /** 更新当前界面栈与焦点归属快照。 */
-    fun setUiStack(snapshot: String) { uiStack = snapshot }
+    fun setUiStack(snapshot: String) {
+        uiStack = snapshot
+    }
 
     /** 将一条日志追加到有上限的内存队列。 */
     private fun add(level: String, msg: String) {
@@ -204,8 +225,9 @@ object LogHub {
                 }
             }
             (candidates.firstOrNull { it.first.startsWith("wlan") }
-                ?: candidates.firstOrNull { it.first.startsWith("eth") }
-                ?: candidates.firstOrNull())?.second ?: "127.0.0.1"
+                    ?: candidates.firstOrNull { it.first.startsWith("eth") }
+                    ?: candidates.firstOrNull())
+                ?.second ?: "127.0.0.1"
         } catch (_: Throwable) {
             "127.0.0.1"
         }
@@ -216,38 +238,57 @@ object LogHub {
         /** 根据请求路径返回诊断内容。 */
         override fun serve(session: IHTTPSession): Response {
             return when (session.uri) {
-                "/log", "/logs" ->
-                    newFixedLengthResponse(Response.Status.OK, "text/plain; charset=utf-8", LogHub.dump())
-                "/state", "/json" ->
-                    newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", LogHub.stateJson())
-                "/playback", "/playback.json" ->
+                "/log",
+                "/logs" ->
+                    newFixedLengthResponse(
+                        Response.Status.OK,
+                        "text/plain; charset=utf-8",
+                        LogHub.dump(),
+                    )
+                "/state",
+                "/json" ->
+                    newFixedLengthResponse(
+                        Response.Status.OK,
+                        "application/json; charset=utf-8",
+                        LogHub.stateJson(),
+                    )
+                "/playback",
+                "/playback.json" ->
                     newFixedLengthResponse(
                         Response.Status.OK,
                         "application/json; charset=utf-8",
                         PlaybackDiagnostics.reportJson(),
                     )
-                "/device", "/device.json" -> {
+                "/device",
+                "/device.json" -> {
                     val ctx = LogHub.appContext
-                    val body = if (ctx == null) {
-                        "{\"error\":\"diagnostics not initialized\"}"
-                    } else {
-                        runCatching { DeviceDiagnostics.snapshot(ctx).toString(2) }
-                            .getOrElse { "{\"error\":\"device info unavailable\"}" }
-                    }
-                    newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", body)
+                    val body =
+                        if (ctx == null) {
+                            "{\"error\":\"diagnostics not initialized\"}"
+                        } else {
+                            runCatching { DeviceDiagnostics.snapshot(ctx).toString(2) }
+                                .getOrElse { "{\"error\":\"device info unavailable\"}" }
+                        }
+                    newFixedLengthResponse(
+                        Response.Status.OK,
+                        "application/json; charset=utf-8",
+                        body,
+                    )
                 }
                 else -> {
                     val url = LogHub.qrUrl
-                    val link = if (url.isNotEmpty()) {
-                        "<p>登录链接（手机浏览器直接打开）：<br><a href=\"$url\">$url</a></p>"
-                    } else {
-                        "<p>当前没有待处理的登录链接。</p>"
-                    }
-                    val html = "<html><head><meta charset=\"utf-8\"></head><body>" +
-                        "<pre>${LogHub.stateJson()}</pre>$link" +
-                        "<p><a href=\"/log\">/log</a> | <a href=\"/state\">/state</a> | " +
-                        "<a href=\"/playback\">/playback</a> | <a href=\"/device\">/device</a></p>" +
-                        "</body></html>"
+                    val link =
+                        if (url.isNotEmpty()) {
+                            "<p>登录链接（手机浏览器直接打开）：<br><a href=\"$url\">$url</a></p>"
+                        } else {
+                            "<p>当前没有待处理的登录链接。</p>"
+                        }
+                    val html =
+                        "<html><head><meta charset=\"utf-8\"></head><body>" +
+                            "<pre>${LogHub.stateJson()}</pre>$link" +
+                            "<p><a href=\"/log\">/log</a> | <a href=\"/state\">/state</a> | " +
+                            "<a href=\"/playback\">/playback</a> | <a href=\"/device\">/device</a></p>" +
+                            "</body></html>"
                     newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", html)
                 }
             }

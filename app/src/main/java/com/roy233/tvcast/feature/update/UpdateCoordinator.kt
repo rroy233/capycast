@@ -8,17 +8,17 @@ import android.os.Environment
 import android.os.SystemClock
 import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.feature.update.data.UpdatePreferences
 import com.roy233.tvcast.feature.update.data.ReleaseRepository
+import com.roy233.tvcast.feature.update.data.UpdatePreferences
 import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.platform.installer.ApkUpdateInstaller
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.File
 
 /**
  * 协调应用更新检查、安装包下载、完整性校验和系统安装流程。
@@ -155,12 +155,18 @@ class UpdateCoordinator(
             setUpdateState { it.copy(status = UpdateStatus.VERIFYING, message = "正在检查已下载的安装包…") }
             val cachedVerification = installer.verify(cacheFile, update.sha256, update.versionCode)
             if (cachedVerification.isSuccess) {
-                LogHub.i(TAG, "verified cached apk version=${update.versionName} bytes=${cacheFile.length()}")
+                LogHub.i(
+                    TAG,
+                    "verified cached apk version=${update.versionName} bytes=${cacheFile.length()}",
+                )
                 setReady(update, cacheFile, "已复用已验证的安装包")
                 return@launch
             }
             if (cacheFile.exists()) {
-                LogHub.i(TAG, "cached apk rejected version=${update.versionName}: ${cachedVerification.exceptionOrNull()?.message}")
+                LogHub.i(
+                    TAG,
+                    "cached apk rejected version=${update.versionName}: ${cachedVerification.exceptionOrNull()?.message}",
+                )
             }
             if (cacheFile.exists()) cacheFile.delete()
             enqueueDownload(update, cacheFile)
@@ -172,7 +178,8 @@ class UpdateCoordinator(
         cancelDownload(removeTask = true)
         setUpdateState {
             it.copy(
-                status = if (it.availableUpdate == null) UpdateStatus.IDLE else UpdateStatus.AVAILABLE,
+                status =
+                    if (it.availableUpdate == null) UpdateStatus.IDLE else UpdateStatus.AVAILABLE,
                 downloadedBytes = 0L,
                 totalBytes = 0L,
                 message = "下载已取消",
@@ -187,7 +194,8 @@ class UpdateCoordinator(
         val update = updateState.availableUpdate ?: return
         scope.launch {
             setUpdateState { it.copy(status = UpdateStatus.VERIFYING, message = "正在再次校验安装包…") }
-            installer.verify(apk, update.sha256, update.versionCode)
+            installer
+                .verify(apk, update.sha256, update.versionCode)
                 .onSuccess {
                     if (installer.canRequestPackageInstalls()) {
                         setReady(update, apk, "正在打开系统安装器…")
@@ -255,17 +263,18 @@ class UpdateCoordinator(
     ) {
         val source = if (downloadUrl == update.fallbackDownloadUrl) "proxy" else "github"
         LogHub.i(TAG, "enqueue download source=$source version=${update.versionName}")
-        val request = DownloadManager.Request(Uri.parse(downloadUrl))
-            .setTitle("CapyCast ${update.versionName}")
-            .setDescription("正在下载应用更新")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(false)
-            .setDestinationInExternalFilesDir(
-                appContext,
-                Environment.DIRECTORY_DOWNLOADS,
-                "updates/${cacheFile.name}",
-            )
+        val request =
+            DownloadManager.Request(Uri.parse(downloadUrl))
+                .setTitle("CapyCast ${update.versionName}")
+                .setDescription("正在下载应用更新")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(false)
+                .setDestinationInExternalFilesDir(
+                    appContext,
+                    Environment.DIRECTORY_DOWNLOADS,
+                    "updates/${cacheFile.name}",
+                )
         val id = downloadManager.enqueue(request)
         downloadId = id
         LogHub.i(TAG, "download enqueued id=$id source=$source")
@@ -293,15 +302,16 @@ class UpdateCoordinator(
         var lastDownloadedBytes = -1L
         var lastProgressAt = SystemClock.elapsedRealtime()
         while (currentCoroutineContext().isActive) {
-            val snapshot = try {
-                queryDownload(id)
-            } catch (error: Exception) {
-                LogHub.e(TAG, "download status query failed id=$id source=$source", error)
-                setUpdateState {
-                    it.copy(status = UpdateStatus.FAILED, message = "无法读取下载状态，请重试。")
+            val snapshot =
+                try {
+                    queryDownload(id)
+                } catch (error: Exception) {
+                    LogHub.e(TAG, "download status query failed id=$id source=$source", error)
+                    setUpdateState {
+                        it.copy(status = UpdateStatus.FAILED, message = "无法读取下载状态，请重试。")
+                    }
+                    return
                 }
-                return
-            }
             when (snapshot.status) {
                 DownloadManager.STATUS_PENDING,
                 DownloadManager.STATUS_PAUSED,
@@ -309,9 +319,11 @@ class UpdateCoordinator(
                     if (snapshot.downloadedBytes != lastDownloadedBytes) {
                         lastDownloadedBytes = snapshot.downloadedBytes
                         lastProgressAt = SystemClock.elapsedRealtime()
-                    } else if (source == "github" &&
-                        update.fallbackDownloadUrl != null &&
-                        SystemClock.elapsedRealtime() - lastProgressAt >= DIRECT_STALL_TIMEOUT_MS
+                    } else if (
+                        source == "github" &&
+                            update.fallbackDownloadUrl != null &&
+                            SystemClock.elapsedRealtime() - lastProgressAt >=
+                                DIRECT_STALL_TIMEOUT_MS
                     ) {
                         LogHub.i(TAG, "download stalled id=$id; switching from github to proxy")
                         downloadManager.remove(id)
@@ -332,11 +344,14 @@ class UpdateCoordinator(
                         it.copy(
                             status = UpdateStatus.DOWNLOADING,
                             downloadedBytes = snapshot.downloadedBytes,
-                            totalBytes = snapshot.totalBytes.takeIf { size -> size > 0L } ?: update.sizeBytes,
+                            totalBytes =
+                                snapshot.totalBytes.takeIf { size -> size > 0L }
+                                    ?: update.sizeBytes,
                         )
                     }
                     if (snapshot.totalBytes > 0L) {
-                        val bucket = (snapshot.downloadedBytes * 100L / snapshot.totalBytes / 10L).toInt()
+                        val bucket =
+                            (snapshot.downloadedBytes * 100L / snapshot.totalBytes / 10L).toInt()
                         if (bucket > loggedProgressBucket) {
                             loggedProgressBucket = bucket
                             LogHub.i(
@@ -352,15 +367,25 @@ class UpdateCoordinator(
 
                 DownloadManager.STATUS_SUCCESSFUL -> {
                     downloadId = null
-                    LogHub.i(TAG, "download complete id=$id source=$source bytes=${cacheFile.length()}")
-                    setUpdateState { it.copy(status = UpdateStatus.VERIFYING, message = "正在校验安装包…") }
-                    installer.verify(cacheFile, update.sha256, update.versionCode)
+                    LogHub.i(
+                        TAG,
+                        "download complete id=$id source=$source bytes=${cacheFile.length()}",
+                    )
+                    setUpdateState {
+                        it.copy(status = UpdateStatus.VERIFYING, message = "正在校验安装包…")
+                    }
+                    installer
+                        .verify(cacheFile, update.sha256, update.versionCode)
                         .onSuccess {
                             LogHub.i(TAG, "apk verification passed version=${update.versionName}")
                             setReady(update, cacheFile, "安装包校验完成")
                         }
                         .onFailure { error ->
-                            LogHub.e(TAG, "apk verification failed version=${update.versionName}", error)
+                            LogHub.e(
+                                TAG,
+                                "apk verification failed version=${update.versionName}",
+                                error,
+                            )
                             cacheFile.delete()
                             setUpdateState {
                                 it.copy(
@@ -375,8 +400,7 @@ class UpdateCoordinator(
 
                 else -> {
                     downloadId = null
-                    val fallbackUrl = update.fallbackDownloadUrl
-                        ?.takeIf { it != downloadUrl }
+                    val fallbackUrl = update.fallbackDownloadUrl?.takeIf { it != downloadUrl }
                     if (fallbackUrl != null) {
                         LogHub.e(
                             TAG,
@@ -439,10 +463,11 @@ class UpdateCoordinator(
 
     /** 返回指定更新在应用专属下载目录中的缓存文件。 */
     private fun cacheFile(update: AppUpdateInfo): File {
-        val directory = File(
-            requireNotNull(appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)),
-            "updates",
-        )
+        val directory =
+            File(
+                requireNotNull(appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)),
+                "updates",
+            )
         return File(directory, "${update.versionCode}-${update.sha256.take(CACHE_HASH_LENGTH)}.apk")
     }
 

@@ -30,6 +30,7 @@ data class Qr(val url: String, val authCode: String, val sessionId: String)
 sealed class Poll {
     /** 表示用户尚未完成扫码或确认。 */
     data class Pending(val code: Int, val message: String) : Poll()
+
     /** 表示登录成功并返回认证令牌。 */
     data class Success(val token: Token) : Poll()
 }

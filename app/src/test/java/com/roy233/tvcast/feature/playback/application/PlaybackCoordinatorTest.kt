@@ -24,11 +24,12 @@ class PlaybackCoordinatorTest {
 
     @Test
     fun `seek clamps to media duration and keeps danmaku clock aligned`() {
-        val fixture = Fixture(
-            state = PlaybackUiState(mode = TvMode.PLAYING),
-            positionMs = 9_500L,
-            durationMs = 10_000L,
-        )
+        val fixture =
+            Fixture(
+                state = PlaybackUiState(mode = TvMode.PLAYING),
+                positionMs = 9_500L,
+                durationMs = 10_000L,
+            )
 
         fixture.coordinator.seekBy(1_000L)
 
@@ -40,10 +41,11 @@ class PlaybackCoordinatorTest {
 
     @Test
     fun `live playback rejects seek and speed changes without touching the engine`() {
-        val fixture = Fixture(
-            state = PlaybackUiState(mode = TvMode.PLAYING),
-            live = true,
-        )
+        val fixture =
+            Fixture(
+                state = PlaybackUiState(mode = TvMode.PLAYING),
+                live = true,
+            )
 
         fixture.coordinator.seekBy(5_000L)
         fixture.coordinator.setPlaybackSpeed(2f)
@@ -65,48 +67,55 @@ class PlaybackCoordinatorTest {
         val rateCommands = mutableListOf<Pair<Float, String>>()
         val danmakuSeeks = mutableListOf<Long>()
 
-        val coordinator = PlaybackCoordinator(
-            canControl = { state.mode == TvMode.PLAYING || state.mode == TvMode.LOADING },
-            canPreviewSeek = { state.mode == TvMode.PLAYING },
-            displayedDurationMs = { state.durationMs },
-            previewPositionMs = { state.seekPreviewPositionMs },
-            updatePlaying = { state = state.copy(isPlaying = it, hudVisible = true) },
-            updatePosition = { position, duration ->
-                state = state.copy(positionMs = position, durationMs = duration ?: state.durationMs, hudVisible = true)
-            },
-            updatePreview = { position, duration ->
-                state = state.copy(
-                    positionMs = position ?: state.positionMs,
-                    durationMs = duration ?: state.durationMs,
-                    seekPreviewPositionMs = position,
-                )
-            },
-            updateSpeed = { speed, message ->
-                state = state.copy(playbackSpeed = speed, hudVisible = true, toast = message)
-            },
-            updateVolume = { state = state.copy(volume = it, hudVisible = true) },
-            showToast = { state = state.copy(toast = it) },
-            isEngineInitialized = { true },
-            isLive = { live },
-            positionMs = { positionMs },
-            durationMs = { durationMs },
-            isPlaying = { playerPlaying },
-            seekPlayer = { target, reason ->
-                seekCommands += target to reason
-                positionMs = target
-                target
-            },
-            setPlayerPaused = { paused, reason ->
-                pauseCommands += paused to reason
-                playerPlaying = !paused
-            },
-            setPlayerPlaybackRate = { rate, reason ->
-                rateCommands += rate to reason
-                rate
-            },
-            setPlayerVolume = { _, _ -> },
-            onDanmakuSeek = { danmakuSeeks += it },
-            onDanmakuPlaybackRateChanged = {},
-        )
+        val coordinator =
+            PlaybackCoordinator(
+                canControl = { state.mode == TvMode.PLAYING || state.mode == TvMode.LOADING },
+                canPreviewSeek = { state.mode == TvMode.PLAYING },
+                displayedDurationMs = { state.durationMs },
+                previewPositionMs = { state.seekPreviewPositionMs },
+                updatePlaying = { state = state.copy(isPlaying = it, hudVisible = true) },
+                updatePosition = { position, duration ->
+                    state =
+                        state.copy(
+                            positionMs = position,
+                            durationMs = duration ?: state.durationMs,
+                            hudVisible = true,
+                        )
+                },
+                updatePreview = { position, duration ->
+                    state =
+                        state.copy(
+                            positionMs = position ?: state.positionMs,
+                            durationMs = duration ?: state.durationMs,
+                            seekPreviewPositionMs = position,
+                        )
+                },
+                updateSpeed = { speed, message ->
+                    state = state.copy(playbackSpeed = speed, hudVisible = true, toast = message)
+                },
+                updateVolume = { state = state.copy(volume = it, hudVisible = true) },
+                showToast = { state = state.copy(toast = it) },
+                isEngineInitialized = { true },
+                isLive = { live },
+                positionMs = { positionMs },
+                durationMs = { durationMs },
+                isPlaying = { playerPlaying },
+                seekPlayer = { target, reason ->
+                    seekCommands += target to reason
+                    positionMs = target
+                    target
+                },
+                setPlayerPaused = { paused, reason ->
+                    pauseCommands += paused to reason
+                    playerPlaying = !paused
+                },
+                setPlayerPlaybackRate = { rate, reason ->
+                    rateCommands += rate to reason
+                    rate
+                },
+                setPlayerVolume = { _, _ -> },
+                onDanmakuSeek = { danmakuSeeks += it },
+                onDanmakuPlaybackRateChanged = {},
+            )
     }
 }

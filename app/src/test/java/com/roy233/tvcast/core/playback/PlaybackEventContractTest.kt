@@ -10,15 +10,16 @@ class PlaybackEventContractTest {
     @Test
     fun `event contract retains state failure and video size payloads`() {
         val cause = IllegalStateException("decoder")
-        val events: List<PlaybackEvent> = listOf(
-            PlaybackEvent.Playing,
-            PlaybackEvent.Paused,
-            PlaybackEvent.Stopped,
-            PlaybackEvent.Ended,
-            PlaybackEvent.Buffering(isBuffering = true, percent = 42.5f),
-            PlaybackEvent.Failed("DECODE", "无法解码", cause),
-            PlaybackEvent.VideoSizeChanged(3840, 2160),
-        )
+        val events: List<PlaybackEvent> =
+            listOf(
+                PlaybackEvent.Playing,
+                PlaybackEvent.Paused,
+                PlaybackEvent.Stopped,
+                PlaybackEvent.Ended,
+                PlaybackEvent.Buffering(isBuffering = true, percent = 42.5f),
+                PlaybackEvent.Failed("DECODE", "无法解码", cause),
+                PlaybackEvent.VideoSizeChanged(3840, 2160),
+            )
 
         val buffering = events[4] as PlaybackEvent.Buffering
         assertEquals(true, buffering.isBuffering)

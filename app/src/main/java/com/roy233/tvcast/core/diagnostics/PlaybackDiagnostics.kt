@@ -3,21 +3,20 @@ package com.roy233.tvcast.core.diagnostics
 import android.content.Context
 import android.os.Build
 import com.roy233.tvcast.BuildConfig
-import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONObject
 
 /**
  * 记录一次播放会话的完整诊断信息。
  *
- * 与只保存在内存中的 [LogHub] 不同，这里会把会话开始、失败和崩溃写入应用私有
- * 目录，便于在电视被系统回收或应用崩溃后继续排查。`/playback` 端点会输出会话
+ * 与只保存在内存中的 [LogHub] 不同，这里会把会话开始、失败和崩溃写入应用私有 目录，便于在电视被系统回收或应用崩溃后继续排查。`/playback` 端点会输出会话
  * 时间线、媒体轨道、播放统计、失败快照和 libVLC 原生日志尾部。
  *
- * 会话内存状态与 JSON 序列化由 [DiagnosticsSessionRecorder] 负责；文件读写由
- * [DiagnosticsFileStore] 负责；本对象只承担生命周期入口与两者之间的编排。
+ * 会话内存状态与 JSON 序列化由 [DiagnosticsSessionRecorder] 负责；文件读写由 [DiagnosticsFileStore]
+ * 负责；本对象只承担生命周期入口与两者之间的编排。
  */
 object PlaybackDiagnostics {
 
@@ -53,24 +52,18 @@ object PlaybackDiagnostics {
     private val fileLock = Any()
 
     /** 是否已经完成初始化。 */
-    @Volatile
-    private var installed = false
+    @Volatile private var installed = false
 
     /** 应用上下文。 */
-    @Volatile
-    private var appContext: Context? = null
+    @Volatile private var appContext: Context? = null
     /** 诊断文件目录。 */
-    @Volatile
-    private var diagnosticsDir: File? = null
+    @Volatile private var diagnosticsDir: File? = null
     /** 当前运行使用的 libVLC 原生日志文件。 */
-    @Volatile
-    private var vlcLog: File? = null
+    @Volatile private var vlcLog: File? = null
     /** 上一次运行保留的 libVLC 原生日志文件。 */
-    @Volatile
-    private var previousVlcLog: File? = null
+    @Volatile private var previousVlcLog: File? = null
     /** 持久化播放历史文件。 */
-    @Volatile
-    private var historyFile: File? = null
+    @Volatile private var historyFile: File? = null
 
     /**
      * 初始化诊断目录、日志文件和历史记录。
@@ -104,7 +97,9 @@ object PlaybackDiagnostics {
                 "abis=${Build.SUPPORTED_ABIS.joinToString(",")}",
         )
         if (unclean) {
-            appendHistory("[WARN] previous session did not close; app may have been killed or crashed")
+            appendHistory(
+                "[WARN] previous session did not close; app may have been killed or crashed",
+            )
         }
         LogHub.i(
             TAG,
@@ -124,8 +119,13 @@ object PlaybackDiagnostics {
     fun beginSession(source: String) {
         val begin = session.begin(source)
         begin.supersededId?.let { appendHistory("$CLOSE_MARKER id=$it reason=superseded") }
-        appendHistory("$OPEN_MARKER id=${begin.id} source=${begin.source} startedAt=${begin.startedWall}")
-        LogHub.i(TAG, "session begin id=${begin.id} source=${begin.source} vlcLogFrom=${session.vlcLogStartOffset()}")
+        appendHistory(
+            "$OPEN_MARKER id=${begin.id} source=${begin.source} startedAt=${begin.startedWall}",
+        )
+        LogHub.i(
+            TAG,
+            "session begin id=${begin.id} source=${begin.source} vlcLogFrom=${session.vlcLogStartOffset()}",
+        )
         LogHub.d(TAG, begin.line)
     }
 
@@ -218,12 +218,17 @@ object PlaybackDiagnostics {
      */
     fun fail(code: String, message: String, detail: String = "") {
         val failure = session.fail(code, message, detail)
-        appendHistory("[FAIL] id=${failure.id} code=${failure.code.take(80)} message=${failure.message}")
+        appendHistory(
+            "[FAIL] id=${failure.id} code=${failure.code.take(80)} message=${failure.message}",
+        )
         if (failure.detail.isNotBlank()) appendHistory("    detail=${failure.detail}")
         val nativeTail = vlcLogTail(40)
         if (nativeTail.isNotBlank()) appendHistory("[VLC] id=${failure.id}\n$nativeTail")
         appendHistory("$CLOSE_MARKER id=${failure.id} reason=failed:${failure.code.take(60)}")
-        LogHub.e(TAG, "session failure id=${failure.id} code=${failure.code} message=${failure.message} detail=${failure.detail}")
+        LogHub.e(
+            TAG,
+            "session failure id=${failure.id} code=${failure.code} message=${failure.message} detail=${failure.detail}",
+        )
         LogHub.d(TAG, failure.line)
     }
 
@@ -274,7 +279,10 @@ object PlaybackDiagnostics {
     fun reportJson(): String {
         val root = JSONObject()
         runCatching {
-            root.put("generatedAt", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
+            root.put(
+                "generatedAt",
+                SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
+            )
             root.put("installed", installed)
             appContext?.let { context -> root.put("device", DeviceDiagnostics.snapshot(context)) }
             root.put("session", session.sessionJson())
@@ -285,11 +293,12 @@ object PlaybackDiagnostics {
                 root.put("nativeLogcat", NativeLogcat.report(160))
             }
             root.put("history", JSONObject().put("tail", historyTail(120)))
-        }.onFailure { error ->
-            runCatching {
-                root.put("reportError", LogRedaction.reason(error))
-            }
         }
+            .onFailure { error ->
+                runCatching {
+                    root.put("reportError", LogRedaction.reason(error))
+                }
+            }
         return root.toString(2)
     }
 
@@ -322,13 +331,14 @@ object PlaybackDiagnostics {
         if (!file.isFile) return "(empty)"
         return synchronized(fileLock) {
             runCatching {
-                readTailText(file, MAX_HISTORY_TAIL_BYTES)
-                    .lineSequence()
-                    .filter { it.isNotBlank() }
-                    .toList()
-                    .takeLast(maxLines)
-                    .joinToString("\n") { LogRedaction.text(it) }
-            }.getOrDefault("(unreadable)")
+                    readTailText(file, MAX_HISTORY_TAIL_BYTES)
+                        .lineSequence()
+                        .filter { it.isNotBlank() }
+                        .toList()
+                        .takeLast(maxLines)
+                        .joinToString("\n") { LogRedaction.text(it) }
+                }
+                .getOrDefault("(unreadable)")
         }
     }
 
@@ -345,18 +355,19 @@ object PlaybackDiagnostics {
     }
 
     /** 构造 libVLC 原生日志 JSON。 */
-    private fun buildVlcLogJson(): JSONObject = JSONObject().apply {
-        val current = vlcLog
-        put("file", current?.absolutePath.orEmpty())
-        put("bytes", current?.takeIf { it.isFile }?.length() ?: 0L)
-        put("available", (current?.takeIf { it.isFile }?.length() ?: 0L) > 0L)
-        put("tail", vlcLogTail(180))
-        val previous = previousVlcLog
-        if (previous != null && previous.isFile) {
-            put("previousBytes", previous.length())
-            put("previousTail", readVlcTail(previous, 0L, 80))
+    private fun buildVlcLogJson(): JSONObject =
+        JSONObject().apply {
+            val current = vlcLog
+            put("file", current?.absolutePath.orEmpty())
+            put("bytes", current?.takeIf { it.isFile }?.length() ?: 0L)
+            put("available", (current?.takeIf { it.isFile }?.length() ?: 0L) > 0L)
+            put("tail", vlcLogTail(180))
+            val previous = previousVlcLog
+            if (previous != null && previous.isFile) {
+                put("previousBytes", previous.length())
+                put("previousTail", readVlcTail(previous, 0L, 80))
+            }
         }
-    }
 
     /** 读取文件尾部并生成脱敏的日志行。 */
     private fun readVlcTail(file: File, startOffset: Long, maxLines: Int): String =
@@ -408,9 +419,10 @@ object PlaybackDiagnostics {
     /** 判断上一次运行是否没有正常关闭会话。 */
     private fun detectUncleanHistory(): Boolean {
         val file = historyFile ?: return false
-        val tail = synchronized(fileLock) {
-            runCatching { readTailText(file, MAX_HISTORY_TAIL_BYTES) }.getOrDefault("")
-        }
+        val tail =
+            synchronized(fileLock) {
+                runCatching { readTailText(file, MAX_HISTORY_TAIL_BYTES) }.getOrDefault("")
+            }
         if (tail.isBlank()) return false
         return tail.lastIndexOf(OPEN_MARKER) > tail.lastIndexOf(CLOSE_MARKER)
     }
@@ -438,5 +450,6 @@ object PlaybackDiagnostics {
                 }
             }
         }
-    }.getOrDefault(0L)
+    }
+        .getOrDefault(0L)
 }

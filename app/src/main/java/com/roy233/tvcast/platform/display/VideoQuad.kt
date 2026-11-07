@@ -5,7 +5,12 @@ import kotlin.math.abs
 /** 平台渲染器的归一化四边形输入；由应用宿主从校准状态映射而来。 */
 data class VideoPoint(val x: Float, val y: Float)
 
-data class PerspectiveWeights(val topLeft: Float, val topRight: Float, val bottomRight: Float, val bottomLeft: Float)
+data class PerspectiveWeights(
+    val topLeft: Float,
+    val topRight: Float,
+    val bottomRight: Float,
+    val bottomLeft: Float,
+)
 
 data class VideoQuad(
     val topLeft: VideoPoint = VideoPoint(0f, 0f),
@@ -15,7 +20,12 @@ data class VideoQuad(
 ) {
     /** 在校准四边形内等比放置非 16:9 内容，不改变原视频纵横比。 */
     fun fitInside(contentAspect: Float, outputAspect: Float): VideoQuad {
-        if (!contentAspect.isFinite() || contentAspect <= 0f || !outputAspect.isFinite() || outputAspect <= 0f) {
+        if (
+            !contentAspect.isFinite() ||
+                contentAspect <= 0f ||
+                !outputAspect.isFinite() ||
+                outputAspect <= 0f
+        ) {
             return this
         }
         if (contentAspect < outputAspect) {
@@ -36,12 +46,13 @@ data class VideoQuad(
         )
     }
 
-    fun point(corner: Int): VideoPoint = when (corner) {
-        1 -> topLeft
-        2 -> topRight
-        3 -> bottomRight
-        else -> bottomLeft
-    }
+    fun point(corner: Int): VideoPoint =
+        when (corner) {
+            1 -> topLeft
+            2 -> topRight
+            3 -> bottomRight
+            else -> bottomLeft
+        }
 
     /** 投影插值权重，使任意四角仍按连续透视映射取样。 */
     fun perspectiveWeights(): PerspectiveWeights {
@@ -58,8 +69,9 @@ data class VideoQuad(
         return PerspectiveWeights(1f, 1f + g, 1f + g + h, 1f + h)
     }
 
-    private fun lerp(from: VideoPoint, to: VideoPoint, fraction: Float) = VideoPoint(
-        from.x + (to.x - from.x) * fraction,
-        from.y + (to.y - from.y) * fraction,
-    )
+    private fun lerp(from: VideoPoint, to: VideoPoint, fraction: Float) =
+        VideoPoint(
+            from.x + (to.x - from.x) * fraction,
+            from.y + (to.y - from.y) * fraction,
+        )
 }

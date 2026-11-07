@@ -1,8 +1,5 @@
 package com.roy233.tvcast.ui.tv.player
 
-import com.roy233.tvcast.ui.theme.TvColors
-import com.roy233.tvcast.ui.theme.TvType
-import com.roy233.tvcast.ui.designsystem.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,16 +18,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
-import com.roy233.tvcast.ui.tv.FocusTarget
-import com.roy233.tvcast.ui.tv.focusTarget
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -38,19 +32,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.ui.designsystem.*
+import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.theme.TvType
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
 
 /** 绘制当前播放位置与媒体时长对应的进度条。 */
 @Composable
 internal fun TvProgressBar(positionMs: Long, durationMs: Long, focused: Boolean) {
-    val progress = if (durationMs > 0) {
-        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
+    val progress =
+        if (durationMs > 0) {
+            (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
     Canvas(
-        Modifier
-            .fillMaxWidth()
-            .height(if (focused) 18.dp else 8.dp)
+        Modifier.fillMaxWidth().height(if (focused) 18.dp else 8.dp),
     ) {
         val trackHeight = if (focused) 7.dp.toPx() else 4.dp.toPx()
         val y = (size.height - trackHeight) / 2f
@@ -89,22 +87,22 @@ internal fun SeekableProgressBar(
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(34.dp)
-            .focusTarget(focusTarget)
-            .focusProperties { down = playFocusTarget.requester }
-            .onFocusChanged { focused = it.isFocused }
-            .onPreviewKeyEvent { event ->
-                handlePlaybackSeekKey(
-                    event = event,
-                    isSeeking = isSeeking,
-                    seekAccelerator = seekAccelerator,
-                    onPreviewSeekBy = onPreviewSeekBy,
-                    onConfirmSeek = onConfirmSeek,
-                )
-            }
-            .focusable(),
+        modifier =
+            Modifier.fillMaxWidth()
+                .height(34.dp)
+                .focusTarget(focusTarget)
+                .focusProperties { down = playFocusTarget.requester }
+                .onFocusChanged { focused = it.isFocused }
+                .onPreviewKeyEvent { event ->
+                    handlePlaybackSeekKey(
+                        event = event,
+                        isSeeking = isSeeking,
+                        seekAccelerator = seekAccelerator,
+                        onPreviewSeekBy = onPreviewSeekBy,
+                        onConfirmSeek = onConfirmSeek,
+                    )
+                }
+                .focusable(),
         contentAlignment = Alignment.Center,
     ) {
         TvProgressBar(positionMs, durationMs, focused)
@@ -115,18 +113,13 @@ internal fun SeekableProgressBar(
 @Composable
 internal fun SeekPreviewOverlay(positionMs: Long, durationMs: Long) {
     GlassSurface(
-        modifier = Modifier
-            .widthIn(max = 580.dp)
-            .fillMaxWidth(0.48f)
-            .height(92.dp),
+        modifier = Modifier.widthIn(max = 580.dp).fillMaxWidth(0.48f).height(92.dp),
         material = GlassMaterial.Hud,
         size = GlassSize.Standard,
         shape = RoundedCornerShape(26.dp),
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             TvProgressBar(positionMs, durationMs, focused = true)
@@ -137,7 +130,8 @@ internal fun SeekPreviewOverlay(positionMs: Long, durationMs: Long) {
                 )
                 Spacer(Modifier.weight(1f))
                 BasicText(
-                    text = "${progressPercent(positionMs, durationMs)}%  ·  ${formatTime(durationMs)}",
+                    text =
+                        "${progressPercent(positionMs, durationMs)}%  ·  ${formatTime(durationMs)}",
                     style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 15.sp),
                 )
             }
@@ -147,4 +141,3 @@ internal fun SeekPreviewOverlay(positionMs: Long, durationMs: Long) {
 
 internal fun progressPercent(positionMs: Long, durationMs: Long): Int =
     if (durationMs > 0L) ((positionMs * 100L) / durationMs).toInt().coerceIn(0, 100) else 0
-

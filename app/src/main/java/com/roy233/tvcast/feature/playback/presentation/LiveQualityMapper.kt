@@ -12,20 +12,19 @@ import com.roy233.tvcast.ui.model.LiveQualityOption
 object LiveQualityMapper {
 
     /** 直播 qn 与点播 qn 数值体系不同，使用直播清晰度名称。 */
-    fun label(qn: Int): String = when (qn) {
-        10_000 -> "原画"
-        400 -> "蓝光"
-        250 -> "超清"
-        150 -> "高清"
-        80 -> "流畅"
-        else -> "直播 qn=$qn"
-    }
+    fun label(qn: Int): String =
+        when (qn) {
+            10_000 -> "原画"
+            400 -> "蓝光"
+            250 -> "超清"
+            150 -> "高清"
+            80 -> "流畅"
+            else -> "直播 qn=$qn"
+        }
 
     /** 直播可选画质档位，取服务端公布的可用档位并映射为友好名称。 */
     fun options(stream: LivePlayInfo): List<LiveQualityOption> {
-        val available = (stream.acceptedQualities + stream.quality)
-            .distinct()
-            .sortedDescending()
+        val available = (stream.acceptedQualities + stream.quality).distinct().sortedDescending()
         return available.mapNotNull { qn ->
             val name = label(qn)
             if (name.startsWith("直播 qn=")) null else LiveQualityOption(qn = qn, label = name)

@@ -20,8 +20,7 @@ object CdnCandidateSelector {
         listOfNotNull(o.get("backupUrl"), o.get("backup_url"))
             .firstOrNull { it.isJsonArray }
             ?.asJsonArray
-            ?.mapNotNull { runCatching { it.asString }.getOrNull() }
-            ?: emptyList()
+            ?.mapNotNull { runCatching { it.asString }.getOrNull() } ?: emptyList()
 
     /** 将 JSON 轨道对象转换为播放轨道模型。 */
     fun parseTrack(o: JsonObject, isDolbyAudio: Boolean = false): BiliApi.Track {
@@ -35,23 +34,41 @@ object CdnCandidateSelector {
         val mimeType = o.string("mimeType").ifBlank { o.string("mime_type") }
         val codecs = o.string("codecs")
         val colorSpace = o.string("colorSpace").ifBlank { o.string("color_space") }
-        val transfer = o.string("transferCharacteristics")
-            .ifBlank { o.string("transfer_characteristics") }
-        val metadata = listOf(mimeType, codecs, colorSpace, transfer, o.toString()).joinToString(" ")
-            .lowercase()
-        val isDolbyVision = id == 126 || metadata.contains("dolby-vision") ||
-            metadata.contains("dolby_vision") || codecs.startsWith("dv", ignoreCase = true)
-        val isHdr = isDolbyVision || id == 125 || id == 129 ||
-            metadata.contains("bt2020") || metadata.contains("hdr") ||
-            metadata.contains("hlg") || metadata.contains("arib-std-b67") ||
-            metadata.contains("st2084") || metadata.contains("pq")
-        val segmentBase = listOfNotNull(o.get("segmentBase"), o.get("segment_base"))
-            .firstOrNull { it.isJsonObject }
-            ?.asJsonObject
-        val initializationRange = segmentBase?.string("initialization")
-            ?.ifBlank { segmentBase.string("initialization_range") }.orEmpty()
-        val indexRange = segmentBase?.string("indexRange")
-            ?.ifBlank { segmentBase.string("index_range") }.orEmpty()
+        val transfer =
+            o.string("transferCharacteristics").ifBlank { o.string("transfer_characteristics") }
+        val metadata =
+            listOf(mimeType, codecs, colorSpace, transfer, o.toString())
+                .joinToString(" ")
+                .lowercase()
+        val isDolbyVision =
+            id == 126 ||
+                metadata.contains("dolby-vision") ||
+                metadata.contains("dolby_vision") ||
+                codecs.startsWith("dv", ignoreCase = true)
+        val isHdr =
+            isDolbyVision ||
+                id == 125 ||
+                id == 129 ||
+                metadata.contains("bt2020") ||
+                metadata.contains("hdr") ||
+                metadata.contains("hlg") ||
+                metadata.contains("arib-std-b67") ||
+                metadata.contains("st2084") ||
+                metadata.contains("pq")
+        val segmentBase =
+            listOfNotNull(o.get("segmentBase"), o.get("segment_base"))
+                .firstOrNull { it.isJsonObject }
+                ?.asJsonObject
+        val initializationRange =
+            segmentBase
+                ?.string("initialization")
+                ?.ifBlank { segmentBase.string("initialization_range") }
+                .orEmpty()
+        val indexRange =
+            segmentBase
+                ?.string("indexRange")
+                ?.ifBlank { segmentBase.string("index_range") }
+                .orEmpty()
         LogHub.i(
             TAG,
             "cdn track id=$id codec=${codecName(codecid)} ${width}x${height} " +
@@ -91,12 +108,15 @@ object CdnCandidateSelector {
             )
         }
         val usable = supported.ifEmpty { list }
-        val selected = usable.sortedWith(
-            compareByDescending<BiliApi.Track> { it.id }
-                .thenBy { it.pcdn }
-                .thenByDescending { it.width.toLong() * it.height }
-                .thenBy { if (it.codecid == 7) 0 else 1 }
-        ).first()
+        val selected =
+            usable
+                .sortedWith(
+                    compareByDescending<BiliApi.Track> { it.id }
+                        .thenBy { it.pcdn }
+                        .thenByDescending { it.width.toLong() * it.height }
+                        .thenBy { if (it.codecid == 7) 0 else 1 },
+                )
+                .first()
         LogHub.i(
             TAG,
             "pickVideo selected qn=${selected.id} ${codecName(selected.codecid)} " +
@@ -115,12 +135,15 @@ object CdnCandidateSelector {
             LogHub.i(TAG, "pickAudio no audio tracks")
             return null
         }
-        val selected = list.sortedWith(
-            compareBy<BiliApi.Track> { it.pcdn }
-                .thenByDescending { if (it.isDolbyAudio) 1 else 0 }
-                .thenByDescending { if (it.id == 30280) 1 else 0 }
-                .thenByDescending { it.id }
-        ).firstOrNull()
+        val selected =
+            list
+                .sortedWith(
+                    compareBy<BiliApi.Track> { it.pcdn }
+                        .thenByDescending { if (it.isDolbyAudio) 1 else 0 }
+                        .thenByDescending { if (it.id == 30280) 1 else 0 }
+                        .thenByDescending { it.id },
+                )
+                .firstOrNull()
         LogHub.i(
             TAG,
             "pickAudio selected id=${selected?.id} codec=${codecName(selected?.codecid ?: 0)} " +
@@ -130,12 +153,13 @@ object CdnCandidateSelector {
     }
 
     /** 将编码标识转换为可读名称。 */
-    private fun codecName(codecid: Int): String = when (codecid) {
-        7 -> "H.264"
-        12 -> "HEVC"
-        13 -> "AV1"
-        else -> "codec$codecid"
-    }
+    private fun codecName(codecid: Int): String =
+        when (codecid) {
+            7 -> "H.264"
+            12 -> "HEVC"
+            13 -> "AV1"
+            else -> "codec$codecid"
+        }
 
     /** 判断播放地址是否符合 PCDN 特征。 */
     fun isPcdn(raw: String): Boolean = CdnRouteRules.isPcdn(raw)
@@ -143,14 +167,20 @@ object CdnCandidateSelector {
     /** 提取播放地址的规范化主机名。 */
     private fun cdnHostOf(raw: String): String = CdnRouteRules.hostOf(raw)
 
-    private fun JsonObject.string(name: String): String =
-        runCatching { get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty() }.getOrDefault("")
+    private fun JsonObject.string(name: String): String = runCatching {
+        get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+    }
+        .getOrDefault("")
 
-    private fun JsonObject.int(name: String): Int =
-        runCatching { get(name)?.takeUnless { it.isJsonNull }?.asInt ?: 0 }.getOrDefault(0)
+    private fun JsonObject.int(name: String): Int = runCatching {
+        get(name)?.takeUnless { it.isJsonNull }?.asInt ?: 0
+    }
+        .getOrDefault(0)
 
-    private fun JsonObject.long(name: String): Long =
-        runCatching { get(name)?.takeUnless { it.isJsonNull }?.asLong ?: 0L }.getOrDefault(0L)
+    private fun JsonObject.long(name: String): Long = runCatching {
+        get(name)?.takeUnless { it.isJsonNull }?.asLong ?: 0L
+    }
+        .getOrDefault(0L)
 
     /** 判断地址是否属于官方 CDN 域名。 */
     fun isOfficialCdn(raw: String): Boolean = CdnRouteRules.isOfficialCdn(raw)

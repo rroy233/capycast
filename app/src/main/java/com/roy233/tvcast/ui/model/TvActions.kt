@@ -1,10 +1,9 @@
 package com.roy233.tvcast.ui.model
 
 import com.roy233.tvcast.feature.cast.domain.RecentCast
-
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
-import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.feature.display.CalibrationDirection
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 
 /**
  * 聚合电视界面向宿主发送的用户操作回调。

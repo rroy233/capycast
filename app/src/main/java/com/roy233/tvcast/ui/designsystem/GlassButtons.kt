@@ -1,8 +1,5 @@
 package com.roy233.tvcast.ui.designsystem
 
-import com.roy233.tvcast.ui.theme.TvColors
-import com.roy233.tvcast.ui.theme.TvDimens
-import com.roy233.tvcast.ui.theme.TvType
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -31,9 +28,9 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,9 +39,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import com.roy233.tvcast.ui.tv.FocusTarget
-import com.roy233.tvcast.ui.tv.focusTarget
-import com.roy233.tvcast.ui.tv.focusTrace
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -55,6 +49,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.theme.TvDimens
+import com.roy233.tvcast.ui.theme.TvType
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
+import com.roy233.tvcast.ui.tv.focusTrace
 
 /** 绘制支持焦点、主色和危险状态的文字按钮。 */
 @Composable
@@ -78,51 +78,59 @@ fun GlassButton(
     val interactionFocused by interaction.collectIsFocusedAsState()
     var focusObserved by remember { mutableStateOf(false) }
     val focused = interactionFocused || focusObserved
-    val targetScale = when {
-        pressed -> 0.97f
-        focused -> 1.05f
-        else -> 1f
-    }
-    val scale by animateFloatAsState(
-        targetValue = targetScale,
-        animationSpec = if (reduceMotion) snap() else spring(dampingRatio = 0.82f, stiffness = 380f),
-        label = "glass-button-scale",
-    )
+    val targetScale =
+        when {
+            pressed -> 0.97f
+            focused -> 1.05f
+            else -> 1f
+        }
+    val scale by
+        animateFloatAsState(
+            targetValue = targetScale,
+            animationSpec =
+                if (reduceMotion) snap() else spring(dampingRatio = 0.82f, stiffness = 380f),
+            label = "glass-button-scale",
+        )
     val shape = RoundedCornerShape(50)
     GlassSurface(
-        modifier = modifier
-            .focusTarget(focusTarget)
-            .then(
-                if (focusTarget == null && focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                },
-            )
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .focusProperties { canFocus = enabled }
-            .onFocusChanged {
-                focusObserved = it.isFocused
-                if (it.isFocused) onFocused?.invoke()
-            }
-            .focusTrace("button:$text")
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .height(if (compact) 50.dp else TvDimens.buttonHeight)
-            .defaultMinSize(minWidth = minWidth),
+        modifier =
+            modifier
+                .focusTarget(focusTarget)
+                .then(
+                    if (focusTarget == null && focusRequester != null) {
+                        Modifier.focusRequester(focusRequester)
+                    } else {
+                        Modifier
+                    },
+                )
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .focusProperties { canFocus = enabled }
+                .onFocusChanged {
+                    focusObserved = it.isFocused
+                    if (it.isFocused) onFocused?.invoke()
+                }
+                .focusTrace("button:$text")
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    enabled = enabled,
+                    role = Role.Button,
+                    onClick = onClick,
+                )
+                .height(if (compact) 50.dp else TvDimens.buttonHeight)
+                .defaultMinSize(minWidth = minWidth),
         material = GlassMaterial.Control,
         size = if (compact) GlassSize.Compact else GlassSize.Standard,
         shape = shape,
-        accentColor = when {
-            destructive -> TvColors.error
-            primary -> TvColors.accent
-            else -> null
-        },
+        accentColor =
+            when {
+                destructive -> TvColors.error
+                primary -> TvColors.accent
+                else -> null
+            },
         emphasized = focused || primary || destructive,
         contentAlignment = Alignment.Center,
     ) {
@@ -142,10 +150,11 @@ fun GlassButton(
             }
             BasicText(
                 text = text,
-                style = TvType.button.copy(
-                    color = if (enabled) Color.White else TvColors.textDisabled,
-                    fontSize = if (compact) 17.sp else TvType.button.fontSize,
-                ),
+                style =
+                    TvType.button.copy(
+                        color = if (enabled) Color.White else TvColors.textDisabled,
+                        fontSize = if (compact) 17.sp else TvType.button.fontSize,
+                    ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -173,39 +182,46 @@ fun GlassIconButton(
     val interactionFocused by interaction.collectIsFocusedAsState()
     var focusObserved by remember { mutableStateOf(false) }
     val focused = interactionFocused || focusObserved
-    val targetScale = when {
-        pressed -> 0.94f
-        focused -> 1.08f
-        else -> 1f
-    }
-    val scale by animateFloatAsState(
-        targetValue = targetScale,
-        animationSpec = if (reduceMotion) snap() else spring(dampingRatio = 0.82f, stiffness = 380f),
-        label = "glass-icon-scale",
-    )
+    val targetScale =
+        when {
+            pressed -> 0.94f
+            focused -> 1.08f
+            else -> 1f
+        }
+    val scale by
+        animateFloatAsState(
+            targetValue = targetScale,
+            animationSpec =
+                if (reduceMotion) snap() else spring(dampingRatio = 0.82f, stiffness = 380f),
+            label = "glass-icon-scale",
+        )
 
     GlassSurface(
-        modifier = modifier
-            .size(size)
-            .focusTarget(focusTarget)
-            .then(
-                if (focusTarget == null && focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                },
-            )
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .focusProperties { canFocus = enabled }
-            .onFocusChanged { focusObserved = it.isFocused }
-            .semantics { this.contentDescription = contentDescription }
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            ),
+        modifier =
+            modifier
+                .size(size)
+                .focusTarget(focusTarget)
+                .then(
+                    if (focusTarget == null && focusRequester != null) {
+                        Modifier.focusRequester(focusRequester)
+                    } else {
+                        Modifier
+                    },
+                )
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .focusProperties { canFocus = enabled }
+                .onFocusChanged { focusObserved = it.isFocused }
+                .semantics { this.contentDescription = contentDescription }
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    enabled = enabled,
+                    role = Role.Button,
+                    onClick = onClick,
+                ),
         material = GlassMaterial.Control,
         size = GlassSize.Compact,
         shape = CircleShape,
@@ -216,11 +232,12 @@ fun GlassIconButton(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = when {
-                !enabled -> TvColors.textDisabled
-                selected -> selectedColor
-                else -> Color.White
-            },
+            tint =
+                when {
+                    !enabled -> TvColors.textDisabled
+                    selected -> selectedColor
+                    else -> Color.White
+                },
             modifier = Modifier.size(size * 0.38f),
         )
     }
@@ -242,57 +259,65 @@ fun PrimaryPlayButton(
     val interactionFocused by interaction.collectIsFocusedAsState()
     var focusObserved by remember { mutableStateOf(false) }
     val focused = interactionFocused || focusObserved
-    val scale by animateFloatAsState(
-        targetValue = when {
-            pressed -> 0.94f
-            focused -> 1.08f
-            else -> 1f
-        },
-        animationSpec = if (reduceMotion) snap() else spring(dampingRatio = 0.82f, stiffness = 380f),
-        label = "play-scale",
-    )
+    val scale by
+        animateFloatAsState(
+            targetValue =
+                when {
+                    pressed -> 0.94f
+                    focused -> 1.08f
+                    else -> 1f
+                },
+            animationSpec =
+                if (reduceMotion) snap() else spring(dampingRatio = 0.82f, stiffness = 380f),
+            label = "play-scale",
+        )
 
     Box(
-        modifier = modifier
-            .size(size)
-            .focusTarget(focusTarget)
-            .then(
-                if (focusTarget == null && focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                },
-            )
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .onFocusChanged { focusObserved = it.isFocused }
-            .shadow(
-                elevation = if (focused) 26.dp else 16.dp,
-                shape = CircleShape,
-                ambientColor = Color.Black,
-                spotColor = Color.Black,
-            )
-            .clip(CircleShape)
-            .background(Color.White)
-            .border(
-                width = 2.dp,
-                color = if (focused) TvColors.accent.copy(alpha = 0.95f) else Color.Transparent,
-                shape = CircleShape,
-            )
-            .semantics { contentDescription = if (isPlaying) "暂停" else "播放" }
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                role = Role.Button,
-                onClick = onClick,
-            ),
+        modifier =
+            modifier
+                .size(size)
+                .focusTarget(focusTarget)
+                .then(
+                    if (focusTarget == null && focusRequester != null) {
+                        Modifier.focusRequester(focusRequester)
+                    } else {
+                        Modifier
+                    },
+                )
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .onFocusChanged { focusObserved = it.isFocused }
+                .shadow(
+                    elevation = if (focused) 26.dp else 16.dp,
+                    shape = CircleShape,
+                    ambientColor = Color.Black,
+                    spotColor = Color.Black,
+                )
+                .clip(CircleShape)
+                .background(Color.White)
+                .border(
+                    width = 2.dp,
+                    color = if (focused) TvColors.accent.copy(alpha = 0.95f) else Color.Transparent,
+                    shape = CircleShape,
+                )
+                .semantics { contentDescription = if (isPlaying) "暂停" else "播放" }
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    role = Role.Button,
+                    onClick = onClick,
+                ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = if (isPlaying) {
-                Icons.Rounded.Pause
-            } else {
-                Icons.Rounded.PlayArrow
-            },
+            imageVector =
+                if (isPlaying) {
+                    Icons.Rounded.Pause
+                } else {
+                    Icons.Rounded.PlayArrow
+                },
             contentDescription = null,
             tint = Color.Black,
             modifier = Modifier.size(size * 0.42f),

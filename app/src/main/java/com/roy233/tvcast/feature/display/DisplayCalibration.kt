@@ -9,35 +9,39 @@ data class DisplayCorners(
     val bottomRight: CalibrationPoint = CalibrationPoint(1f, 1f),
     val bottomLeft: CalibrationPoint = CalibrationPoint(0f, 1f),
 ) {
-    fun sanitized(): DisplayCorners = DisplayCorners(
-        topLeft.safe(0f..MAX_INSET, 0f..MAX_INSET, CalibrationPoint(0f, 0f)),
-        topRight.safe((1f - MAX_INSET)..1f, 0f..MAX_INSET, CalibrationPoint(1f, 0f)),
-        bottomRight.safe((1f - MAX_INSET)..1f, (1f - MAX_INSET)..1f, CalibrationPoint(1f, 1f)),
-        bottomLeft.safe(0f..MAX_INSET, (1f - MAX_INSET)..1f, CalibrationPoint(0f, 1f)),
-    )
+    fun sanitized(): DisplayCorners =
+        DisplayCorners(
+            topLeft.safe(0f..MAX_INSET, 0f..MAX_INSET, CalibrationPoint(0f, 0f)),
+            topRight.safe((1f - MAX_INSET)..1f, 0f..MAX_INSET, CalibrationPoint(1f, 0f)),
+            bottomRight.safe((1f - MAX_INSET)..1f, (1f - MAX_INSET)..1f, CalibrationPoint(1f, 1f)),
+            bottomLeft.safe(0f..MAX_INSET, (1f - MAX_INSET)..1f, CalibrationPoint(0f, 1f)),
+        )
 
-    fun point(corner: Int): CalibrationPoint = when (corner) {
-        1 -> topLeft
-        2 -> topRight
-        3 -> bottomRight
-        else -> bottomLeft
-    }
+    fun point(corner: Int): CalibrationPoint =
+        when (corner) {
+            1 -> topLeft
+            2 -> topRight
+            3 -> bottomRight
+            else -> bottomLeft
+        }
 
-    fun withPoint(corner: Int, point: CalibrationPoint): DisplayCorners = when (corner) {
-        1 -> copy(topLeft = point)
-        2 -> copy(topRight = point)
-        3 -> copy(bottomRight = point)
-        else -> copy(bottomLeft = point)
-    }.sanitized()
+    fun withPoint(corner: Int, point: CalibrationPoint): DisplayCorners =
+        when (corner) {
+            1 -> copy(topLeft = point)
+            2 -> copy(topRight = point)
+            3 -> copy(bottomRight = point)
+            else -> copy(bottomLeft = point)
+        }.sanitized()
 
     private fun CalibrationPoint.safe(
         xRange: ClosedFloatingPointRange<Float>,
         yRange: ClosedFloatingPointRange<Float>,
         fallback: CalibrationPoint,
-    ): CalibrationPoint = CalibrationPoint(
-        if (x.isFinite()) x.coerceIn(xRange) else fallback.x,
-        if (y.isFinite()) y.coerceIn(yRange) else fallback.y,
-    )
+    ): CalibrationPoint =
+        CalibrationPoint(
+            if (x.isFinite()) x.coerceIn(xRange) else fallback.x,
+            if (y.isFinite()) y.coerceIn(yRange) else fallback.y,
+        )
 
     companion object {
         /** 每个角最多向内移动屏幕宽高的 20%，防止图像翻折。 */
@@ -45,9 +49,19 @@ data class DisplayCorners(
     }
 }
 
-enum class CalibrationPhase { HIDDEN, INTRO, ADJUST, CONFIRM }
+enum class CalibrationPhase {
+    HIDDEN,
+    INTRO,
+    ADJUST,
+    CONFIRM,
+}
 
-enum class CalibrationDirection { LEFT, UP, RIGHT, DOWN }
+enum class CalibrationDirection {
+    LEFT,
+    UP,
+    RIGHT,
+    DOWN,
+}
 
 data class CalibrationState(
     val phase: CalibrationPhase = CalibrationPhase.HIDDEN,
@@ -63,7 +77,9 @@ data class SavedCalibration(
 
 interface DisplayCalibrationStore {
     fun load(): SavedCalibration
+
     fun savePrompted()
+
     fun save(corners: DisplayCorners)
 }
 
@@ -88,7 +104,9 @@ class DisplayCalibrationCoordinator(
             store.savePrompted()
             saved = saved.copy(prompted = true)
         }
-        publish(CalibrationState(phase = CalibrationPhase.ADJUST, draft = saved.corners.sanitized()))
+        publish(
+            CalibrationState(phase = CalibrationPhase.ADJUST, draft = saved.corners.sanitized()),
+        )
     }
 
     fun skipOrCancel() {
@@ -107,23 +125,28 @@ class DisplayCalibrationCoordinator(
         val stepX = STEP_PX / width
         val stepY = STEP_PX / height
         val current = state.draft.point(state.corner)
-        val moved = when (direction) {
-            CalibrationDirection.LEFT -> current.copy(x = current.x - stepX)
-            CalibrationDirection.RIGHT -> current.copy(x = current.x + stepX)
-            CalibrationDirection.UP -> current.copy(y = current.y - stepY)
-            CalibrationDirection.DOWN -> current.copy(y = current.y + stepY)
-        }
+        val moved =
+            when (direction) {
+                CalibrationDirection.LEFT -> current.copy(x = current.x - stepX)
+                CalibrationDirection.RIGHT -> current.copy(x = current.x + stepX)
+                CalibrationDirection.UP -> current.copy(y = current.y - stepY)
+                CalibrationDirection.DOWN -> current.copy(y = current.y + stepY)
+            }
         val next = state.draft.withPoint(state.corner, moved)
         if (next != state.draft) publish(state.copy(draft = next))
     }
 
     fun nextCorner() {
         if (state.phase != CalibrationPhase.ADJUST) return
-        publish(if (state.corner == 4) state.copy(phase = CalibrationPhase.CONFIRM) else state.copy(corner = state.corner + 1))
+        publish(
+            if (state.corner == 4) state.copy(phase = CalibrationPhase.CONFIRM)
+            else state.copy(corner = state.corner + 1),
+        )
     }
 
     fun review() {
-        if (state.phase == CalibrationPhase.CONFIRM) publish(state.copy(phase = CalibrationPhase.ADJUST, corner = 1))
+        if (state.phase == CalibrationPhase.CONFIRM)
+            publish(state.copy(phase = CalibrationPhase.ADJUST, corner = 1))
     }
 
     fun finish() {
@@ -140,5 +163,7 @@ class DisplayCalibrationCoordinator(
         onState(next)
     }
 
-    private companion object { const val STEP_PX = 2f }
+    private companion object {
+        const val STEP_PX = 2f
+    }
 }

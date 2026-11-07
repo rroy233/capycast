@@ -3,9 +3,9 @@ package com.roy233.tvcast.feature.playback.domain
 /**
  * Judges whether a VOD playback interruption represents normal startup work or a route failure.
  *
- * libVLC reports buffering while opening media and while applying an initial seek. Those events
- * are expected and must not consume CDN candidates. Only buffering that begins after verified
- * forward playback participates in automatic recovery.
+ * libVLC reports buffering while opening media and while applying an initial seek. Those events are
+ * expected and must not consume CDN candidates. Only buffering that begins after verified forward
+ * playback participates in automatic recovery.
  */
 class VodRecoveryController {
 
@@ -40,8 +40,10 @@ class VodRecoveryController {
 
     var generation: Long = 0L
         private set
+
     var phase: Phase = Phase.IDLE
         private set
+
     var rebufferCount: Int = 0
         private set
 
@@ -98,9 +100,10 @@ class VodRecoveryController {
             stableCandidateAtMs = nowMs
             stableCandidatePositionMs = position
         }
-        if (phase == Phase.STABILIZING &&
-            nowMs - stableCandidateAtMs >= MIN_STABLE_PLAYBACK_MS &&
-            position - stableCandidatePositionMs >= MIN_STABLE_PROGRESS_MS
+        if (
+            phase == Phase.STABILIZING &&
+                nowMs - stableCandidateAtMs >= MIN_STABLE_PLAYBACK_MS &&
+                position - stableCandidatePositionMs >= MIN_STABLE_PROGRESS_MS
         ) {
             phase = Phase.STABLE
             if (lastRebufferAtMs == 0L || nowMs - lastRebufferAtMs > REBUFFER_WINDOW_MS) {
@@ -108,7 +111,11 @@ class VodRecoveryController {
             }
             return ProgressUpdate(phase, becameStable = true)
         }
-        if (phase == Phase.STABLE && lastRebufferAtMs > 0L && nowMs - lastRebufferAtMs > REBUFFER_WINDOW_MS) {
+        if (
+            phase == Phase.STABLE &&
+                lastRebufferAtMs > 0L &&
+                nowMs - lastRebufferAtMs > REBUFFER_WINDOW_MS
+        ) {
             rebufferCount = 0
         }
         return ProgressUpdate(phase)
@@ -149,24 +156,30 @@ class VodRecoveryController {
             phase = phase,
             countedRebuffer = true,
             durationMs = durationMs,
-            failure = if (rebufferCount >= REBUFFER_SWITCH_THRESHOLD) Failure.TWO_SEVERE_REBUFFERS else null,
+            failure =
+                if (rebufferCount >= REBUFFER_SWITCH_THRESHOLD) Failure.TWO_SEVERE_REBUFFERS
+                else null,
         )
     }
 
     /** Reports a genuinely stuck opening or buffering episode once. */
-    fun onTick(nowMs: Long): Failure? = when {
-        awaitingInitialPlaying && phase == Phase.OPENING &&
-            !openTimeoutReported && nowMs - openedAtMs >= OPEN_TIMEOUT_MS -> {
-            openTimeoutReported = true
-            Failure.OPEN_TIMEOUT
+    fun onTick(nowMs: Long): Failure? =
+        when {
+            awaitingInitialPlaying &&
+                phase == Phase.OPENING &&
+                !openTimeoutReported &&
+                nowMs - openedAtMs >= OPEN_TIMEOUT_MS -> {
+                openTimeoutReported = true
+                Failure.OPEN_TIMEOUT
+            }
+            phase == Phase.BUFFERING &&
+                !persistentBufferReported &&
+                nowMs - bufferingStartedAtMs >= PERSISTENT_BUFFER_MS -> {
+                persistentBufferReported = true
+                Failure.PERSISTENT_BUFFERING
+            }
+            else -> null
         }
-        phase == Phase.BUFFERING && !persistentBufferReported &&
-            nowMs - bufferingStartedAtMs >= PERSISTENT_BUFFER_MS -> {
-            persistentBufferReported = true
-            Failure.PERSISTENT_BUFFERING
-        }
-        else -> null
-    }
 
     /** Suppresses buffering events while a replacement route is being opened. */
     fun onSwitching() {

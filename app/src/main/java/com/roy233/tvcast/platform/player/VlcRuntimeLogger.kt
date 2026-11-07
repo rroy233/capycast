@@ -5,18 +5,17 @@ import android.util.DisplayMetrics
 import android.view.WindowManager
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
+import java.io.File
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.util.HWDecoderUtil
 import org.videolan.libvlc.util.VLCUtil
 import org.videolan.libvlc.util.VLCVideoLayout
-import java.io.File
 
 /**
  * 负责 libVLC 启动参数、运行时能力和显示环境探测。
  *
- * 这些信息在每次应用启动时记录一次，用于区分“设备硬件/系统能力不足”和
- * “单个视频码流有问题”两类故障。
+ * 这些信息在每次应用启动时记录一次，用于区分“设备硬件/系统能力不足”和 “单个视频码流有问题”两类故障。
  */
 internal object VlcRuntimeLogger {
 
@@ -26,16 +25,17 @@ internal object VlcRuntimeLogger {
      * @param nativeLogFile libVLC 原生日志文件。
      * @return libVLC 启动参数。
      */
-    fun options(nativeLogFile: File): ArrayList<String> = arrayListOf(
-        "--avcodec-hw=mediacodec",
-        "--no-drop-late-frames",
-        "--no-skip-frames",
-        "--network-caching=2000",
-        "--audio-time-stretch",
-        "--verbose=1",
-        "--file-logging",
-        "--logfile=${nativeLogFile.absolutePath}",
-    )
+    fun options(nativeLogFile: File): ArrayList<String> =
+        arrayListOf(
+            "--avcodec-hw=mediacodec",
+            "--no-drop-late-frames",
+            "--no-skip-frames",
+            "--network-caching=2000",
+            "--audio-time-stretch",
+            "--verbose=1",
+            "--file-logging",
+            "--logfile=${nativeLogFile.absolutePath}",
+        )
 
     /**
      * 记录 libVLC 版本、硬件解码器、CPU 和显示环境。
@@ -56,19 +56,22 @@ internal object VlcRuntimeLogger {
         val version = runCatching { LibVLC.version() }.getOrNull() ?: "(unavailable)"
         val changeset = runCatching { LibVLC.changeset() }.getOrNull() ?: "(unavailable)"
         val compiler = runCatching { LibVLC.compiler() }.getOrNull() ?: "(unavailable)"
-        val decoder = runCatching { HWDecoderUtil.getDecoderFromDevice()?.name }
-            .getOrNull() ?: "(unavailable)"
-        val audioOutput = runCatching { HWDecoderUtil.getAudioOutputFromDevice()?.name }
-            .getOrNull() ?: "(unavailable)"
-        val compatible = runCatching { VLCUtil.hasCompatibleCPU(context) }
-            .getOrNull()?.toString() ?: "(unavailable)"
+        val decoder =
+            runCatching { HWDecoderUtil.getDecoderFromDevice()?.name }.getOrNull()
+                ?: "(unavailable)"
+        val audioOutput =
+            runCatching { HWDecoderUtil.getAudioOutputFromDevice()?.name }.getOrNull()
+                ?: "(unavailable)"
+        val compatible =
+            runCatching { VLCUtil.hasCompatibleCPU(context) }.getOrNull()?.toString()
+                ?: "(unavailable)"
         val passthrough = runCatching { player.canDoPassthrough() }.getOrDefault(false)
         val machine = runCatching { VLCUtil.getMachineSpecs() }.getOrNull()
         val metrics = DisplayMetrics()
         val display = runCatching {
-            (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)
-                ?.defaultDisplay
-        }.getOrNull()
+            (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.defaultDisplay
+        }
+            .getOrNull()
         if (display != null) {
             runCatching { display.getRealMetrics(metrics) }
         }

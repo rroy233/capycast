@@ -31,27 +31,31 @@ internal object DiagnosticsFileStore {
     fun readVlcTail(file: File, startOffset: Long, maxLines: Int, maxBytes: Long): String {
         if (!file.isFile) return ""
         return runCatching {
-            val length = file.length()
-            if (length <= 0L) return@runCatching ""
-            val from = maxOf(
-                startOffset.coerceIn(0L, length),
-                length - maxBytes,
-            ).coerceAtLeast(0L)
-            RandomAccessFile(file, "r").use { handle ->
-                handle.seek(from)
-                val size = (length - from).toInt().coerceAtMost(maxBytes.toInt())
-                if (size <= 0) return@runCatching ""
-                val bytes = ByteArray(size)
-                handle.readFully(bytes)
-                var text = String(bytes, Charsets.UTF_8)
-                if (from > 0L) text = text.substringAfter('\n', "")
-                text.lineSequence()
-                    .filter { it.isNotBlank() }
-                    .toList()
-                    .takeLast(maxLines)
-                    .joinToString("\n") { LogRedaction.text(it) }
+                val length = file.length()
+                if (length <= 0L) return@runCatching ""
+                val from =
+                    maxOf(
+                            startOffset.coerceIn(0L, length),
+                            length - maxBytes,
+                        )
+                        .coerceAtLeast(0L)
+                RandomAccessFile(file, "r").use { handle ->
+                    handle.seek(from)
+                    val size = (length - from).toInt().coerceAtMost(maxBytes.toInt())
+                    if (size <= 0) return@runCatching ""
+                    val bytes = ByteArray(size)
+                    handle.readFully(bytes)
+                    var text = String(bytes, Charsets.UTF_8)
+                    if (from > 0L) text = text.substringAfter('\n', "")
+                    text
+                        .lineSequence()
+                        .filter { it.isNotBlank() }
+                        .toList()
+                        .takeLast(maxLines)
+                        .joinToString("\n") { LogRedaction.text(it) }
+                }
             }
-        }.getOrDefault("")
+            .getOrDefault("")
     }
 
     /**
@@ -72,5 +76,6 @@ internal object DiagnosticsFileStore {
             handle.readFully(bytes)
             String(bytes, Charsets.UTF_8)
         }
-    }.getOrDefault("")
+    }
+        .getOrDefault("")
 }

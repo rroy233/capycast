@@ -9,24 +9,25 @@ class PlaybackHistoryContentTest {
 
     @Test
     fun `vod content preserves all Bilibili identity and scene fields`() {
-        val content = PlaybackHistoryContent(
-            stableKey = "bvid:BV1",
-            bvid = "BV1",
-            aid = 101L,
-            cid = 202L,
-            sid = 303L,
-            epid = 404L,
-            serialId = 505L,
-            type = 3,
-            business = "archive",
-            isLive = false,
-            roomId = 0L,
-            livePlayUrl = "",
-            scene = "tv_cast",
-            fromScene = "dlna",
-            fromSpmid = "main.cast",
-            resourceFrom = "tv",
-        )
+        val content =
+            PlaybackHistoryContent(
+                stableKey = "bvid:BV1",
+                bvid = "BV1",
+                aid = 101L,
+                cid = 202L,
+                sid = 303L,
+                epid = 404L,
+                serialId = 505L,
+                type = 3,
+                business = "archive",
+                isLive = false,
+                roomId = 0L,
+                livePlayUrl = "",
+                scene = "tv_cast",
+                fromScene = "dlna",
+                fromSpmid = "main.cast",
+                resourceFrom = "tv",
+            )
 
         assertEquals("bvid:BV1", content.stableKey)
         assertEquals("BV1", content.bvid)

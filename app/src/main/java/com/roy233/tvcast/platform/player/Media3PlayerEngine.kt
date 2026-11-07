@@ -4,8 +4,9 @@ import android.content.Context
 import android.graphics.Point
 import android.net.Uri
 import android.os.Build
-import android.view.SurfaceView
+import android.util.Base64
 import android.view.Surface
+import android.view.SurfaceView
 import android.view.TextureView
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -15,40 +16,38 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
-import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
-import com.roy233.tvcast.core.playback.PlaybackRequest
-import com.roy233.tvcast.core.playback.MediaTrack
-import com.roy233.tvcast.core.playback.PlaybackFailure
-import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
-import java.nio.charset.StandardCharsets
+import com.roy233.tvcast.core.playback.MediaTrack
+import com.roy233.tvcast.core.playback.PlaybackEvent
+import com.roy233.tvcast.core.playback.PlaybackFailure
+import com.roy233.tvcast.core.playback.PlaybackRequest
 import java.io.IOException
+import java.nio.charset.StandardCharsets
 import java.util.Collections
-import android.util.Base64
 
 /**
  * DASH、HDR、Dolby Vision 与 Widevine 内容使用的 Media3 播放器。
  *
- * Media3 将 DASH/fMP4 的编码、色彩与 DRM 信息交给 Android MediaCodec/CDM，
- * 并通过 SurfaceView 输出视频。
+ * Media3 将 DASH/fMP4 的编码、色彩与 DRM 信息交给 Android MediaCodec/CDM， 并通过 SurfaceView 输出视频。
  */
 @UnstableApi
 class Media3PlayerEngine(
@@ -58,110 +57,120 @@ class Media3PlayerEngine(
 ) {
 
     /**
-     * Dolby Vision 的软件解码无法保证保留动态元数据，也无法在 4K 下稳定播放。
-     * 因此视频轨只返回硬件 MediaCodec；音频轨保持系统默认选择，兼顾 E-AC-3 兼容性。
+     * Dolby Vision 的软件解码无法保证保留动态元数据，也无法在 4K 下稳定播放。 因此视频轨只返回硬件 MediaCodec；音频轨保持系统默认选择，兼顾 E-AC-3 兼容性。
      */
     private val hardwareVideoCodecSelector = HardwareVideoCodecSelector()
 
-    @Volatile
-    private var activeDrm = false
+    @Volatile private var activeDrm = false
     private var videoOutput: Surface? = null
 
-    private val drmHttpFactory = DefaultHttpDataSource.Factory()
-        .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
-        .setDefaultRequestProperties(
-            mapOf(
-                "Origin" to WEB_ORIGIN,
-                "Referer" to WEB_REFERER,
-                "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT,
-            ),
-        )
+    private val drmHttpFactory =
+        DefaultHttpDataSource.Factory()
+            .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Origin" to WEB_ORIGIN,
+                    "Referer" to WEB_REFERER,
+                    "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT,
+                ),
+            )
 
-    private val mediaHttpFactory = DefaultHttpDataSource.Factory()
-        .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
-        .setDefaultRequestProperties(
-            mapOf("Referer" to WEB_REFERER, "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT),
-        )
+    private val mediaHttpFactory =
+        DefaultHttpDataSource.Factory()
+            .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
+            .setDefaultRequestProperties(
+                mapOf("Referer" to WEB_REFERER, "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT),
+            )
 
-    private val drmProvider = DefaultDrmSessionManagerProvider().apply {
-        setDrmHttpDataSourceFactory(drmHttpFactory)
-    }
+    private val drmProvider =
+        DefaultDrmSessionManagerProvider().apply {
+            setDrmHttpDataSourceFactory(drmHttpFactory)
+        }
 
-    private val player = ExoPlayer.Builder(
-        context.applicationContext,
-        DefaultRenderersFactory(context.applicationContext)
-            .setEnableDecoderFallback(false)
-            .setMediaCodecSelector(hardwareVideoCodecSelector),
-    ).setMediaSourceFactory(
-        DefaultMediaSourceFactory(
-            DefaultDataSource.Factory(context.applicationContext, mediaHttpFactory),
-        )
-            .setDrmSessionManagerProvider(drmProvider),
-    ).build().also { instance ->
-        // 布局通过 app:surface_type="surface_view" 固定直出；TextureView 会把 HDR 转为 SDR。
-        playerView.player = instance
-        instance.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                LogHub.i(
-                    TAG,
-                    "state=${stateName(playbackState)} playWhenReady=${instance.playWhenReady} " +
-                        "isPlaying=${instance.isPlaying} position=${instance.currentPosition}ms " +
-                        "buffered=${instance.bufferedPosition}ms duration=${instance.duration}",
+    private val player =
+        ExoPlayer.Builder(
+                context.applicationContext,
+                DefaultRenderersFactory(context.applicationContext)
+                    .setEnableDecoderFallback(false)
+                    .setMediaCodecSelector(hardwareVideoCodecSelector),
+            )
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(
+                        DefaultDataSource.Factory(context.applicationContext, mediaHttpFactory),
+                    )
+                    .setDrmSessionManagerProvider(drmProvider),
+            )
+            .build()
+            .also { instance ->
+                // 布局通过 app:surface_type="surface_view" 固定直出；TextureView 会把 HDR 转为 SDR。
+                playerView.player = instance
+                instance.addListener(
+                    object : Player.Listener {
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            LogHub.i(
+                                TAG,
+                                "state=${stateName(playbackState)} playWhenReady=${instance.playWhenReady} " +
+                                    "isPlaying=${instance.isPlaying} position=${instance.currentPosition}ms " +
+                                    "buffered=${instance.bufferedPosition}ms duration=${instance.duration}",
+                            )
+                            PlaybackDiagnostics.event(
+                                "Media3State",
+                                "state=${stateName(playbackState)} position=${instance.currentPosition}ms " +
+                                    "buffered=${instance.bufferedPosition}ms duration=${instance.duration}",
+                            )
+                            when (playbackState) {
+                                Player.STATE_BUFFERING ->
+                                    onEvent(PlaybackEvent.Buffering(isBuffering = true))
+                                Player.STATE_READY -> {
+                                    onEvent(PlaybackEvent.Buffering(isBuffering = false))
+                                    if (instance.playWhenReady) onEvent(PlaybackEvent.Playing)
+                                }
+                                Player.STATE_ENDED -> onEvent(PlaybackEvent.Ended)
+                                else -> Unit
+                            }
+                        }
+
+                        override fun onIsPlayingChanged(isPlaying: Boolean) {
+                            LogHub.i(
+                                TAG,
+                                "isPlaying=$isPlaying state=${stateName(instance.playbackState)} " +
+                                    "position=${instance.currentPosition}ms",
+                            )
+                            if (isPlaying) onEvent(PlaybackEvent.Playing)
+                            else onEvent(PlaybackEvent.Paused)
+                        }
+
+                        override fun onPlayerError(error: PlaybackException) {
+                            logPlaybackError("player", error)
+                            onEvent(
+                                PlaybackEvent.Failed(
+                                    code = error.errorCodeName,
+                                    message = error.message.orEmpty(),
+                                    cause = error,
+                                ),
+                            )
+                        }
+
+                        override fun onVideoSizeChanged(videoSize: VideoSize) {
+                            LogHub.i(
+                                TAG,
+                                "video size=${videoSize.width}x${videoSize.height} " +
+                                    "pixelRatio=${videoSize.pixelWidthHeightRatio}",
+                            )
+                            logOutputGeometry("video-size")
+                            onEvent(
+                                PlaybackEvent.VideoSizeChanged(videoSize.width, videoSize.height),
+                            )
+                        }
+                    },
                 )
-                PlaybackDiagnostics.event(
-                    "Media3State",
-                    "state=${stateName(playbackState)} position=${instance.currentPosition}ms " +
-                        "buffered=${instance.bufferedPosition}ms duration=${instance.duration}",
-                )
-                when (playbackState) {
-                    Player.STATE_BUFFERING -> onEvent(PlaybackEvent.Buffering(isBuffering = true))
-                    Player.STATE_READY -> {
-                        onEvent(PlaybackEvent.Buffering(isBuffering = false))
-                        if (instance.playWhenReady) onEvent(PlaybackEvent.Playing)
-                    }
-                    Player.STATE_ENDED -> onEvent(PlaybackEvent.Ended)
-                    else -> Unit
-                }
+                instance.addAnalyticsListener(Media3AnalyticsLogger())
             }
-
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                LogHub.i(
-                    TAG,
-                    "isPlaying=$isPlaying state=${stateName(instance.playbackState)} " +
-                        "position=${instance.currentPosition}ms",
-                )
-                if (isPlaying) onEvent(PlaybackEvent.Playing) else onEvent(PlaybackEvent.Paused)
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                logPlaybackError("player", error)
-                onEvent(
-                    PlaybackEvent.Failed(
-                        code = error.errorCodeName,
-                        message = error.message.orEmpty(),
-                        cause = error,
-                    ),
-                )
-            }
-
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                LogHub.i(
-                    TAG,
-                    "video size=${videoSize.width}x${videoSize.height} " +
-                        "pixelRatio=${videoSize.pixelWidthHeightRatio}",
-                )
-                logOutputGeometry("video-size")
-                onEvent(PlaybackEvent.VideoSizeChanged(videoSize.width, videoSize.height))
-            }
-        })
-        instance.addAnalyticsListener(Media3AnalyticsLogger())
-    }
 
     /**
      * 打开当前轨道。
      *
-     * DASH 点播的音视频表示层由 [MergingMediaSource] 合并为同一条播放时间线，避免
-     * VLC input-slave 在独立 fMP4 流定位后出现音视频时钟分离。
+     * DASH 点播的音视频表示层由 [MergingMediaSource] 合并为同一条播放时间线，避免 VLC input-slave 在独立 fMP4 流定位后出现音视频时钟分离。
      */
     fun open(info: PlaybackRequest, seekToMs: Long) {
         require(
@@ -174,31 +183,35 @@ class Media3PlayerEngine(
         }
         activeDrm = info.isDrm
         var dashItem: MediaItem? = null
-        val mediaSource = if (info.isDrm) {
-            // Widevine 内容需要携带 PSSH 的 DASH 清单，让 Media3 在 CDM 回调中完成
-            // challenge/license 交换。
-            val pssh = listOf(info.video.psshBase64, info.audio?.psshBase64.orEmpty())
-                .firstOrNull(String::isNotBlank)
-                ?: throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "Widevine PSSH 缺失")
-            val manifest = PgcDashManifest.buildDataUri(info, pssh)
-            val drm = MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
-                .setLicenseUri(Uri.parse(WIDEVINE_LICENSE_URL))
-                .setMultiSession(false)
-                .build()
-            dashItem = MediaItem.Builder()
-                .setUri(Uri.parse(manifest))
-                .setMimeType("application/dash+xml")
-                .setDrmConfiguration(drm)
-                .build()
-            null
-        } else {
-            // DASH 表示层是独立的 fMP4 文件。Media3 统一维护两个 Progressive source
-            // 的 seek 和缓冲时钟；HDR 与杜比视界也由同一条路径保留色彩元数据。
-            val video = progressiveSource(info.video)
-            info.audio?.takeIf { it.url.isNotBlank() }
-                ?.let { MergingMediaSource(video, progressiveSource(it)) }
-                ?: video
-        }
+        val mediaSource =
+            if (info.isDrm) {
+                // Widevine 内容需要携带 PSSH 的 DASH 清单，让 Media3 在 CDM 回调中完成
+                // challenge/license 交换。
+                val pssh =
+                    listOf(info.video.psshBase64, info.audio?.psshBase64.orEmpty())
+                        .firstOrNull(String::isNotBlank)
+                        ?: throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "Widevine PSSH 缺失")
+                val manifest = PgcDashManifest.buildDataUri(info, pssh)
+                val drm =
+                    MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+                        .setLicenseUri(Uri.parse(WIDEVINE_LICENSE_URL))
+                        .setMultiSession(false)
+                        .build()
+                dashItem =
+                    MediaItem.Builder()
+                        .setUri(Uri.parse(manifest))
+                        .setMimeType("application/dash+xml")
+                        .setDrmConfiguration(drm)
+                        .build()
+                null
+            } else {
+                // DASH 表示层是独立的 fMP4 文件。Media3 统一维护两个 Progressive source
+                // 的 seek 和缓冲时钟；HDR 与杜比视界也由同一条路径保留色彩元数据。
+                val video = progressiveSource(info.video)
+                info.audio
+                    ?.takeIf { it.url.isNotBlank() }
+                    ?.let { MergingMediaSource(video, progressiveSource(it)) } ?: video
+            }
         PlaybackDiagnostics.ensureSession(
             when {
                 info.isDrm -> "widevine-open"
@@ -209,7 +222,10 @@ class Media3PlayerEngine(
         )
         PlaybackDiagnostics.state("opening")
         PlaybackDiagnostics.attribute("player.backend", "media3")
-        PlaybackDiagnostics.attribute("stream.dynamicRange", if (info.video.isDolbyVision) "dolbyVision" else if (info.video.isHdr) "hdr" else "sdr")
+        PlaybackDiagnostics.attribute(
+            "stream.dynamicRange",
+            if (info.video.isDolbyVision) "dolbyVision" else if (info.video.isHdr) "hdr" else "sdr",
+        )
         PlaybackDiagnostics.attribute("stream.drm", info.isDrm.toString())
         PlaybackDiagnostics.attribute("stream.codecString", info.video.codecs)
         PlaybackDiagnostics.attribute("stream.mimeType", info.video.mimeType)
@@ -226,7 +242,8 @@ class Media3PlayerEngine(
         )
         logOutputGeometry("open")
         try {
-            if (dashItem != null) player.setMediaItem(dashItem!!) else player.setMediaSource(mediaSource!!)
+            if (dashItem != null) player.setMediaItem(dashItem!!)
+            else player.setMediaSource(mediaSource!!)
             player.seekTo(seekToMs.coerceAtLeast(0L))
             player.prepare()
             player.playWhenReady = true
@@ -234,18 +251,20 @@ class Media3PlayerEngine(
             val reason = safeErrorReason(error)
             LogHub.e(TAG, "open failed: $reason")
             PlaybackDiagnostics.fail(
-                code = when {
-                    info.isDrm -> "WIDEVINE_OPEN_FAILED"
-                    info.video.isDolbyVision -> "DOLBY_VISION_OPEN_FAILED"
-                    info.video.isHdr -> "HDR_OPEN_FAILED"
-                    else -> "DASH_OPEN_FAILED"
-                },
-                message = when {
-                    info.isDrm -> "受保护媒体播放器打开失败"
-                    info.video.isDolbyVision -> "杜比视界播放器打开失败"
-                    info.video.isHdr -> "HDR 播放器打开失败"
-                    else -> "DASH 播放器打开失败"
-                },
+                code =
+                    when {
+                        info.isDrm -> "WIDEVINE_OPEN_FAILED"
+                        info.video.isDolbyVision -> "DOLBY_VISION_OPEN_FAILED"
+                        info.video.isHdr -> "HDR_OPEN_FAILED"
+                        else -> "DASH_OPEN_FAILED"
+                    },
+                message =
+                    when {
+                        info.isDrm -> "受保护媒体播放器打开失败"
+                        info.video.isDolbyVision -> "杜比视界播放器打开失败"
+                        info.video.isHdr -> "HDR 播放器打开失败"
+                        else -> "DASH 播放器打开失败"
+                    },
                 detail = reason,
             )
             throw error
@@ -274,7 +293,9 @@ class Media3PlayerEngine(
     /** 定位，返回已经限幅后的目标位置。 */
     fun seekTo(positionMs: Long): Long {
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-        val target = if (duration == null) positionMs.coerceAtLeast(0L) else positionMs.coerceIn(0L, duration)
+        val target =
+            if (duration == null) positionMs.coerceAtLeast(0L)
+            else positionMs.coerceIn(0L, duration)
         player.seekTo(target)
         return target
     }
@@ -292,77 +313,95 @@ class Media3PlayerEngine(
     }
 
     fun stop() = player.stop()
+
     fun release() {
         playerView.player = null
         player.release()
     }
+
     fun positionMs(): Long = player.currentPosition.coerceAtLeast(0L)
+
     fun durationMs(): Long = player.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
+
     fun isPlaying(): Boolean = player.isPlaying
+
     fun isSeekable(): Boolean = player.isCurrentMediaItemSeekable
+
     fun volume(): Int = (player.volume * 100).toInt().coerceIn(0, 100)
 
     /** 对照视频帧、Surface 缓冲区、视图和 Android 报告的屏幕尺寸。 */
     private fun logOutputGeometry(stage: String) {
         val surface = playerView.videoSurfaceView
-        val surfaceFrame = runCatching { (surface as? SurfaceView)?.holder?.surfaceFrame }
+        val surfaceFrame = runCatching {
+            (surface as? SurfaceView)?.holder?.surfaceFrame
+        }
             .onFailure { LogHub.w(TAG, "surface frame unavailable: ${LogRedaction.reason(it)}") }
             .getOrNull()
         val display = playerView.display
         val realSize = Point()
-        val reportedRealSize = if (display != null) {
-            runCatching { display.getRealSize(realSize) }
-                .fold({ "${realSize.x}x${realSize.y}" }, { "unavailable" })
-        } else {
-            "unavailable"
-        }
-        val reportedMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            runCatching { display?.mode }
-                .getOrNull()
-                ?.let { "${it.physicalWidth}x${it.physicalHeight}@${it.refreshRate}" }
-                ?: "unavailable"
-        } else {
-            "unavailable"
-        }
+        val reportedRealSize =
+            if (display != null) {
+                runCatching { display.getRealSize(realSize) }
+                    .fold({ "${realSize.x}x${realSize.y}" }, { "unavailable" })
+            } else {
+                "unavailable"
+            }
+        val reportedMode =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                runCatching { display?.mode }
+                    .getOrNull()
+                    ?.let { "${it.physicalWidth}x${it.physicalHeight}@${it.refreshRate}" }
+                    ?: "unavailable"
+            } else {
+                "unavailable"
+            }
         val videoSize = player.videoSize
-        val resizeMode = when (playerView.resizeMode) {
-            AspectRatioFrameLayout.RESIZE_MODE_FIT -> "fit"
-            AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH -> "fixed-width"
-            AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT -> "fixed-height"
-            AspectRatioFrameLayout.RESIZE_MODE_FILL -> "fill"
-            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "zoom"
-            else -> "unknown"
-        }
-        val geometry = "video=${videoSize.width}x${videoSize.height} " +
-            "window=${playerView.rootView.width}x${playerView.rootView.height} " +
-            "playerView=${playerView.width}x${playerView.height} " +
-            "output=${outputType()} outputView=${surface?.width}x${surface?.height} " +
-            "surfaceFrame=${surfaceFrame?.let { "${it.width()}x${it.height()}" } ?: "unavailable"} " +
-            "resize=$resizeMode androidReal=$reportedRealSize androidMode=$reportedMode"
+        val resizeMode =
+            when (playerView.resizeMode) {
+                AspectRatioFrameLayout.RESIZE_MODE_FIT -> "fit"
+                AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH -> "fixed-width"
+                AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT -> "fixed-height"
+                AspectRatioFrameLayout.RESIZE_MODE_FILL -> "fill"
+                AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "zoom"
+                else -> "unknown"
+            }
+        val geometry =
+            "video=${videoSize.width}x${videoSize.height} " +
+                "window=${playerView.rootView.width}x${playerView.rootView.height} " +
+                "playerView=${playerView.width}x${playerView.height} " +
+                "output=${outputType()} outputView=${surface?.width}x${surface?.height} " +
+                "surfaceFrame=${surfaceFrame?.let { "${it.width()}x${it.height()}" } ?: "unavailable"} " +
+                "resize=$resizeMode androidReal=$reportedRealSize androidMode=$reportedMode"
         LogHub.d(TAG, "output geometry stage=$stage $geometry")
         if (stage == "first-frame") {
             PlaybackDiagnostics.attribute("renderer.video.geometry", geometry)
         }
     }
 
-    private fun outputType(): String = if (videoOutput != null) "4kPixelCompositor" else when (playerView.videoSurfaceView) {
-        is SurfaceView -> "surfaceView"
-        is TextureView -> "textureView"
-        else -> "unknown"
-    }
+    private fun outputType(): String =
+        if (videoOutput != null) "4kPixelCompositor"
+        else
+            when (playerView.videoSurfaceView) {
+                is SurfaceView -> "surfaceView"
+                is TextureView -> "textureView"
+                else -> "unknown"
+            }
 
     private fun progressiveSource(track: MediaTrack): MediaSource {
-        val headers = mapOf(
-            "Referer" to "https://www.bilibili.com/",
-            "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT,
-        )
-        val factory = DefaultHttpDataSource.Factory()
-            .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
-            .setDefaultRequestProperties(headers)
-        val item = MediaItem.Builder()
-            .setUri(track.url)
-            .setMimeType(track.mimeType.ifBlank { null })
-            .build()
+        val headers =
+            mapOf(
+                "Referer" to "https://www.bilibili.com/",
+                "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT,
+            )
+        val factory =
+            DefaultHttpDataSource.Factory()
+                .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
+                .setDefaultRequestProperties(headers)
+        val item =
+            MediaItem.Builder()
+                .setUri(track.url)
+                .setMimeType(track.mimeType.ifBlank { null })
+                .build()
         return ProgressiveMediaSource.Factory(factory).createMediaSource(item)
     }
 
@@ -370,11 +409,16 @@ class Media3PlayerEngine(
     private object PgcDashManifest {
         fun buildDataUri(info: PlaybackRequest, psshBase64: String): String {
             val video = representation(info.video, "video", psshBase64)
-            val audio = info.audio?.takeIf { it.url.isNotBlank() }?.let {
-                representation(it, "audio", psshBase64.ifBlank { it.psshBase64 })
-            }.orEmpty()
+            val audio =
+                info.audio
+                    ?.takeIf { it.url.isNotBlank() }
+                    ?.let {
+                        representation(it, "audio", psshBase64.ifBlank { it.psshBase64 })
+                    }
+                    .orEmpty()
             val duration = info.durationSec.coerceAtLeast(1L)
-            val mpd = """
+            val mpd =
+                """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" xmlns:cenc="urn:mpeg:cenc:2013"
                     type="static" profiles="urn:mpeg:dash:profile:isoff-on-demand:2011"
@@ -384,7 +428,8 @@ class Media3PlayerEngine(
                     $audio
                   </Period>
                 </MPD>
-            """.trimIndent()
+            """
+                    .trimIndent()
             return "data:application/dash+xml;base64," +
                 Base64.encodeToString(mpd.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
         }
@@ -393,25 +438,36 @@ class Media3PlayerEngine(
             if (track.url.isBlank()) {
                 throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "$type 表示层缺少媒体 URL")
             }
-            val initRange = parseRange(track.initializationRange)
-                ?: throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "$type 初始化范围无效")
-            val indexRange = parseRange(track.indexRange)
-                ?: throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "$type 索引范围无效")
+            val initRange =
+                parseRange(track.initializationRange)
+                    ?: throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "$type 初始化范围无效")
+            val indexRange =
+                parseRange(track.indexRange)
+                    ?: throw PlaybackFailure("PGC_DRM_METADATA_INVALID", "$type 索引范围无效")
             val pssh = track.psshBase64.ifBlank { fallbackPssh }
-            val protection = if (pssh.isBlank()) "" else """
+            val protection =
+                if (pssh.isBlank()) ""
+                else
+                    """
                 <ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cenc"/>
                 <ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed">
                   <cenc:pssh>$pssh</cenc:pssh>
                 </ContentProtection>
-            """.trimIndent()
+            """
+                        .trimIndent()
             val mime = track.mimeType.ifBlank { if (type == "video") "video/mp4" else "audio/mp4" }
             val attrs = buildString {
                 append("id=\"").append(track.id).append("\" ")
                 append("bandwidth=\"").append(track.bandwidth.coerceAtLeast(1L)).append("\"")
                 if (type == "video" && track.width > 0 && track.height > 0) {
-                    append(" width=\"").append(track.width).append("\" height=\"").append(track.height).append("\"")
+                    append(" width=\"")
+                        .append(track.width)
+                        .append("\" height=\"")
+                        .append(track.height)
+                        .append("\"")
                 }
-                if (track.codecs.isNotBlank()) append(" codecs=\"").append(xml(track.codecs)).append("\"")
+                if (track.codecs.isNotBlank())
+                    append(" codecs=\"").append(xml(track.codecs)).append("\"")
             }
             return """
                 <AdaptationSet contentType="$type" mimeType="$mime" segmentAlignment="true">
@@ -423,7 +479,8 @@ class Media3PlayerEngine(
                     </SegmentBase>
                   </Representation>
                 </AdaptationSet>
-            """.trimIndent()
+            """
+                .trimIndent()
         }
 
         private fun parseRange(value: String): String? {
@@ -434,25 +491,33 @@ class Media3PlayerEngine(
             return "$start-$end".takeIf { start >= 0L && end >= start }
         }
 
-        private fun xml(value: String): String = value
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&apos;")
+        private fun xml(value: String): String =
+            value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;")
     }
 
     /** Media3 的底层事件；完整记录实际解码器、轨道格式与网络加载失败。 */
     private inner class Media3AnalyticsLogger : AnalyticsListener {
         override fun onTracksChanged(eventTime: AnalyticsListener.EventTime, tracks: Tracks) {
-            val summary = tracks.groups.joinToString(separator = " | ") { group ->
-                (0 until group.length).joinToString(prefix = "type=${trackTypeName(group.type)}[", postfix = "]") { index ->
-                    "selected=${group.isTrackSelected(index)} supported=${group.isTrackSupported(index)} " +
-                        formatSummary(group.getTrackFormat(index))
+            val summary =
+                tracks.groups.joinToString(separator = " | ") { group ->
+                    (0 until group.length).joinToString(
+                        prefix = "type=${trackTypeName(group.type)}[",
+                        postfix = "]",
+                    ) { index ->
+                        "selected=${group.isTrackSelected(index)} supported=${group.isTrackSupported(index)} " +
+                            formatSummary(group.getTrackFormat(index))
+                    }
                 }
-            }
             LogHub.i(TAG, "tracks changed $summary")
-            PlaybackDiagnostics.attribute("media3.tracks", summary.take(MAX_DIAGNOSTIC_VALUE_LENGTH))
+            PlaybackDiagnostics.attribute(
+                "media3.tracks",
+                summary.take(MAX_DIAGNOSTIC_VALUE_LENGTH),
+            )
         }
 
         override fun onVideoDecoderInitialized(
@@ -462,8 +527,9 @@ class Media3PlayerEngine(
             initializationDurationMs: Long,
         ) {
             val verifiedHardware = hardwareVideoCodecSelector.isHardwareDecoder(decoderName)
-            val message = "video decoder initialized name=$decoderName hardware=$verifiedHardware " +
-                "initializedAt=${initializedTimestampMs}ms duration=${initializationDurationMs}ms"
+            val message =
+                "video decoder initialized name=$decoderName hardware=$verifiedHardware " +
+                    "initializedAt=${initializedTimestampMs}ms duration=${initializationDurationMs}ms"
             if (verifiedHardware) {
                 LogHub.i(TAG, message)
             } else {
@@ -491,13 +557,17 @@ class Media3PlayerEngine(
             )
             PlaybackDiagnostics.attribute("decoder.video.inputFormat", summary)
             val transfer = format.colorInfo?.colorTransfer ?: C.COLOR_TRANSFER_SDR
-            val actualRange = when (transfer) {
-                C.COLOR_TRANSFER_ST2084 -> "hdr10-pq"
-                C.COLOR_TRANSFER_HLG -> "hlg"
-                else -> "sdr-or-unknown"
-            }
+            val actualRange =
+                when (transfer) {
+                    C.COLOR_TRANSFER_ST2084 -> "hdr10-pq"
+                    C.COLOR_TRANSFER_HLG -> "hlg"
+                    else -> "sdr-or-unknown"
+                }
             PlaybackDiagnostics.attribute("stream.dynamicRange.actual", actualRange)
-            LogHub.i(TAG, "HDR output inputTransfer=$transfer actualRange=$actualRange surface=surfaceView")
+            LogHub.i(
+                TAG,
+                "HDR output inputTransfer=$transfer actualRange=$actualRange surface=surfaceView",
+            )
         }
 
         override fun onAudioDecoderInitialized(
@@ -571,10 +641,11 @@ class Media3PlayerEngine(
             error: IOException,
             wasCanceled: Boolean,
         ) {
-            val message = "load failed track=${trackTypeName(mediaLoadData.trackType)} canceled=$wasCanceled " +
-                "url=${mediaUriForLog(loadEventInfo.uri.toString())} " +
-                "loaded=${loadEventInfo.bytesLoaded}B after=${loadEventInfo.loadDurationMs}ms " +
-                "reason=${safeErrorReason(error)}"
+            val message =
+                "load failed track=${trackTypeName(mediaLoadData.trackType)} canceled=$wasCanceled " +
+                    "url=${mediaUriForLog(loadEventInfo.uri.toString())} " +
+                    "loaded=${loadEventInfo.bytesLoaded}B after=${loadEventInfo.loadDurationMs}ms " +
+                    "reason=${safeErrorReason(error)}"
             LogHub.e(TAG, message)
             PlaybackDiagnostics.fail(
                 code = if (activeDrm) "WIDEVINE_MEDIA_LOAD_FAILED" else "DOLBY_VISION_LOAD_FAILED",
@@ -583,33 +654,44 @@ class Media3PlayerEngine(
             )
         }
 
-        override fun onVideoCodecError(eventTime: AnalyticsListener.EventTime, videoCodecError: Exception) {
+        override fun onVideoCodecError(
+            eventTime: AnalyticsListener.EventTime,
+            videoCodecError: Exception,
+        ) {
             LogHub.e(TAG, "video codec error: ${safeErrorReason(videoCodecError)}")
         }
 
-        override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
+        override fun onAudioCodecError(
+            eventTime: AnalyticsListener.EventTime,
+            audioCodecError: Exception,
+        ) {
             LogHub.e(TAG, "audio codec error: ${safeErrorReason(audioCodecError)}")
         }
 
-        override fun onAudioSinkError(eventTime: AnalyticsListener.EventTime, audioSinkError: Exception) {
+        override fun onAudioSinkError(
+            eventTime: AnalyticsListener.EventTime,
+            audioSinkError: Exception,
+        ) {
             LogHub.e(TAG, "audio sink error: ${safeErrorReason(audioSinkError)}")
         }
     }
 
     /** 只为视频 MIME 保留硬件解码器，防止 Dolby Vision 回退到软件解码。 */
     private inner class HardwareVideoCodecSelector : MediaCodecSelector {
-        private val selectedHardwareDecoderNames = Collections.synchronizedSet(mutableSetOf<String>())
+        private val selectedHardwareDecoderNames =
+            Collections.synchronizedSet(mutableSetOf<String>())
 
         override fun getDecoderInfos(
             mimeType: String,
             requiresSecureDecoder: Boolean,
             requiresTunnelingDecoder: Boolean,
         ): List<MediaCodecInfo> {
-            val candidates = MediaCodecSelector.DEFAULT.getDecoderInfos(
-                mimeType,
-                requiresSecureDecoder,
-                requiresTunnelingDecoder,
-            )
+            val candidates =
+                MediaCodecSelector.DEFAULT.getDecoderInfos(
+                    mimeType,
+                    requiresSecureDecoder,
+                    requiresTunnelingDecoder,
+                )
             if (!mimeType.startsWith("video/", ignoreCase = true)) return candidates
             val hardware = candidates.filter {
                 it.hardwareAccelerated && !it.softwareOnly && (!requiresSecureDecoder || it.secure)
@@ -624,16 +706,23 @@ class Media3PlayerEngine(
                     "candidates=[$candidateSummary] selected=[$selectedSummary]",
             )
             if (hardware.isEmpty()) {
-                val message = "no hardware video decoder mime=$mimeType secure=$requiresSecureDecoder " +
-                    "tunneling=$requiresTunnelingDecoder candidates=[$candidateSummary]"
+                val message =
+                    "no hardware video decoder mime=$mimeType secure=$requiresSecureDecoder " +
+                        "tunneling=$requiresTunnelingDecoder candidates=[$candidateSummary]"
                 if (requiresTunnelingDecoder) {
                     // Media3 会将隧道播放能力作为可选路径探测；普通 Surface 播放不依赖它。
-                    LogHub.d(TAG, "tunneled playback unavailable; regular Surface playback remains eligible: $message")
+                    LogHub.d(
+                        TAG,
+                        "tunneled playback unavailable; regular Surface playback remains eligible: $message",
+                    )
                 } else {
                     LogHub.e(TAG, message)
                     PlaybackDiagnostics.fail(
-                        code = if (activeDrm) "WIDEVINE_SECURE_DECODER_UNAVAILABLE" else "DOLBY_VISION_HARDWARE_DECODER_UNAVAILABLE",
-                        message = if (activeDrm) "设备没有可用的 Widevine 安全硬件解码器" else "设备没有可用的杜比视界硬件视频解码器",
+                        code =
+                            if (activeDrm) "WIDEVINE_SECURE_DECODER_UNAVAILABLE"
+                            else "DOLBY_VISION_HARDWARE_DECODER_UNAVAILABLE",
+                        message =
+                            if (activeDrm) "设备没有可用的 Widevine 安全硬件解码器" else "设备没有可用的杜比视界硬件视频解码器",
                         detail = message,
                     )
                 }
@@ -644,20 +733,25 @@ class Media3PlayerEngine(
         }
 
         fun isHardwareDecoder(decoderName: String): Boolean =
-            synchronized(selectedHardwareDecoderNames) { decoderName in selectedHardwareDecoderNames }
+            synchronized(selectedHardwareDecoderNames) {
+                decoderName in selectedHardwareDecoderNames
+            }
     }
 
     private fun logPlaybackError(stage: String, error: PlaybackException) {
-        val message = "Media3 $stage failed code=${error.errorCodeName}(${error.errorCode}) " +
-            "timestamp=${error.timestampMs} reason=${safeErrorReason(error)}"
+        val message =
+            "Media3 $stage failed code=${error.errorCodeName}(${error.errorCode}) " +
+                "timestamp=${error.timestampMs} reason=${safeErrorReason(error)}"
         LogHub.e(TAG, message)
-        val isLicenseFailure = error.errorCodeName.contains("DRM", ignoreCase = true) ||
-            error.errorCodeName.contains("LICENSE", ignoreCase = true)
-        val code = when {
-            !activeDrm -> "DOLBY_VISION_${error.errorCodeName}"
-            isLicenseFailure -> "WIDEVINE_LICENSE_FAILED"
-            else -> "WIDEVINE_${error.errorCodeName}"
-        }
+        val isLicenseFailure =
+            error.errorCodeName.contains("DRM", ignoreCase = true) ||
+                error.errorCodeName.contains("LICENSE", ignoreCase = true)
+        val code =
+            when {
+                !activeDrm -> "DOLBY_VISION_${error.errorCodeName}"
+                isLicenseFailure -> "WIDEVINE_LICENSE_FAILED"
+                else -> "WIDEVINE_${error.errorCodeName}"
+            }
         PlaybackDiagnostics.fail(
             code = code,
             message = if (activeDrm) "Widevine 受保护播放失败" else "杜比视界播放失败",
@@ -666,10 +760,11 @@ class Media3PlayerEngine(
     }
 
     private fun formatSummary(format: Format): String {
-        val color = format.colorInfo?.let { info ->
-            "color(space=${info.colorSpace},range=${info.colorRange},transfer=${info.colorTransfer}," +
-                "luma=${info.lumaBitdepth},chroma=${info.chromaBitdepth},hdrStatic=${info.hdrStaticInfo?.size ?: 0}B)"
-        } ?: "color=(none)"
+        val color =
+            format.colorInfo?.let { info ->
+                "color(space=${info.colorSpace},range=${info.colorRange},transfer=${info.colorTransfer}," +
+                    "luma=${info.lumaBitdepth},chroma=${info.chromaBitdepth},hdrStatic=${info.hdrStaticInfo?.size ?: 0}B)"
+            } ?: "color=(none)"
         return "mime=${format.sampleMimeType.orEmpty()} container=${format.containerMimeType.orEmpty()} " +
             "codecs=${format.codecs.orEmpty()} ${format.width}x${format.height} fps=${format.frameRate} " +
             "bitrate=${format.bitrate} channels=${format.channelCount} sampleRate=${format.sampleRate} $color"
@@ -685,32 +780,36 @@ class Media3PlayerEngine(
 
     /** Widevine 异常可能包含内存 MPD 的 data URI，先移除其编码内容再写诊断。 */
     private fun safeErrorReason(error: Throwable): String {
-        val raw = error.message.orEmpty().replace(DASH_DATA_URI_PATTERN, "(in-memory DASH manifest)")
+        val raw =
+            error.message.orEmpty().replace(DASH_DATA_URI_PATTERN, "(in-memory DASH manifest)")
         return "${error.javaClass.simpleName}: ${LogRedaction.text(raw).take(240)}"
     }
 
-    private fun stateName(state: Int): String = when (state) {
-        Player.STATE_IDLE -> "IDLE"
-        Player.STATE_BUFFERING -> "BUFFERING"
-        Player.STATE_READY -> "READY"
-        Player.STATE_ENDED -> "ENDED"
-        else -> "UNKNOWN($state)"
-    }
+    private fun stateName(state: Int): String =
+        when (state) {
+            Player.STATE_IDLE -> "IDLE"
+            Player.STATE_BUFFERING -> "BUFFERING"
+            Player.STATE_READY -> "READY"
+            Player.STATE_ENDED -> "ENDED"
+            else -> "UNKNOWN($state)"
+        }
 
-    private fun trackTypeName(trackType: Int): String = when (trackType) {
-        C.TRACK_TYPE_VIDEO -> "video"
-        C.TRACK_TYPE_AUDIO -> "audio"
-        C.TRACK_TYPE_TEXT -> "text"
-        C.TRACK_TYPE_METADATA -> "metadata"
-        else -> "type=$trackType"
-    }
+    private fun trackTypeName(trackType: Int): String =
+        when (trackType) {
+            C.TRACK_TYPE_VIDEO -> "video"
+            C.TRACK_TYPE_AUDIO -> "audio"
+            C.TRACK_TYPE_TEXT -> "text"
+            C.TRACK_TYPE_METADATA -> "metadata"
+            else -> "type=$trackType"
+        }
 
     private companion object {
         const val TAG = "Media3Player"
         const val WEB_ORIGIN = "https://www.bilibili.com"
         const val WEB_REFERER = "https://www.bilibili.com/"
         const val WIDEVINE_LICENSE_URL = "https://bvc-drm.bilivideo.com/bili_widevine"
-        val DASH_DATA_URI_PATTERN = Regex("data:application/dash\\+xml;base64,[^\\s\\\"']+", RegexOption.IGNORE_CASE)
+        val DASH_DATA_URI_PATTERN =
+            Regex("data:application/dash\\+xml;base64,[^\\s\\\"']+", RegexOption.IGNORE_CASE)
         const val MIN_PLAYBACK_RATE = 0.25f
         const val MAX_PLAYBACK_RATE = 4f
         const val MAX_DIAGNOSTIC_VALUE_LENGTH = 1_500

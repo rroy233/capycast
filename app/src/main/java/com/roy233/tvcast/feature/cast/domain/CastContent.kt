@@ -1,7 +1,12 @@
 package com.roy233.tvcast.feature.cast.domain
 
 /** 投屏请求中解析出的内容类型。 */
-enum class CastContentKind { LIVE, PGC, UGC, UNKNOWN }
+enum class CastContentKind {
+    LIVE,
+    PGC,
+    UGC,
+    UNKNOWN,
+}
 
 /** 投屏协议携带的设备链路信息。 */
 data class CastLink(
@@ -32,14 +37,20 @@ data class CastContent(
     val transportType: Int = 0,
 ) {
     val kind: CastContentKind
-        get() = when {
-            roomId > 0L -> CastContentKind.LIVE
-            epId > 0L || seasonId > 0L -> CastContentKind.PGC
-            aid > 0L && cid > 0L -> CastContentKind.UGC
-            else -> CastContentKind.UNKNOWN
-        }
+        get() =
+            when {
+                roomId > 0L -> CastContentKind.LIVE
+                epId > 0L || seasonId > 0L -> CastContentKind.PGC
+                aid > 0L && cid > 0L -> CastContentKind.UGC
+                else -> CastContentKind.UNKNOWN
+            }
 
-    val hasUgc: Boolean get() = kind == CastContentKind.UGC
-    val hasPgc: Boolean get() = kind == CastContentKind.PGC
-    val hasLive: Boolean get() = kind == CastContentKind.LIVE
+    val hasUgc: Boolean
+        get() = kind == CastContentKind.UGC
+
+    val hasPgc: Boolean
+        get() = kind == CastContentKind.PGC
+
+    val hasLive: Boolean
+        get() = kind == CastContentKind.LIVE
 }

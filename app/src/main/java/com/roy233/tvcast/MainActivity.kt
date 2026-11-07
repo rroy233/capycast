@@ -1,14 +1,13 @@
 package com.roy233.tvcast
 
 import android.content.Context
-import com.roy233.tvcast.feature.account.model.Token
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
-import android.content.pm.ActivityInfo
 import android.view.Gravity
-import android.view.View
 import android.view.SurfaceView
+import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.Toast
@@ -18,100 +17,85 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
-import com.roy233.tvcast.ui.model.PanelKind
-import com.roy233.tvcast.feature.playback.presentation.PlaybackSpeed
-import com.roy233.tvcast.feature.cast.domain.CastContent
-import com.roy233.tvcast.feature.cast.domain.RecentCast
-import com.roy233.tvcast.ui.model.SettingsPage
-import com.roy233.tvcast.ui.model.TvDestination
-import com.roy233.tvcast.ui.model.TvError
-import com.roy233.tvcast.ui.model.TvMode
-import com.roy233.tvcast.ui.model.TvUiState
-import com.roy233.tvcast.ui.model.CastPlaybackStateProjector
-import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.app.CapyCastContainer
+import com.roy233.tvcast.app.DlnaCastListenerAdapter
+import com.roy233.tvcast.app.MainThreadPlaybackAccess
 import com.roy233.tvcast.app.PlaybackEngineHost
 import com.roy233.tvcast.app.VideoViewportHost
-import com.roy233.tvcast.feature.display.CalibrationDirection
-import com.roy233.tvcast.feature.display.CalibrationPhase
-import com.roy233.tvcast.feature.display.DisplayCalibrationCoordinator
-import com.roy233.tvcast.app.MainThreadPlaybackAccess
-import com.roy233.tvcast.app.DlnaCastListenerAdapter
-import com.roy233.tvcast.feature.cast.application.DlnaTransportCoordinator
-import com.roy233.tvcast.feature.cast.application.DlnaTransportHost
-import com.roy233.tvcast.ui.tv.TvActionDispatcher
-import com.roy233.tvcast.ui.tv.TvActionHost
-import com.roy233.tvcast.ui.tv.TvStateHolder
-import com.roy233.tvcast.ui.tv.DoubleBackExitGate
-import com.roy233.tvcast.ui.tv.HomeBackExitTiming
-import com.roy233.tvcast.ui.tv.TvKeyHandler
-import com.roy233.tvcast.data.bili.routing.OkHttpLiveRouteProbe
-import com.roy233.tvcast.data.bili.routing.OkHttpVodRouteProbe
-import com.roy233.tvcast.feature.playback.model.LivePlayInfo
-import com.roy233.tvcast.feature.playback.model.LiveStreamCandidate
-import com.roy233.tvcast.feature.playback.model.RankedLiveSource
-import com.roy233.tvcast.feature.playback.model.RankedVodRoute
-import com.roy233.tvcast.ui.model.LiveQualityOption
-import com.roy233.tvcast.data.bili.NvaExtDecoder
-import com.roy233.tvcast.core.playback.PlaybackBackend
-import com.roy233.tvcast.core.playback.PlaybackEngine
-import com.roy233.tvcast.core.playback.PlaybackEvent
-import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
-import com.roy233.tvcast.core.playback.PlaybackSnapshot
-import com.roy233.tvcast.core.playback.PlaybackRequest
-import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
-import com.roy233.tvcast.feature.playback.application.PlaybackSelectionCoordinator
-import com.roy233.tvcast.feature.playback.application.PlaybackSelectionHost
-import com.roy233.tvcast.feature.playback.application.PlaybackSessionHost
-import com.roy233.tvcast.feature.playback.application.PlaybackSessionLifecycle
-import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
-import com.roy233.tvcast.feature.playback.application.LivePlaybackCoordinator
-import com.roy233.tvcast.feature.playback.application.LivePlaybackHost
-import com.roy233.tvcast.feature.playback.application.CastSessionCoordinator
-import com.roy233.tvcast.feature.playback.application.CastSessionHost
-import com.roy233.tvcast.feature.playback.application.PlaybackTicker
-import com.roy233.tvcast.feature.playback.application.PlaybackTickerHost
-import com.roy233.tvcast.feature.playback.application.PlaybackEventHost
-import com.roy233.tvcast.feature.playback.application.PlaybackEventRouter
-import com.roy233.tvcast.feature.playback.application.VodPlaybackHost
-import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
-import com.roy233.tvcast.feature.playback.routing.CdnRouteRules
-import com.roy233.tvcast.feature.playback.model.CastResolution
-import com.roy233.tvcast.feature.playback.model.LiveSession
-import com.roy233.tvcast.feature.playback.model.PendingLiveRouteSwitch
-import com.roy233.tvcast.feature.playback.model.VodSession
-import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
 import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
-import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
-import com.roy233.tvcast.feature.danmaku.application.DanmakuController
-import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
-import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
-import com.roy233.tvcast.feature.danmaku.application.LiveDanmakuController
-import com.roy233.tvcast.feature.danmaku.domain.MediaClock
+import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
+import com.roy233.tvcast.core.playback.PlaybackBackend
+import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.PlaybackSnapshot
+import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.data.bili.danmaku.BiliDanmakuRepository
 import com.roy233.tvcast.data.bili.danmaku.BiliLiveDanmakuClient
 import com.roy233.tvcast.data.bili.danmaku.DanmakuApi
-import com.roy233.tvcast.feature.history.PlaybackHistoryContent
-import com.roy233.tvcast.feature.update.model.UpdateChannel
+import com.roy233.tvcast.data.bili.routing.OkHttpLiveRouteProbe
+import com.roy233.tvcast.data.bili.routing.OkHttpVodRouteProbe
 import com.roy233.tvcast.feature.account.AccountUiState
+import com.roy233.tvcast.feature.account.model.Token
+import com.roy233.tvcast.feature.cast.application.DlnaTransportCoordinator
+import com.roy233.tvcast.feature.cast.application.DlnaTransportHost
+import com.roy233.tvcast.feature.cast.domain.CastContent
+import com.roy233.tvcast.feature.cast.domain.RecentCast
+import com.roy233.tvcast.feature.danmaku.application.DanmakuController
+import com.roy233.tvcast.feature.danmaku.application.LiveDanmakuController
+import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
+import com.roy233.tvcast.feature.danmaku.domain.MediaClock
+import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
+import com.roy233.tvcast.feature.display.CalibrationDirection
+import com.roy233.tvcast.feature.display.CalibrationPhase
+import com.roy233.tvcast.feature.display.DisplayCalibrationCoordinator
+import com.roy233.tvcast.feature.history.PlaybackHistoryContent
+import com.roy233.tvcast.feature.playback.application.CastSessionCoordinator
+import com.roy233.tvcast.feature.playback.application.CastSessionHost
+import com.roy233.tvcast.feature.playback.application.LivePlaybackCoordinator
+import com.roy233.tvcast.feature.playback.application.LivePlaybackHost
+import com.roy233.tvcast.feature.playback.application.PlaybackCoordinator
+import com.roy233.tvcast.feature.playback.application.PlaybackEventHost
+import com.roy233.tvcast.feature.playback.application.PlaybackEventRouter
+import com.roy233.tvcast.feature.playback.application.PlaybackSelectionCoordinator
+import com.roy233.tvcast.feature.playback.application.PlaybackSelectionHost
+import com.roy233.tvcast.feature.playback.application.PlaybackSessionHost
+import com.roy233.tvcast.feature.playback.application.PlaybackSessionLifecycle
+import com.roy233.tvcast.feature.playback.application.PlaybackTicker
+import com.roy233.tvcast.feature.playback.application.PlaybackTickerHost
+import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
+import com.roy233.tvcast.feature.playback.application.VodPlaybackHost
+import com.roy233.tvcast.feature.playback.model.LivePlayInfo
+import com.roy233.tvcast.feature.playback.model.LiveSession
+import com.roy233.tvcast.feature.playback.model.LiveStreamCandidate
+import com.roy233.tvcast.feature.playback.model.RankedLiveSource
+import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
+import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.platform.dlna.DlnaRenderer
-import com.roy233.tvcast.feature.playback.presentation.TrackOptionMapper
+import com.roy233.tvcast.platform.player.VlcTrackFormat
+import com.roy233.tvcast.ui.model.CastPlaybackStateProjector
+import com.roy233.tvcast.ui.model.LiveQualityOption
+import com.roy233.tvcast.ui.model.PanelKind
+import com.roy233.tvcast.ui.model.TvDestination
+import com.roy233.tvcast.ui.model.TvError
+import com.roy233.tvcast.ui.model.TvMode
+import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.tv.DoubleBackExitGate
+import com.roy233.tvcast.ui.tv.HomeBackExitTiming
+import com.roy233.tvcast.ui.tv.TvActionDispatcher
+import com.roy233.tvcast.ui.tv.TvActionHost
+import com.roy233.tvcast.ui.tv.TvKeyHandler
+import com.roy233.tvcast.ui.tv.TvRoot
+import com.roy233.tvcast.ui.tv.TvStateHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.videolan.libvlc.MediaPlayer
-import org.videolan.libvlc.util.VLCVideoLayout
-import com.roy233.tvcast.platform.player.VlcTrackFormat
 import master.flame.danmaku.ui.widget.DanmakuView
+import org.videolan.libvlc.util.VLCVideoLayout
 
 /**
  * 应用主界面及投屏生命周期控制器。
@@ -119,7 +103,17 @@ import master.flame.danmaku.ui.widget.DanmakuView
  * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
-class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePlaybackHost, PlaybackTickerHost, CastSessionHost, PlaybackEventHost, PlaybackSelectionHost, PlaybackSessionHost, DlnaTransportHost {
+class MainActivity :
+    ComponentActivity(),
+    TvActionHost,
+    VodPlaybackHost,
+    LivePlaybackHost,
+    PlaybackTickerHost,
+    CastSessionHost,
+    PlaybackEventHost,
+    PlaybackSelectionHost,
+    PlaybackSessionHost,
+    DlnaTransportHost {
 
     /** 当前播放后端及其原生资源。 */
     private lateinit var playbackEngineHost: PlaybackEngineHost
@@ -140,7 +134,10 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             viewportSize = viewportHost::viewportSize,
             onState = { state ->
                 ui = ui.copy(calibration = state)
-                if (state.phase == CalibrationPhase.ADJUST || state.phase == CalibrationPhase.CONFIRM) {
+                if (
+                    state.phase == CalibrationPhase.ADJUST ||
+                        state.phase == CalibrationPhase.CONFIRM
+                ) {
                     if (!viewportHost.showCalibration(state.draft, state.corner)) {
                         Toast.makeText(this, "4K 校准视频输出初始化失败", Toast.LENGTH_LONG).show()
                         window.decorView.post { calibrationCoordinator.skipOrCancel() }
@@ -242,26 +239,29 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 )
             },
             writeAccountState = { account ->
-                ui = ui.copy(
-                    loggedIn = account.loggedIn,
-                    accountName = account.accountName,
-                    mid = account.mid,
-                    vip = account.vip,
-                    loginQr = account.loginQr,
-                    loginStatus = account.loginStatus,
-                    loginSkipped = account.loginSkipped,
-                    loginDialogVisible = ui.loginDialogVisible && !account.loggedIn,
-                )
+                ui =
+                    ui.copy(
+                        loggedIn = account.loggedIn,
+                        accountName = account.accountName,
+                        mid = account.mid,
+                        vip = account.vip,
+                        loginQr = account.loginQr,
+                        loginStatus = account.loginStatus,
+                        loginSkipped = account.loginSkipped,
+                        loginDialogVisible = ui.loginDialogVisible && !account.loggedIn,
+                    )
             },
             readUpdateState = { ui.update },
             writeUpdateState = { update -> ui = ui.copy(update = update) },
             onLogoutUi = {
-                ui = ui.copy(
-                    destination = TvDestination.HOME,
-                    sidebarVisible = false,
-                    loginDialogVisible = false,
-                    showContinue = ui.rememberPlaybackContent,
-                ).focusCurrentPage()
+                ui =
+                    ui.copy(
+                            destination = TvDestination.HOME,
+                            sidebarVisible = false,
+                            loginDialogVisible = false,
+                            showContinue = ui.rememberPlaybackContent,
+                        )
+                        .focusCurrentPage()
             },
             onToast = { message -> ui = ui.copy(toast = message) },
             isPlaying = { playerIsPlaying() },
@@ -271,27 +271,48 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 最近投屏记录存储。 */
-    private val recentCastStore get() = container.recentCastStore
+    private val recentCastStore
+        get() = container.recentCastStore
+
     /** TV 登录令牌存储；直播协议需要其中的 access_key。 */
-    private val authTokenStore get() = container.authTokenStore
+    private val authTokenStore
+        get() = container.authTokenStore
+
     /** 将投屏进度与直播心跳同步到 B 站账号。 */
-    private val playbackHistoryCoordinator get() = container.playbackHistoryCoordinator
+    private val playbackHistoryCoordinator
+        get() = container.playbackHistoryCoordinator
+
     /** 首页双击返回退出计时。 */
     private val homeBackExitGate = DoubleBackExitGate(HOME_BACK_EXIT_WINDOW_MS)
     /** 设备身份偏好读取器。 */
-    private val uiPreferences get() = container.uiPreferences
+    private val uiPreferences
+        get() = container.uiPreferences
+
     /** 弹幕设置读取器。 */
-    private val danmakuPreferences get() = container.danmakuPreferences
+    private val danmakuPreferences
+        get() = container.danmakuPreferences
+
     /** 设备信息读取器。 */
-    private val deviceInfo get() = container.deviceInfo
+    private val deviceInfo
+        get() = container.deviceInfo
+
     /** 对外显示并广播的投屏设备名称。 */
-    private val castDeviceName get() = container.castDeviceName
+    private val castDeviceName
+        get() = container.castDeviceName
+
     /** 账号二维码登录协调器。 */
-    private val loginCoordinator get() = container.loginCoordinator
+    private val loginCoordinator
+        get() = container.loginCoordinator
+
     /** 应用更新流程协调器。 */
-    private val updateCoordinator get() = container.updateCoordinator
-    private val playbackResolver get() = container.playbackResolver
-    private val livePlaybackResolver get() = container.livePlaybackResolver
+    private val updateCoordinator
+        get() = container.updateCoordinator
+
+    private val playbackResolver
+        get() = container.playbackResolver
+
+    private val livePlaybackResolver
+        get() = container.livePlaybackResolver
 
     /** 通用播放控制协调器。 */
     private val playbackCoordinator by lazy {
@@ -302,14 +323,20 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             previewPositionMs = { ui.seekPreviewPositionMs },
             updatePlaying = { playing -> ui = ui.copy(isPlaying = playing, hudVisible = true) },
             updatePosition = { position, duration ->
-                ui = ui.copy(positionMs = position, durationMs = duration ?: ui.durationMs, hudVisible = true)
+                ui =
+                    ui.copy(
+                        positionMs = position,
+                        durationMs = duration ?: ui.durationMs,
+                        hudVisible = true,
+                    )
             },
             updatePreview = { position, duration ->
-                ui = ui.copy(
-                    positionMs = position ?: ui.positionMs,
-                    durationMs = duration ?: ui.durationMs,
-                    seekPreviewPositionMs = position,
-                )
+                ui =
+                    ui.copy(
+                        positionMs = position ?: ui.positionMs,
+                        durationMs = duration ?: ui.durationMs,
+                        seekPreviewPositionMs = position,
+                    )
             },
             updateSpeed = { speed, message ->
                 ui = ui.copy(playbackSpeed = speed, hudVisible = true, toast = message)
@@ -352,7 +379,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     override fun cancelCalibration() = calibrationCoordinator.skipOrCancel()
 
-    override fun adjustCalibration(direction: CalibrationDirection) = calibrationCoordinator.adjust(direction)
+    override fun adjustCalibration(direction: CalibrationDirection) =
+        calibrationCoordinator.adjust(direction)
 
     override fun nextCalibrationCorner() = calibrationCoordinator.nextCorner()
 
@@ -439,17 +467,19 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun setRememberPlaybackContent(enabled: Boolean) {
         uiPreferences.rememberPlaybackContent = enabled
         if (enabled) {
-            ui = ui.copy(
-                rememberPlaybackContent = true,
-                showContinue = ui.recents.isNotEmpty(),
-            )
+            ui =
+                ui.copy(
+                    rememberPlaybackContent = true,
+                    showContinue = ui.recents.isNotEmpty(),
+                )
         } else {
             recentCastStore.clear()
-            ui = ui.copy(
-                rememberPlaybackContent = false,
-                recents = emptyList(),
-                showContinue = false,
-            )
+            ui =
+                ui.copy(
+                    rememberPlaybackContent = false,
+                    recents = emptyList(),
+                    showContinue = false,
+                )
         }
     }
 
@@ -465,59 +495,90 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun handleHomeBack() = handleHomeBackInternal()
 
     override fun remembersPlaybackContent(): Boolean = ui.rememberPlaybackContent
+
     override fun playbackSpeed(): Float = ui.playbackSpeed
+
     override fun showRecentLoading(title: String) {
         cancelCalibrationForPlayback()
         ui = CastPlaybackStateProjector.recentLoading(ui, title)
     }
+
     override fun showIncomingCast(title: String) {
         cancelCalibrationForPlayback()
         ui = CastPlaybackStateProjector.incomingCast(ui, title)
     }
+
     override fun showResolveLoading(title: String) {
         cancelCalibrationForPlayback()
         ui = CastPlaybackStateProjector.resolving(ui, title)
     }
+
     private fun cancelCalibrationForPlayback() {
         if (calibrationCoordinator.state.phase == CalibrationPhase.HIDDEN) return
         startupLoginPending = false
         calibrationCoordinator.skipOrCancel()
     }
+
     override fun showPlayback(request: PlaybackRequest, seekToMs: Long) {
-        val liveQualities = if (request.isLive) {
-            liveCoordinator.activeSession?.let { LiveQualityMapper.options(it.stream) } ?: emptyList()
-        } else emptyList()
+        val liveQualities =
+            if (request.isLive) {
+                liveCoordinator.activeSession?.let { LiveQualityMapper.options(it.stream) }
+                    ?: emptyList()
+            } else emptyList()
         ui = CastPlaybackStateProjector.playing(ui, request, seekToMs, liveQualities)
     }
+
     override fun setDesiredPlaybackSpeed(speed: Float) {
         ui = ui.copy(playbackSpeed = speed)
     }
 
     override fun vodCoordinator(): VodPlaybackCoordinator = vodCoordinator
+
     override fun liveCoordinator(): LivePlaybackCoordinator = liveCoordinator
+
     override fun openSelectedPlayback(request: PlaybackRequest, positionMs: Long): Boolean =
         castCoordinator.openPlayback(request, positionMs)
+
     override fun liveAccessKey(): String? = authTokenStore.load()?.accessKey
+
     override suspend fun resolveLiveQuality(
-        accessKey: String, roomId: Long, quality: Int, forceAvc: Boolean,
+        accessKey: String,
+        roomId: Long,
+        quality: Int,
+        forceAvc: Boolean,
     ): LivePlayInfo = livePlaybackResolver.resolve(accessKey, roomId, quality, forceAvc)
+
     override fun switchSelectedLiveRoute(
-        target: RankedLiveSource, reason: String, from: LiveStreamCandidate?,
+        target: RankedLiveSource,
+        reason: String,
+        from: LiveStreamCandidate?,
     ): Boolean = switchLiveRoute(target, reason, from)
+
     override suspend fun onSelectedLiveRouteOpenFailure(reason: String) {
         handleLiveRouteOpenFailure(reason)
     }
+
     override fun onQualitySelected(label: String) {
         ui = ui.copy(panel = PanelKind.QUALITY, qualitySource = "手动", toast = "已切换 $label")
     }
+
     override fun onAudioSelected(label: String) {
         ui = ui.copy(panel = PanelKind.AUDIO, toast = "已切换 $label")
     }
-    override fun showSelectionToast(message: String) { ui = ui.copy(toast = message) }
 
-    override fun showRouteToast(message: String) { ui = ui.copy(toast = message) }
+    override fun showSelectionToast(message: String) {
+        ui = ui.copy(toast = message)
+    }
+
+    override fun showRouteToast(message: String) {
+        ui = ui.copy(toast = message)
+    }
+
     override fun isPausedWithoutBuffering(): Boolean = !ui.isBuffering && !ui.isPlaying
-    override fun updateBackupCount(count: Int) { ui = ui.copy(liveBackupCount = count) }
+
+    override fun updateBackupCount(count: Int) {
+        ui = ui.copy(liveBackupCount = count)
+    }
 
     override fun currentRequest(): PlaybackRequest? = currentRequest
 
@@ -534,7 +595,9 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     override fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean {
         currentRequest = request
         return runCatching { playbackEngineHost.open(request, seekToMs) }
-            .onFailure { error -> LogHub.e(TAG, "open playback backend failed ${LogRedaction.reason(error)}", error) }
+            .onFailure { error ->
+                LogHub.e(TAG, "open playback backend failed ${LogRedaction.reason(error)}", error)
+            }
             .getOrDefault(false)
     }
 
@@ -544,7 +607,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     }
 
     /** 用于后台线路探测的协程作用域。 */
-    override val coroutineScope: CoroutineScope get() = scope
+    override val coroutineScope: CoroutineScope
+        get() = scope
 
     /** 播放器是否正在播放。 */
     override fun isPlaying(): Boolean = playerIsPlaying()
@@ -607,18 +671,30 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /** 返回当前后端的统一播放状态。 */
     override fun snapshot(): PlaybackSnapshot = playbackEngineHost.snapshot(ui.volume)
 
-    override fun isPlaybackVisible(): Boolean = ui.mode == TvMode.PLAYING || ui.mode == TvMode.LOADING
+    override fun isPlaybackVisible(): Boolean =
+        ui.mode == TvMode.PLAYING || ui.mode == TvMode.LOADING
+
     override fun isBuffering(): Boolean = ui.isBuffering
+
     override fun displayedDurationMs(): Long = ui.durationMs
-    override fun updateProgress(positionMs: Long, durationMs: Long, playing: Boolean, volume: Int, liveBackupCount: Int) {
-        ui = ui.copy(
-            positionMs = positionMs,
-            durationMs = durationMs,
-            isPlaying = playing,
-            volume = volume,
-            liveBackupCount = liveBackupCount,
-        )
+
+    override fun updateProgress(
+        positionMs: Long,
+        durationMs: Long,
+        playing: Boolean,
+        volume: Int,
+        liveBackupCount: Int,
+    ) {
+        ui =
+            ui.copy(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                isPlaying = playing,
+                volume = volume,
+                liveBackupCount = liveBackupCount,
+            )
     }
+
     override fun updateNetwork(wifiName: String, localIp: String) {
         ui = ui.copy(network = wifiName, ip = localIp)
     }
@@ -844,23 +920,46 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         handleCast(uri, title, longDescription)
 
     override fun engineAvailable(): Boolean = ::playbackEngineHost.isInitialized
+
     override fun setPaused(paused: Boolean, reason: String) = setPlayerPaused(paused, reason)
+
     override fun stopCastFromDlna() = playbackSessionLifecycle.stopFromDlna()
+
     override fun currentIsLive(): Boolean = currentRequest?.isLive == true
+
     override fun currentCid(): Long? = currentRequest?.cid
-    override fun seekTo(positionMs: Long, reason: String) { seekPlayer(positionMs, reason) }
+
+    override fun seekTo(positionMs: Long, reason: String) {
+        seekPlayer(positionMs, reason)
+    }
+
     override fun seekDanmaku(positionMs: Long) {
         if (::danmakuController.isInitialized) danmakuController.onSeek(positionMs)
     }
+
     override fun isSeekable(): Boolean = playbackEngineHost.isSeekable()
+
     override fun setVolume(volume: Int, reason: String) = setPlayerVolume(volume, reason)
+
     override fun durationMs(): Long = playerDurationMs()
+
     override fun volume(): Int = playerVolume()
+
     override fun onMainThread(action: () -> Unit) = runOnUiThread(action)
+
     override fun <T> readOnMainThread(action: () -> T): T = mainThreadPlaybackAccess.read(action)
-    override fun showDlnaPlayState(playing: Boolean) { ui = ui.copy(isPlaying = playing, hudVisible = true) }
-    override fun showDlnaSeekState(positionMs: Long) { ui = ui.copy(positionMs = positionMs, hudVisible = true) }
-    override fun showDlnaVolumeState(volume: Int) { ui = ui.copy(volume = volume, hudVisible = true) }
+
+    override fun showDlnaPlayState(playing: Boolean) {
+        ui = ui.copy(isPlaying = playing, hudVisible = true)
+    }
+
+    override fun showDlnaSeekState(positionMs: Long) {
+        ui = ui.copy(positionMs = positionMs, hudVisible = true)
+    }
+
+    override fun showDlnaVolumeState(volume: Int) {
+        ui = ui.copy(volume = volume, hudVisible = true)
+    }
 
     /** 初始化播放器、投屏服务、界面和账号状态。 */
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -878,28 +977,32 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         )
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                TvKeyHandler.dispatchBack(ui, actions)
-            }
-        })
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    TvKeyHandler.dispatchBack(ui, actions)
+                }
+            },
+        )
 
         videoLayout = findViewById(R.id.videoLayout)
         media3PlayerView = findViewById(R.id.media3PlayerView)
-        viewportHost = VideoViewportHost(
-            root = findViewById(R.id.rootLayout),
-            playbackView = findViewById<SurfaceView>(R.id.compensatedVideoSurfaceView),
-            calibrationView = findViewById<SurfaceView>(R.id.calibrationSurfaceView),
-            onCalibrationFailure = {
-                Toast.makeText(this, "电视无法播放 4K 校准视频", Toast.LENGTH_LONG).show()
-                window.decorView.post { calibrationCoordinator.skipOrCancel() }
-            },
-        )
+        viewportHost =
+            VideoViewportHost(
+                root = findViewById(R.id.rootLayout),
+                playbackView = findViewById<SurfaceView>(R.id.compensatedVideoSurfaceView),
+                calibrationView = findViewById<SurfaceView>(R.id.calibrationSurfaceView),
+                onCalibrationFailure = {
+                    Toast.makeText(this, "电视无法播放 4K 校准视频", Toast.LENGTH_LONG).show()
+                    window.decorView.post { calibrationCoordinator.skipOrCancel() }
+                },
+            )
         danmakuView = findViewById(R.id.danmakuView)
         danmakuSettings = danmakuPreferences.load()
         composeUi = findViewById(R.id.composeUi)
         composeUi.setViewCompositionStrategy(
-            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
         )
         composeUi.setContent {
             TvRoot(state = ui, actions = actions)
@@ -910,22 +1013,23 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         dlna = DlnaRenderer(this, dlnaListener, deviceName = castDeviceName)
         dlna.start()
 
-        ui = ui.copy(
-            deviceName = castDeviceName,
-            roomName = uiPreferences.roomName,
-            network = deviceInfo.wifiName(),
-            ip = LogHub.localIp(),
-            version = deviceInfo.versionName(),
-            versionCode = deviceInfo.versionCode(),
-            dlnaUrl = dlna.descriptionUrl,
-            danmakuEnabled = danmakuSettings.enabled,
-            danmakuAiShield = danmakuSettings.aiShield,
-            danmakuAreaRatio = danmakuSettings.areaRatio,
-            danmakuMaxOnScreen = danmakuSettings.maxOnScreen,
-            danmakuOpacity = danmakuSettings.opacity,
-            danmakuFontScale = danmakuSettings.fontScale,
-            danmakuDurationSec = danmakuSettings.durationSec,
-        )
+        ui =
+            ui.copy(
+                deviceName = castDeviceName,
+                roomName = uiPreferences.roomName,
+                network = deviceInfo.wifiName(),
+                ip = LogHub.localIp(),
+                version = deviceInfo.versionName(),
+                versionCode = deviceInfo.versionCode(),
+                dlnaUrl = dlna.descriptionUrl,
+                danmakuEnabled = danmakuSettings.enabled,
+                danmakuAiShield = danmakuSettings.aiShield,
+                danmakuAreaRatio = danmakuSettings.areaRatio,
+                danmakuMaxOnScreen = danmakuSettings.maxOnScreen,
+                danmakuOpacity = danmakuSettings.opacity,
+                danmakuFontScale = danmakuSettings.fontScale,
+                danmakuDurationSec = danmakuSettings.durationSec,
+            )
         updateCoordinator.initialize()
 
         runCatching {
@@ -937,52 +1041,64 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 onEvent = playbackEventRouter::dispatch,
                 onHdrWindowChanged = ::setHdrWindowEnabled,
             )
-        }.onSuccess { host ->
-            playbackEngineHost = host
-            danmakuEngine = DfmDanmakuEngine(danmakuView, danmakuClock)
-            danmakuController = DanmakuController(
-                scope, danmakuEngine, danmakuClock,
-                BiliDanmakuRepository(DanmakuApi(authTokenStore)),
-            )
-            liveDanmakuController = LiveDanmakuController(
-                this, scope, danmakuEngine, danmakuClock, BiliLiveDanmakuClient.Factory,
-            )
-            danmakuController.applySettings(danmakuSettings)
-            liveDanmakuController.applySettings(danmakuSettings)
-            danmakuView.visibility = if (danmakuSettings.enabled) View.VISIBLE else View.GONE
-            videoLayout.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                layoutDanmaku()
-            }
-            videoLayout.post { layoutDanmaku() }
-        }.onFailure { error ->
-            LogHub.e(
-                TAG,
-                "player engine init failed: ${LogRedaction.reason(error)}",
-                error,
-                stack = true,
-            )
-            PlaybackDiagnostics.fail(
-                code = "PLAYER_INIT_FAILED",
-                message = "播放器初始化失败",
-                detail = "reason=${LogRedaction.reason(error)} " +
-                    "device=${Build.MANUFACTURER}/${Build.MODEL}",
-            )
-            showError(
-                title = "播放器初始化失败",
-                message = "设备可能缺少必要的解码组件，请查看诊断日志。",
-                code = "PLAYER_INIT_FAILED",
-                canRetry = false,
-            )
         }
+            .onSuccess { host ->
+                playbackEngineHost = host
+                danmakuEngine = DfmDanmakuEngine(danmakuView, danmakuClock)
+                danmakuController =
+                    DanmakuController(
+                        scope,
+                        danmakuEngine,
+                        danmakuClock,
+                        BiliDanmakuRepository(DanmakuApi(authTokenStore)),
+                    )
+                liveDanmakuController =
+                    LiveDanmakuController(
+                        this,
+                        scope,
+                        danmakuEngine,
+                        danmakuClock,
+                        BiliLiveDanmakuClient.Factory,
+                    )
+                danmakuController.applySettings(danmakuSettings)
+                liveDanmakuController.applySettings(danmakuSettings)
+                danmakuView.visibility = if (danmakuSettings.enabled) View.VISIBLE else View.GONE
+                videoLayout.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                    layoutDanmaku()
+                }
+                videoLayout.post { layoutDanmaku() }
+            }
+            .onFailure { error ->
+                LogHub.e(
+                    TAG,
+                    "player engine init failed: ${LogRedaction.reason(error)}",
+                    error,
+                    stack = true,
+                )
+                PlaybackDiagnostics.fail(
+                    code = "PLAYER_INIT_FAILED",
+                    message = "播放器初始化失败",
+                    detail =
+                        "reason=${LogRedaction.reason(error)} " +
+                            "device=${Build.MANUFACTURER}/${Build.MODEL}",
+                )
+                showError(
+                    title = "播放器初始化失败",
+                    message = "设备可能缺少必要的解码组件，请查看诊断日志。",
+                    code = "PLAYER_INIT_FAILED",
+                    canRetry = false,
+                )
+            }
 
         val rememberPlaybackContent = uiPreferences.rememberPlaybackContent
         val syncPlaybackHistory = uiPreferences.syncPlaybackHistory
-        ui = ui.copy(
-            rememberPlaybackContent = rememberPlaybackContent,
-            syncPlaybackHistory = syncPlaybackHistory,
-            recents = if (rememberPlaybackContent) recentCastStore.load() else emptyList(),
-            showContinue = rememberPlaybackContent,
-        )
+        ui =
+            ui.copy(
+                rememberPlaybackContent = rememberPlaybackContent,
+                syncPlaybackHistory = syncPlaybackHistory,
+                recents = if (rememberPlaybackContent) recentCastStore.load() else emptyList(),
+                showContinue = rememberPlaybackContent,
+            )
         playbackHistoryCoordinator
         startupLoginPending = true
         calibrationCoordinator.initialize()
@@ -996,27 +1112,44 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
 
     /** 播放器事件只经统一路由进入会话逻辑。 */
     override fun activeBackend(): PlaybackBackend = playbackEngineHost.backend
+
     override fun currentPlaybackRequest(): PlaybackRequest? = currentRequest
+
     override fun consumePendingSeekMs(): Long = pendingSeekMs.also { pendingSeekMs = 0L }
+
     override fun playerStateSnapshot(): String = playbackEngineHost.stateSnapshot()
-    override fun runOnMain(action: () -> Unit) { runOnUiThread { action() } }
+
+    override fun runOnMain(action: () -> Unit) {
+        runOnUiThread { action() }
+    }
+
     override fun vodOnPlaying() = vodCoordinator.onPlaying()
+
     override fun handleVodFailure(reason: String, preferCodecFallback: Boolean): Boolean =
         handleVodPlaybackFailure(reason, preferCodecFallback)
+
     override fun onLivePlaying() {
         if (::liveDanmakuController.isInitialized) liveDanmakuController.onPlaying()
         liveCoordinator.health.onPlaying()
         liveCoordinator.stallWatchdog.reset()
         completeLiveRouteSwitch()
     }
+
     override fun onLivePaused() {
         if (::liveDanmakuController.isInitialized) liveDanmakuController.onPaused()
     }
-    override fun onLiveBuffering(buffering: Boolean): Boolean = liveCoordinator.health.onBuffering(buffering)
-    override fun handleLiveFailure(reason: String) { handleLivePlaybackFailure(reason) }
+
+    override fun onLiveBuffering(buffering: Boolean): Boolean =
+        liveCoordinator.health.onBuffering(buffering)
+
+    override fun handleLiveFailure(reason: String) {
+        handleLivePlaybackFailure(reason)
+    }
+
     override fun finishHistory(reason: String, ended: Boolean) {
         playbackHistoryCoordinator.finish(reason, ended)
     }
+
     override fun historyOnPlaying() {
         currentRequest?.let { info ->
             playbackHistoryCoordinator.onPlaying(
@@ -1026,68 +1159,91 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             )
         }
     }
+
     override fun historyOnPaused() {
         playbackHistoryCoordinator.onPaused(playerPositionMs(), playerDurationMs())
     }
+
     override fun setCastEnded() {
         castActive = false
         currentRequest = null
     }
+
     override fun setRetryFor(request: PlaybackRequest) {
-        playbackSessionLifecycle.setRetry { castCoordinator.openPlayback(request, playerPositionMs()) }
+        playbackSessionLifecycle.setRetry {
+            castCoordinator.openPlayback(request, playerPositionMs())
+        }
     }
+
     override fun updateMedia3Playing(seek: Long) {
-        ui = ui.copy(
-            mode = TvMode.PLAYING,
-            isPlaying = true,
-            isBuffering = false,
-            positionMs = if (seek > 0L) seek else playerPositionMs(),
-            durationMs = playerDurationMs().takeIf { it > 0L } ?: ui.durationMs,
-        )
+        ui =
+            ui.copy(
+                mode = TvMode.PLAYING,
+                isPlaying = true,
+                isBuffering = false,
+                positionMs = if (seek > 0L) seek else playerPositionMs(),
+                durationMs = playerDurationMs().takeIf { it > 0L } ?: ui.durationMs,
+            )
     }
+
     override fun updateVlcPlaying(seek: Long) {
-        ui = ui.copy(
-            mode = TvMode.PLAYING,
-            isPlaying = true,
-            isBuffering = false,
-            positionMs = if (seek > 0L) seek else ui.positionMs,
-        )
+        ui =
+            ui.copy(
+                mode = TvMode.PLAYING,
+                isPlaying = true,
+                isBuffering = false,
+                positionMs = if (seek > 0L) seek else ui.positionMs,
+            )
         val duration = playerDurationMs()
         if (duration > 0L) ui = ui.copy(durationMs = duration)
     }
-    override fun updatePaused() { ui = ui.copy(isPlaying = false) }
-    override fun updateStopped() { ui = ui.copy(isPlaying = false, isBuffering = false) }
-    override fun updateBuffering(buffering: Boolean) { ui = ui.copy(isBuffering = buffering) }
-    override fun updateEnded() {
-        ui = ui.copy(
-            mode = TvMode.IDLE,
-            destination = TvDestination.HOME,
-            castTitle = "",
-            qualityLabel = "",
-            qualityDetail = "",
-            qualitySource = "",
-            audioLabel = "",
-            isPlaying = false,
-            isBuffering = false,
-            isLive = false,
-            liveFormat = "",
-            liveCdn = "",
-            liveBackupCount = 0,
-            positionMs = 0,
-            durationMs = 0,
-            hudVisible = false,
-            tracks = emptyList(),
-            audios = emptyList(),
-            toast = "播放结束",
-            showContinue = ui.rememberPlaybackContent,
-        ).returnToHomeAfterPlayback()
+
+    override fun updatePaused() {
+        ui = ui.copy(isPlaying = false)
     }
+
+    override fun updateStopped() {
+        ui = ui.copy(isPlaying = false, isBuffering = false)
+    }
+
+    override fun updateBuffering(buffering: Boolean) {
+        ui = ui.copy(isBuffering = buffering)
+    }
+
+    override fun updateEnded() {
+        ui =
+            ui.copy(
+                    mode = TvMode.IDLE,
+                    destination = TvDestination.HOME,
+                    castTitle = "",
+                    qualityLabel = "",
+                    qualityDetail = "",
+                    qualitySource = "",
+                    audioLabel = "",
+                    isPlaying = false,
+                    isBuffering = false,
+                    isLive = false,
+                    liveFormat = "",
+                    liveCdn = "",
+                    liveBackupCount = 0,
+                    positionMs = 0,
+                    durationMs = 0,
+                    hudVisible = false,
+                    tracks = emptyList(),
+                    audios = emptyList(),
+                    toast = "播放结束",
+                    showContinue = ui.rememberPlaybackContent,
+                )
+                .returnToHomeAfterPlayback()
+    }
+
     override fun updateVideoSize(width: Int, height: Int) {
         videoWidth = width
         videoHeight = height
         ui = ui.copy(videoWidth = width, videoHeight = height)
         layoutDanmaku()
     }
+
     override fun vodDanmakuPlaying(seek: Long) {
         if (::danmakuController.isInitialized) {
             val position = if (seek > 0L) seek else playerPositionMs()
@@ -1095,21 +1251,33 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             if (seek > 0L) danmakuController.onSeek(seek)
         }
     }
+
     override fun vodDanmakuPaused() {
         if (::danmakuController.isInitialized) danmakuController.onPaused(playerPositionMs())
     }
+
     override fun vodDanmakuBuffering(buffering: Boolean) {
-        if (::danmakuController.isInitialized) danmakuController.onBuffering(buffering, playerPositionMs())
+        if (::danmakuController.isInitialized)
+            danmakuController.onBuffering(buffering, playerPositionMs())
     }
+
     override fun vodDanmakuClose() {
         if (::danmakuController.isInitialized) danmakuController.close()
     }
+
     override fun liveDanmakuClose() {
         if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
     }
+
     override fun reportPlaybackError(
-        title: String, message: String, code: String, canRetry: Boolean, keepVideo: Boolean,
-    ) { showError(title, message, code, canRetry, keepVideo) }
+        title: String,
+        message: String,
+        code: String,
+        canRetry: Boolean,
+        keepVideo: Boolean,
+    ) {
+        showError(title, message, code, canRetry, keepVideo)
+    }
 
     /** 安装全局崩溃记录器，把未捕获异常写入持久化诊断历史。 */
     private fun installCrashHandler() {
@@ -1181,11 +1349,15 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         castCoordinator.resolve(nva, title)
 
     /** 采用首次线路测速结果启动直播。 */
-    private fun startLivePlayback(stream: LivePlayInfo, routes: List<RankedLiveSource>, title: String) =
-        liveCoordinator.start(stream, routes, title)
+    private fun startLivePlayback(
+        stream: LivePlayInfo,
+        routes: List<RankedLiveSource>,
+        title: String,
+    ) = liveCoordinator.start(stream, routes, title)
 
     /** 定时刷新直播备用线路排序。 */
-    private fun startLiveBackupRefresh(session: LiveSession) = liveCoordinator.startBackupRefresh(session)
+    private fun startLiveBackupRefresh(session: LiveSession) =
+        liveCoordinator.startBackupRefresh(session)
 
     /** 打开直播线路失败时按候选顺序继续尝试。 */
     private suspend fun handleLiveRouteOpenFailure(reason: String) =
@@ -1202,7 +1374,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     ): Boolean = liveCoordinator.switchRoute(target, reason, from)
 
     /** 继续尝试剩余直播候选项。 */
-    private suspend fun continueLiveFallback(reason: String) = liveCoordinator.continueFallback(reason)
+    private suspend fun continueLiveFallback(reason: String) =
+        liveCoordinator.continueFallback(reason)
 
     /** 重新请求 AVC 或较低档位，并在新候选中完成首播选路。 */
     private suspend fun resolveLiveFallback(
@@ -1213,7 +1386,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     ) = liveCoordinator.resolveFallback(session, quality, forceAvc, reason)
 
     /** 直播线路耗尽后展示失败提示。 */
-    private fun failLivePlayback(code: String, message: String) = liveCoordinator.fail(code, message)
+    private fun failLivePlayback(code: String, message: String) =
+        liveCoordinator.fail(code, message)
 
     /** 播放稳定后结束直播切源事务。 */
     private fun completeLiveRouteSwitch() = liveCoordinator.completeRouteSwitch()
@@ -1225,17 +1399,20 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         val oldVodSession = vodCoordinator.activeSession
         vodCoordinator.clear()
         if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
-        if (session != null) LogHub.i(TAG, "live session cleared room=${session.stream.roomId} reason=$reason")
+        if (session != null)
+            LogHub.i(TAG, "live session cleared room=${session.stream.roomId} reason=$reason")
         if (oldVodSession != null) LogHub.i(TAG, "VOD session cleared reason=$reason")
     }
 
-
     /** 将播放器缓冲事件交给点播恢复状态机。 */
-    override fun observeVodBuffering(buffering: Boolean) = vodCoordinator.observeBuffering(buffering)
+    override fun observeVodBuffering(buffering: Boolean) =
+        vodCoordinator.observeBuffering(buffering)
 
     /** 处理点播播放故障，优先在同表示层内切换线路。 */
-    private fun handleVodPlaybackFailure(reason: String, preferCodecFallback: Boolean = false): Boolean =
-        vodCoordinator.handleFailure(reason, preferCodecFallback)
+    private fun handleVodPlaybackFailure(
+        reason: String,
+        preferCodecFallback: Boolean = false,
+    ): Boolean = vodCoordinator.handleFailure(reason, preferCodecFallback)
 
     /** 播放稳定后结束切源事务并提示用户。 */
     private fun completeVodRouteSwitch() = vodCoordinator.completeRouteSwitch()
@@ -1270,6 +1447,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private fun liveProbeOrder(): Comparator<RankedLiveSource> = LiveQualityMapper.probeOrder()
 
     private fun switchQuality(qn: Int) = playbackSelectionCoordinator.switchQuality(qn)
+
     private fun switchAudio(id: Int) = playbackSelectionCoordinator.switchAudio(id)
 
     /** 切换播放器的播放与暂停状态。 */
@@ -1281,8 +1459,7 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     /**
      * 预览性地跳转到新位置。
      *
-     * 每次方向键输入都会立即驱动 VLC 跳转，以便画面加载目标位置；待确认状态只用于
-     * 控制进度条显示与自动提交，不会延后播放器的实际定位。
+     * 每次方向键输入都会立即驱动 VLC 跳转，以便画面加载目标位置；待确认状态只用于 控制进度条显示与自动提交，不会延后播放器的实际定位。
      */
     private fun previewSeekBy(ms: Long) = playbackCoordinator.previewSeekBy(ms)
 
@@ -1305,32 +1482,32 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         if (::danmakuView.isInitialized) {
             danmakuView.visibility = if (newSettings.enabled) View.VISIBLE else View.GONE
         }
-        ui = ui.copy(
-            danmakuEnabled = newSettings.enabled,
-            danmakuAiShield = newSettings.aiShield,
-            danmakuAreaRatio = newSettings.areaRatio,
-            danmakuMaxOnScreen = newSettings.maxOnScreen,
-            danmakuOpacity = newSettings.opacity,
-            danmakuFontScale = newSettings.fontScale,
-            danmakuDurationSec = newSettings.durationSec,
-        )
+        ui =
+            ui.copy(
+                danmakuEnabled = newSettings.enabled,
+                danmakuAiShield = newSettings.aiShield,
+                danmakuAreaRatio = newSettings.areaRatio,
+                danmakuMaxOnScreen = newSettings.maxOnScreen,
+                danmakuOpacity = newSettings.opacity,
+                danmakuFontScale = newSettings.fontScale,
+                danmakuDurationSec = newSettings.durationSec,
+            )
         layoutDanmaku()
     }
 
     /** 按实际视频渲染容器和显示区域摆放弹幕视图。 */
     private fun layoutDanmaku() {
         if (!::videoLayout.isInitialized || !::danmakuView.isInitialized) return
-        val screenW = videoLayout.width.takeIf { it > 0 }
-            ?: resources.displayMetrics.widthPixels
-        val screenH = videoLayout.height.takeIf { it > 0 }
-            ?: resources.displayMetrics.heightPixels
+        val screenW = videoLayout.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val screenH = videoLayout.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
         if (screenW <= 0 || screenH <= 0) return
 
         // VLCVideoLayout 已经是视频的实际输出容器，可能包含旋转、像素宽高比与
         // 缩放策略。轨道原始分辨率只用于信息展示，不能拿来反推弹幕视口。
         val areaH = (screenH * danmakuSettings.areaRatio).toInt().coerceIn(1, screenH)
-        val params = danmakuView.layoutParams as? FrameLayout.LayoutParams
-            ?: FrameLayout.LayoutParams(screenW, areaH)
+        val params =
+            danmakuView.layoutParams as? FrameLayout.LayoutParams
+                ?: FrameLayout.LayoutParams(screenW, areaH)
         params.width = screenW
         params.height = areaH
         params.leftMargin = videoLayout.left
@@ -1339,7 +1516,8 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         danmakuView.layoutParams = params
         if (::danmakuController.isInitialized) {
             danmakuController.setContentHeight(screenH)
-            if (::liveDanmakuController.isInitialized) liveDanmakuController.setContentHeight(screenH)
+            if (::liveDanmakuController.isInitialized)
+                liveDanmakuController.setContentHeight(screenH)
             val expectedWidth = screenW
             val expectedHeight = areaH
             danmakuView.post {
@@ -1359,19 +1537,22 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         if (!::playbackEngineHost.isInitialized) return
         val size = playbackEngineHost.videoSize() ?: return
         val liveCodec = currentRequest?.takeIf { it.isLive }?.video?.codecs
-        val detail = if (liveCodec.isNullOrBlank()) {
-            ui.qualityDetail
-        } else {
-            "${size.first}x${size.second} · $liveCodec"
-        }
-        if (size.first == videoWidth && size.second == videoHeight && detail == ui.qualityDetail) return
+        val detail =
+            if (liveCodec.isNullOrBlank()) {
+                ui.qualityDetail
+            } else {
+                "${size.first}x${size.second} · $liveCodec"
+            }
+        if (size.first == videoWidth && size.second == videoHeight && detail == ui.qualityDetail)
+            return
         videoWidth = size.first
         videoHeight = size.second
-        ui = ui.copy(
-            videoWidth = videoWidth,
-            videoHeight = videoHeight,
-            qualityDetail = detail,
-        )
+        ui =
+            ui.copy(
+                videoWidth = videoWidth,
+                videoHeight = videoHeight,
+                qualityDetail = detail,
+            )
         PlaybackDiagnostics.attribute("stream.size", "${size.first}x${size.second}")
         if (liveCodec != null) {
             PlaybackDiagnostics.attribute("live.videoSize", "${size.first}x${size.second}")
@@ -1385,28 +1566,50 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
     private fun setVolume(volume: Int) = playbackCoordinator.setVolume(volume)
 
     private fun retryLastAction() = playbackSessionLifecycle.retry()
+
     private fun dismissError() = playbackSessionLifecycle.dismissError()
+
     private fun stopCasting() = playbackSessionLifecycle.stopCasting()
+
     private fun showError(
-        title: String, message: String, code: String, canRetry: Boolean, keepVideo: Boolean = false,
+        title: String,
+        message: String,
+        code: String,
+        canRetry: Boolean,
+        keepVideo: Boolean = false,
     ) = playbackSessionLifecycle.showError(title, message, code, canRetry, keepVideo)
 
     override fun modeForLog(): String = ui.mode.toString()
-    override fun finishSessionHistory(reason: String) { playbackHistoryCoordinator.finish(reason) }
+
+    override fun finishSessionHistory(reason: String) {
+        playbackHistoryCoordinator.finish(reason)
+    }
+
     override fun hasCurrentRequest(): Boolean = currentRequest != null
+
     override fun lastCastContent(): CastContent? = lastNva
+
     override fun lastCastTitle(): String = lastTitle
-    override fun resolveCast(content: CastContent, title: String) = resolveNvaAndPlay(content, title)
+
+    override fun resolveCast(content: CastContent, title: String) =
+        resolveNvaAndPlay(content, title)
+
     override fun cancelResolveJob() {
         resolveJob?.cancel()
         resolveJob = null
     }
+
     override fun resetPendingPlayback() {
         pendingPause = false
         pendingSeekMs = 0L
     }
-    override fun clearPendingPause() { pendingPause = false }
+
+    override fun clearPendingPause() {
+        pendingPause = false
+    }
+
     override fun stopPlaybackForSession(reason: String) = stopActivePlayback(reason)
+
     override fun clearSessionIdentity(clearCastMetadata: Boolean, clearResolving: Boolean) {
         currentRequest = null
         castActive = false
@@ -1416,79 +1619,91 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             lastTitle = ""
         }
     }
+
     override fun showRetryState(hasCurrent: Boolean) {
-        ui = ui.copy(
-            mode = if (hasCurrent) TvMode.PLAYING else TvMode.LOADING,
-            error = null,
-            hudVisible = true,
-        )
+        ui =
+            ui.copy(
+                mode = if (hasCurrent) TvMode.PLAYING else TvMode.LOADING,
+                error = null,
+                hudVisible = true,
+            )
     }
+
     override fun showDismissedState() {
-        ui = ui.copy(
-            mode = TvMode.IDLE,
-            error = null,
-            castTitle = "",
-            qualityLabel = "",
-            qualityDetail = "",
-            qualitySource = "",
-            audioLabel = "",
-            isPlaying = false,
-            isBuffering = false,
-            isLive = false,
-            liveFormat = "",
-            liveCdn = "",
-            liveBackupCount = 0,
-            positionMs = 0,
-            durationMs = 0,
-            hudVisible = false,
-            tracks = emptyList(),
-            audios = emptyList(),
-            showContinue = ui.rememberPlaybackContent,
-        ).returnToHomeAfterPlayback()
+        ui =
+            ui.copy(
+                    mode = TvMode.IDLE,
+                    error = null,
+                    castTitle = "",
+                    qualityLabel = "",
+                    qualityDetail = "",
+                    qualitySource = "",
+                    audioLabel = "",
+                    isPlaying = false,
+                    isBuffering = false,
+                    isLive = false,
+                    liveFormat = "",
+                    liveCdn = "",
+                    liveBackupCount = 0,
+                    positionMs = 0,
+                    durationMs = 0,
+                    hudVisible = false,
+                    tracks = emptyList(),
+                    audios = emptyList(),
+                    showContinue = ui.rememberPlaybackContent,
+                )
+                .returnToHomeAfterPlayback()
     }
+
     override fun showStoppedState() {
-        ui = ui.copy(
-            mode = TvMode.IDLE,
-            destination = TvDestination.HOME,
-            settingsNavigation = ui.settingsNavigation.reset(),
-            panel = null,
-            stopCastConfirm = false,
-            error = null,
-            castTitle = "",
-            qualityLabel = "",
-            qualityDetail = "",
-            qualitySource = "",
-            audioLabel = "",
-            isPlaying = false,
-            isBuffering = false,
-            isLive = false,
-            liveFormat = "",
-            liveCdn = "",
-            liveBackupCount = 0,
-            positionMs = 0L,
-            durationMs = 0L,
-            hudVisible = false,
-            tracks = emptyList(),
-            audios = emptyList(),
-            showContinue = ui.rememberPlaybackContent,
-            toast = "投屏已停止",
-        ).returnToHomeAfterPlayback()
+        ui =
+            ui.copy(
+                    mode = TvMode.IDLE,
+                    destination = TvDestination.HOME,
+                    settingsNavigation = ui.settingsNavigation.reset(),
+                    panel = null,
+                    stopCastConfirm = false,
+                    error = null,
+                    castTitle = "",
+                    qualityLabel = "",
+                    qualityDetail = "",
+                    qualitySource = "",
+                    audioLabel = "",
+                    isPlaying = false,
+                    isBuffering = false,
+                    isLive = false,
+                    liveFormat = "",
+                    liveCdn = "",
+                    liveBackupCount = 0,
+                    positionMs = 0L,
+                    durationMs = 0L,
+                    hudVisible = false,
+                    tracks = emptyList(),
+                    audios = emptyList(),
+                    showContinue = ui.rememberPlaybackContent,
+                    toast = "投屏已停止",
+                )
+                .returnToHomeAfterPlayback()
     }
+
     override fun showErrorState(title: String, message: String, code: String, canRetry: Boolean) {
-        ui = ui.copy(
-            mode = TvMode.ERROR,
-            error = TvError(title, message, code, canRetry),
-            hudVisible = false,
-            isPlaying = false,
-            isBuffering = false,
-            isLive = false,
-            liveFormat = "",
-            liveCdn = "",
-            liveBackupCount = 0,
-            panel = null,
-            stopCastConfirm = false,
-        ).withMenuClosed()
+        ui =
+            ui.copy(
+                    mode = TvMode.ERROR,
+                    error = TvError(title, message, code, canRetry),
+                    hudVisible = false,
+                    isPlaying = false,
+                    isBuffering = false,
+                    isLive = false,
+                    liveFormat = "",
+                    liveCdn = "",
+                    liveBackupCount = 0,
+                    panel = null,
+                    stopCastConfirm = false,
+                )
+                .withMenuClosed()
     }
+
     override fun flushHistoryPosition() {
         playbackHistoryCoordinator.onPosition(
             positionMs = playerPositionMs(),
@@ -1496,30 +1711,36 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             playing = playerIsPlaying(),
         )
     }
-    override fun closeHistory() { playbackHistoryCoordinator.close() }
+
+    override fun closeHistory() {
+        playbackHistoryCoordinator.close()
+    }
+
     override fun showDlnaStoppedState() {
-        ui = ui.copy(
-            mode = TvMode.IDLE,
-            destination = TvDestination.HOME,
-            castTitle = "",
-            qualityLabel = "",
-            qualityDetail = "",
-            qualitySource = "",
-            audioLabel = "",
-            isPlaying = false,
-            isBuffering = false,
-            isLive = false,
-            liveFormat = "",
-            liveCdn = "",
-            liveBackupCount = 0,
-            positionMs = 0,
-            durationMs = 0,
-            hudVisible = false,
-            tracks = emptyList(),
-            audios = emptyList(),
-            toast = "投屏已结束",
-            showContinue = ui.rememberPlaybackContent,
-        ).returnToHomeAfterPlayback()
+        ui =
+            ui.copy(
+                    mode = TvMode.IDLE,
+                    destination = TvDestination.HOME,
+                    castTitle = "",
+                    qualityLabel = "",
+                    qualityDetail = "",
+                    qualitySource = "",
+                    audioLabel = "",
+                    isPlaying = false,
+                    isBuffering = false,
+                    isLive = false,
+                    liveFormat = "",
+                    liveCdn = "",
+                    liveBackupCount = 0,
+                    positionMs = 0,
+                    durationMs = 0,
+                    hudVisible = false,
+                    tracks = emptyList(),
+                    audios = emptyList(),
+                    toast = "投屏已结束",
+                    showContinue = ui.rememberPlaybackContent,
+                )
+                .returnToHomeAfterPlayback()
     }
 
     /** 首页连续两次返回退出，首按显示明确提示。 */
@@ -1575,11 +1796,17 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
             val mode = if (enabled) ActivityInfo.COLOR_MODE_HDR else ActivityInfo.COLOR_MODE_DEFAULT
             runCatching { window.colorMode = mode }
                 .onSuccess {
-                    PlaybackDiagnostics.attribute("renderer.window.colorMode", if (enabled) "hdr" else "default")
+                    PlaybackDiagnostics.attribute(
+                        "renderer.window.colorMode",
+                        if (enabled) "hdr" else "default",
+                    )
                     LogHub.i(TAG, "HDR window color mode=${if (enabled) "hdr" else "default"}")
                 }
                 .onFailure { error ->
-                    LogHub.e(TAG, "HDR window color mode update failed: ${LogRedaction.reason(error)}")
+                    LogHub.e(
+                        TAG,
+                        "HDR window color mode update failed: ${LogRedaction.reason(error)}",
+                    )
                 }
         }
     }
@@ -1593,20 +1820,22 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         playing: Boolean,
     ) {
         val now = SystemClock.elapsedRealtime()
-        val stalled = liveCoordinator.stallWatchdog.observe(
-            positionMs = progress.positionMs,
-            readBytes = progress.readBytes,
-            demuxReadBytes = progress.demuxReadBytes,
-            decodedVideoFrames = progress.decodedVideoFrames,
-            displayedPictures = progress.displayedPictures,
-            nowMs = now,
-            playing = playing,
-            buffering = ui.isBuffering,
-        )
+        val stalled =
+            liveCoordinator.stallWatchdog.observe(
+                positionMs = progress.positionMs,
+                readBytes = progress.readBytes,
+                demuxReadBytes = progress.demuxReadBytes,
+                decodedVideoFrames = progress.decodedVideoFrames,
+                displayedPictures = progress.displayedPictures,
+                nowMs = now,
+                playing = playing,
+                buffering = ui.isBuffering,
+            )
         if (stalled) {
-            val detail = "time=${progress.positionMs}ms read=${progress.readBytes}B " +
-                "demux=${progress.demuxReadBytes}B decoded=${progress.decodedVideoFrames} " +
-                "displayed=${progress.displayedPictures}"
+            val detail =
+                "time=${progress.positionMs}ms read=${progress.readBytes}B " +
+                    "demux=${progress.demuxReadBytes}B decoded=${progress.decodedVideoFrames} " +
+                    "displayed=${progress.displayedPictures}"
             LogHub.e(
                 TAG,
                 "live playback stalled for ${LIVE_STALL_TIMEOUT_MS}ms " +
@@ -1635,7 +1864,9 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
                 candidate.roomId > 0L && (info.cid <= 0L || candidate.roomId == info.cid)
             } else if (info.isPgc) {
                 (info.epId <= 0L || candidate.epId <= 0L || candidate.epId == info.epId) &&
-                    (info.seasonId <= 0L || candidate.seasonId <= 0L || candidate.seasonId == info.seasonId)
+                    (info.seasonId <= 0L ||
+                        candidate.seasonId <= 0L ||
+                        candidate.seasonId == info.seasonId)
             } else {
                 (info.aid <= 0L || candidate.aid <= 0L || candidate.aid == info.aid) &&
                     (info.cid <= 0L || candidate.cid <= 0L || candidate.cid == info.cid)
@@ -1759,8 +1990,6 @@ class MainActivity : ComponentActivity(), TvActionHost, VodPlaybackHost, LivePla
         private const val HISTORY_BUSINESS_PGC = "pgc"
         private const val HISTORY_BUSINESS_LIVE = "live"
         /** 是否已经安装全局崩溃记录器。 */
-        @Volatile
-        private var crashHandlerInstalled = false
+        @Volatile private var crashHandlerInstalled = false
     }
-
 }

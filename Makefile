@@ -2,6 +2,7 @@
 
 GRADLE := ./gradlew
 APP := :app
+SPOTLESS := spotless
 
 .PHONY: help verify format format-check debug release package metadata clean
 
@@ -18,13 +19,13 @@ help:
 
 # Kept identical to .github/workflows/verify.yml.
 verify:
-	$(GRADLE) $(APP):spotlessCheck $(APP):testDebugUnitTest $(APP):lintDebug $(APP):assembleDebug
+	$(GRADLE) $(SPOTLESS)Check $(APP):testDebugUnitTest $(APP):lintDebug $(APP):assembleDebug
 
 format:
-	$(GRADLE) $(APP):spotlessApply
+	$(GRADLE) $(SPOTLESS)Apply
 
 format-check:
-	$(GRADLE) $(APP):spotlessCheck
+	$(GRADLE) $(SPOTLESS)Check
 
 debug:
 	$(GRADLE) $(APP):assembleDebug
