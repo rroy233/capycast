@@ -6,17 +6,16 @@ import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.data.bili.BiliApi
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 /**
  * B 站直播弹幕长连接准入接口。
  *
- * `getDanmuInfo` 需要设备 buvid3 与 wbi 签名，否则返回 -352 风控。
- * buvid3 由主站下发，wbi key 从 `nav` 的 `wbi_img` 提取，
+ * `getDanmuInfo` 需要设备 buvid3 与 wbi 签名，否则返回 -352 风控。 buvid3 由主站下发，wbi key 从 `nav` 的 `wbi_img` 提取，
  * 均按设备持久化并复用。
  */
 object LiveDanmakuApi {
@@ -44,10 +43,41 @@ object LiveDanmakuApi {
     private const val WBI_KEY_TTL_MS = 11L * 60 * 60 * 1000
 
     /** wbi 密钥重排表。 */
-    private val WBI_KEY_INDEX_TABLE = intArrayOf(
-        46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
-        27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
-    )
+    private val WBI_KEY_INDEX_TABLE =
+        intArrayOf(
+            46,
+            47,
+            18,
+            2,
+            53,
+            8,
+            23,
+            32,
+            15,
+            50,
+            10,
+            31,
+            58,
+            3,
+            45,
+            35,
+            27,
+            43,
+            5,
+            49,
+            33,
+            9,
+            42,
+            19,
+            29,
+            28,
+            14,
+            39,
+            12,
+            38,
+            41,
+            13,
+        )
 
     /** getDanmuInfo 响应中的一个可用 WebSocket 主机。 */
     data class Host(
@@ -66,12 +96,13 @@ object LiveDanmakuApi {
         val buvid3: String,
     )
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .callTimeout(15, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
+    private val client: OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(15, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
 
     /**
      * 请求直播弹幕进房信息。
@@ -85,19 +116,24 @@ object LiveDanmakuApi {
         val buvid3 = ensureBuvid3(prefs)
         val wbiKey = ensureWbiKey(prefs, cookie)
 
-        val params = signWbi(
-            params = mapOf("id" to roomId.toString(), "type" to "0"),
-            wbiKey = wbiKey,
-        )
-        val url = DANMAKU_INFO_URL + "?" + params.entries.joinToString("&") {
-            "${encode(it.key)}=${encode(it.value)}"
-        }
-        val builder = Request.Builder()
-            .url(url)
-            .header("User-Agent", BiliApi.UA)
-            .header("Referer", "https://live.bilibili.com/")
-            .header("Origin", "https://live.bilibili.com")
-            .header("Accept", "application/json, text/plain, */*")
+        val params =
+            signWbi(
+                params = mapOf("id" to roomId.toString(), "type" to "0"),
+                wbiKey = wbiKey,
+            )
+        val url =
+            DANMAKU_INFO_URL +
+                "?" +
+                params.entries.joinToString("&") {
+                    "${encode(it.key)}=${encode(it.value)}"
+                }
+        val builder =
+            Request.Builder()
+                .url(url)
+                .header("User-Agent", BiliApi.UA)
+                .header("Referer", "https://live.bilibili.com/")
+                .header("Origin", "https://live.bilibili.com")
+                .header("Accept", "application/json, text/plain, */*")
         val mergedCookie = mergeCookie(cookie, buvid3)
         if (mergedCookie.isNotBlank()) builder.header("Cookie", mergedCookie)
 
@@ -122,18 +158,21 @@ object LiveDanmakuApi {
                 )
                 error("getDanmuInfo code=$code")
             }
-            val data = root.getAsJsonObject("data")
-                ?: error("getDanmuInfo data missing")
+            val data = root.getAsJsonObject("data") ?: error("getDanmuInfo data missing")
             val token = data.get("token")?.asString.orEmpty()
             if (token.isEmpty()) error("getDanmuInfo token missing")
-            val hosts = data.getAsJsonArray("host_list")
-                ?.mapNotNull { element ->
-                    val obj = runCatching { element.asJsonObject }.getOrNull() ?: return@mapNotNull null
-                    val host = obj.get("host")?.asString.orEmpty()
-                    if (host.isEmpty()) return@mapNotNull null
-                    Host(host = host, wssPort = obj.get("wss_port")?.asInt ?: 443)
-                }
-                .orEmpty()
+            val hosts =
+                data
+                    .getAsJsonArray("host_list")
+                    ?.mapNotNull { element ->
+                        val obj =
+                            runCatching { element.asJsonObject }.getOrNull()
+                                ?: return@mapNotNull null
+                        val host = obj.get("host")?.asString.orEmpty()
+                        if (host.isEmpty()) return@mapNotNull null
+                        Host(host = host, wssPort = obj.get("wss_port")?.asInt ?: 443)
+                    }
+                    .orEmpty()
             LogHub.i(
                 TAG,
                 "getDanmuInfo ok room=$roomId hosts=${hosts.joinToString(",") { it.host }}",
@@ -144,7 +183,12 @@ object LiveDanmakuApi {
 
     /** 读取或初始化设备 buvid3。 */
     private fun ensureBuvid3(prefs: SharedPreferences): String {
-        prefs.getString(KEY_BUVID3, null)?.takeIf { it.isNotBlank() }?.let { return it }
+        prefs
+            .getString(KEY_BUVID3, null)
+            ?.takeIf { it.isNotBlank() }
+            ?.let {
+                return it
+            }
         val buvid3 = fetchBuvid3()
         if (buvid3.isNotBlank()) {
             prefs.edit().putString(KEY_BUVID3, buvid3).apply()
@@ -155,35 +199,42 @@ object LiveDanmakuApi {
     /** 访问主站从 Set-Cookie 中提取 buvid3。 */
     private fun fetchBuvid3(): String {
         return runCatching {
-            val request = Request.Builder()
-                .url(BUVID_INIT_URL)
-                .header("User-Agent", BiliApi.UA)
-                .build()
-            client.newCall(request).execute().use { resp ->
-                resp.headers("Set-Cookie").asSequence()
-                    .map { it.substringBefore(';') }
-                    .map { it.split('=', limit = 2) }
-                    .firstOrNull { it.size == 2 && it[0].trim() == "buvid3" }
-                    ?.get(1)
-                    ?.trim()
-                    .orEmpty()
+                val request =
+                    Request.Builder().url(BUVID_INIT_URL).header("User-Agent", BiliApi.UA).build()
+                client.newCall(request).execute().use { resp ->
+                    resp
+                        .headers("Set-Cookie")
+                        .asSequence()
+                        .map { it.substringBefore(';') }
+                        .map { it.split('=', limit = 2) }
+                        .firstOrNull { it.size == 2 && it[0].trim() == "buvid3" }
+                        ?.get(1)
+                        ?.trim()
+                        .orEmpty()
+                }
             }
-        }.onFailure { failure ->
-            LogHub.w(TAG, "buvid3 init failed: ${failure.message}")
-        }.getOrDefault("")
+            .onFailure { failure ->
+                LogHub.w(TAG, "buvid3 init failed: ${failure.message}")
+            }
+            .getOrDefault("")
     }
 
     /** 读取或刷新 wbi 鉴权口令。 */
     private fun ensureWbiKey(prefs: SharedPreferences, cookie: String): String {
         val cachedAt = prefs.getLong(KEY_WBI_KEY_AT, 0L)
-        val fresh = cachedAt > 0L &&
-            System.currentTimeMillis() - cachedAt < WBI_KEY_TTL_MS
+        val fresh = cachedAt > 0L && System.currentTimeMillis() - cachedAt < WBI_KEY_TTL_MS
         if (fresh) {
-            prefs.getString(KEY_WBI_KEY, null)?.takeIf { it.isNotBlank() }?.let { return it }
+            prefs
+                .getString(KEY_WBI_KEY, null)
+                ?.takeIf { it.isNotBlank() }
+                ?.let {
+                    return it
+                }
         }
         val wbiKey = fetchWbiKey(cookie)
         if (wbiKey.isNotBlank()) {
-            prefs.edit()
+            prefs
+                .edit()
                 .putString(KEY_WBI_KEY, wbiKey)
                 .putLong(KEY_WBI_KEY_AT, System.currentTimeMillis())
                 .apply()
@@ -194,29 +245,32 @@ object LiveDanmakuApi {
     /** 从 nav 的 wbi_img 提取并重排鉴权口令。 */
     private fun fetchWbiKey(cookie: String): String {
         return runCatching {
-            val builder = Request.Builder()
-                .url(NAV_URL)
-                .header("User-Agent", BiliApi.UA)
-                .header("Referer", "https://www.bilibili.com/")
-            if (cookie.isNotBlank()) builder.header("Cookie", cookie)
-            client.newCall(builder.build()).execute().use { resp ->
-                val body = resp.body?.string().orEmpty()
-                val root = JsonParser.parseString(body).asJsonObject
-                val wbiImg = root.getAsJsonObject("data")?.getAsJsonObject("wbi_img")
-                    ?: return ""
-                val imgKey = fileNameOf(wbiImg.get("img_url")?.asString.orEmpty())
-                val subKey = fileNameOf(wbiImg.get("sub_url")?.asString.orEmpty())
-                if (imgKey.isEmpty() || subKey.isEmpty()) return ""
-                val shuffled = imgKey + subKey
-                buildString {
-                    for (index in WBI_KEY_INDEX_TABLE) {
-                        if (index < shuffled.length) append(shuffled[index])
+                val builder =
+                    Request.Builder()
+                        .url(NAV_URL)
+                        .header("User-Agent", BiliApi.UA)
+                        .header("Referer", "https://www.bilibili.com/")
+                if (cookie.isNotBlank()) builder.header("Cookie", cookie)
+                client.newCall(builder.build()).execute().use { resp ->
+                    val body = resp.body?.string().orEmpty()
+                    val root = JsonParser.parseString(body).asJsonObject
+                    val wbiImg =
+                        root.getAsJsonObject("data")?.getAsJsonObject("wbi_img") ?: return ""
+                    val imgKey = fileNameOf(wbiImg.get("img_url")?.asString.orEmpty())
+                    val subKey = fileNameOf(wbiImg.get("sub_url")?.asString.orEmpty())
+                    if (imgKey.isEmpty() || subKey.isEmpty()) return ""
+                    val shuffled = imgKey + subKey
+                    buildString {
+                        for (index in WBI_KEY_INDEX_TABLE) {
+                            if (index < shuffled.length) append(shuffled[index])
+                        }
                     }
                 }
             }
-        }.onFailure { failure ->
-            LogHub.w(TAG, "wbi key fetch failed: ${failure.message}")
-        }.getOrDefault("")
+            .onFailure { failure ->
+                LogHub.w(TAG, "wbi key fetch failed: ${failure.message}")
+            }
+            .getOrDefault("")
     }
 
     /** 计算 wbi 签名参数。 */
@@ -227,9 +281,10 @@ object LiveDanmakuApi {
         val filtered = toSign.mapValues { (_, value) ->
             value.filter { it !in "!'()*" }
         }
-        val query = filtered.entries.joinToString("&") {
-            "${encode(it.key)}=${encode(it.value)}"
-        }
+        val query =
+            filtered.entries.joinToString("&") {
+                "${encode(it.key)}=${encode(it.value)}"
+            }
         val wRid = md5(query + wbiKey)
         return params + mapOf("wts" to wts, "w_rid" to wRid)
     }
@@ -242,8 +297,7 @@ object LiveDanmakuApi {
         return parts.joinToString("; ")
     }
 
-    private fun fileNameOf(url: String): String =
-        url.substringAfterLast('/').substringBefore('.')
+    private fun fileNameOf(url: String): String = url.substringAfterLast('/').substringBefore('.')
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 

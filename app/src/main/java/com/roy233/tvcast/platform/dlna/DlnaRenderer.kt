@@ -2,28 +2,24 @@ package com.roy233.tvcast.platform.dlna
 
 import android.content.Context
 import com.roy233.tvcast.BuildConfig
-import com.roy233.tvcast.core.diagnostics.LogHub
-import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.R
+import com.roy233.tvcast.core.diagnostics.LogHub
 import java.net.InetAddress
 import java.util.Locale
 import java.util.UUID
 import kotlin.concurrent.thread
 
 /**
- * Minimal UPnP/DLNA MediaRenderer that the Bilibili phone app discovers as a
- * normal "投屏" target.
+ * Minimal UPnP/DLNA MediaRenderer that the Bilibili phone app discovers as a normal "投屏" target.
  *
- * The phone sends `SetAVTransportURI` with a DIDL-Lite document.  The real
- * video identity is inside `<upnp:longDescription>` as an encrypted
- * `_nva_ext_` payload; [NvaExtDecoder] turns it into aid/cid, and the
- * [Listener] resolves the account's max quality with libVLC.
+ * The phone sends `SetAVTransportURI` with a DIDL-Lite document. The real video identity is inside
+ * `<upnp:longDescription>` as an encrypted `_nva_ext_` payload; [NvaExtDecoder] turns it into
+ * aid/cid, and the [Listener] resolves the account's max quality with libVLC.
  *
- * The device description deliberately advertises a generic DLNA renderer
- * without Bilibili vendor fields: when it claims to be an official
- * "云视听小电视" TV, the Android app switches to the proprietary BiliLink/NVA
- * projection protocol (`SETUP /projection`) instead of DLNA, which this
- * renderer does not implement.
+ * The device description deliberately advertises a generic DLNA renderer without Bilibili vendor
+ * fields: when it claims to be an official "云视听小电视" TV, the Android app switches to the proprietary
+ * BiliLink/NVA projection protocol (`SETUP /projection`) instead of DLNA, which this renderer does
+ * not implement.
  */
 class DlnaRenderer(
     /** 用于读取设备资源和网络服务的上下文。 */
@@ -38,24 +34,34 @@ class DlnaRenderer(
     interface Listener {
         /** 接收到新的媒体地址和 DIDL 元数据。 */
         fun onCast(uri: String, metadata: String, title: String, longDescription: String)
+
         /** 收到播放命令。 */
         fun onPlay()
+
         /** 收到暂停命令。 */
         fun onPause()
+
         /** 收到停止命令。 */
         fun onStop()
+
         /** 收到跳转命令。 */
         fun onSeek(positionMs: Long)
+
         /** 当前媒体是否支持定位。直播等不可定位媒体返回 false。 */
         fun isSeekable(): Boolean
+
         /** 收到音量设置命令。 */
         fun onSetVolume(volume: Int)
+
         /** 返回当前播放位置，单位为毫秒。 */
         fun positionMs(): Long
+
         /** 返回当前媒体时长，单位为毫秒。 */
         fun durationMs(): Long
+
         /** 返回当前是否正在播放。 */
         fun isPlaying(): Boolean
+
         /** 返回当前音量值。 */
         fun volume(): Int
     }
@@ -80,8 +86,7 @@ class DlnaRenderer(
     private val scpdCms: ByteArray by lazy { readRaw(R.raw.scpd_cms) }
 
     /** DLNA 服务是否正在运行。 */
-    @Volatile
-    private var running = false
+    @Volatile private var running = false
     /** HTTP 服务实例。 */
     private var http: DlnaHttpServer? = null
     /** SSDP 服务实例。 */
@@ -109,17 +114,18 @@ class DlnaRenderer(
         } catch (t: Throwable) {
             LogHub.e(TAG, "ssdp start failed: ${t.message}", t)
         }
-        keepAlive = thread(name = "dlna-keepalive", isDaemon = true) {
-            while (running) {
-                try {
-                    Thread.sleep(30_000L)
-                } catch (_: InterruptedException) {
-                    break
+        keepAlive =
+            thread(name = "dlna-keepalive", isDaemon = true) {
+                while (running) {
+                    try {
+                        Thread.sleep(30_000L)
+                    } catch (_: InterruptedException) {
+                        break
+                    }
+                    if (!running) break
+                    runCatching { ssdp?.notify("ssdp:alive") }
                 }
-                if (!running) break
-                runCatching { ssdp?.notify("ssdp:alive") }
             }
-        }
         LogHub.i(TAG, "renderer started name=$deviceName url=$descriptionUrl")
         LogHub.setDlna(descriptionUrl)
     }
@@ -160,7 +166,8 @@ class DlnaRenderer(
         type: String,
         body: String,
         extra: Map<String, String> = emptyMap(),
-    ): DlnaHttpResponse = DlnaHttpResponse(code, reason, type, body.toByteArray(Charsets.UTF_8), extra)
+    ): DlnaHttpResponse =
+        DlnaHttpResponse(code, reason, type, body.toByteArray(Charsets.UTF_8), extra)
 
     /** 使用字节正文构造 HTTP 响应。 */
     private fun response(
@@ -172,30 +179,31 @@ class DlnaRenderer(
     ): DlnaHttpResponse = DlnaHttpResponse(code, reason, type, body, extra)
 
     /** 处理设备描述、服务描述和状态页面的 GET 请求。 */
-    private fun handleGet(path: String): DlnaHttpResponse = when (path) {
-        "/bilibili/description.xml", "/description.xml", "/dd.xml" ->
-            response(200, "OK", "text/xml; charset=\"utf-8\"", descriptionXml())
-        "/scpd/avt.xml", "/scpd.xml" ->
-            response(200, "OK", "text/xml; charset=\"utf-8\"", scpdAvt)
-        "/scpd/rcs.xml" ->
-            response(200, "OK", "text/xml; charset=\"utf-8\"", scpdRcs)
-        "/scpd/cms.xml" ->
-            response(200, "OK", "text/xml; charset=\"utf-8\"", scpdCms)
-        "/", "/index.html" -> {
-            val body = buildString {
-                append("<html><head><meta charset=\"utf-8\"></head><body><pre>")
-                append("CapyCast DLNA renderer\n")
-                append("name: ").append(deviceName).append('\n')
-                append("udn: uuid:").append(udn).append('\n')
-                append("description: ").append(descriptionUrl).append('\n')
-                append("transport: ").append(state.transport).append('\n')
-                append("title: ").append(state.title).append('\n')
-                append("</pre></body></html>")
+    private fun handleGet(path: String): DlnaHttpResponse =
+        when (path) {
+            "/bilibili/description.xml",
+            "/description.xml",
+            "/dd.xml" -> response(200, "OK", "text/xml; charset=\"utf-8\"", descriptionXml())
+            "/scpd/avt.xml",
+            "/scpd.xml" -> response(200, "OK", "text/xml; charset=\"utf-8\"", scpdAvt)
+            "/scpd/rcs.xml" -> response(200, "OK", "text/xml; charset=\"utf-8\"", scpdRcs)
+            "/scpd/cms.xml" -> response(200, "OK", "text/xml; charset=\"utf-8\"", scpdCms)
+            "/",
+            "/index.html" -> {
+                val body = buildString {
+                    append("<html><head><meta charset=\"utf-8\"></head><body><pre>")
+                    append("CapyCast DLNA renderer\n")
+                    append("name: ").append(deviceName).append('\n')
+                    append("udn: uuid:").append(udn).append('\n')
+                    append("description: ").append(descriptionUrl).append('\n')
+                    append("transport: ").append(state.transport).append('\n')
+                    append("title: ").append(state.title).append('\n')
+                    append("</pre></body></html>")
+                }
+                response(200, "OK", "text/html; charset=utf-8", body)
             }
-            response(200, "OK", "text/html; charset=utf-8", body)
+            else -> response(404, "Not Found", "text/plain", "not found")
         }
-        else -> response(404, "Not Found", "text/plain", "not found")
-    }
 
     /** 处理 NVA 请求和 SOAP 控制请求。 */
     private fun handlePost(
@@ -207,18 +215,20 @@ class DlnaRenderer(
             LogHub.i(TAG, "NVA-like POST $path body=${body.size}B")
             return response(200, "OK", "text/plain", ByteArray(0))
         }
-        val req = try {
-            SoapRequestParser.parse(body, headers["soapaction"], soapDispatcher::serviceFor)
-        } catch (t: Throwable) {
-            LogHub.e(TAG, "SOAP parse failed: ${t.message}", t)
-            return response(400, "Bad Request", "text/plain", "bad soap")
-        }
-        val result = try {
-            dispatch(req)
-        } catch (t: Throwable) {
-            LogHub.e(TAG, "SOAP dispatch ${req.action} failed: ${t.message}", t)
-            soapDispatcher.fault(req.service, 501, "Action Failed")
-        }
+        val req =
+            try {
+                SoapRequestParser.parse(body, headers["soapaction"], soapDispatcher::serviceFor)
+            } catch (t: Throwable) {
+                LogHub.e(TAG, "SOAP parse failed: ${t.message}", t)
+                return response(400, "Bad Request", "text/plain", "bad soap")
+            }
+        val result =
+            try {
+                dispatch(req)
+            } catch (t: Throwable) {
+                LogHub.e(TAG, "SOAP dispatch ${req.action} failed: ${t.message}", t)
+                soapDispatcher.fault(req.service, 501, "Action Failed")
+            }
         return response(200, "OK", "text/xml; charset=\"utf-8\"", result)
     }
 
@@ -226,20 +236,23 @@ class DlnaRenderer(
     private fun dispatch(req: SoapRequest): ByteArray = soapDispatcher.dispatch(req)
 
     private fun descriptionXml(): ByteArray {
-        val svc = listOf(
-            Triple(AVT, "urn:upnp-org:serviceId:AVTransport", "avt"),
-            Triple(RCS, "urn:upnp-org:serviceId:RenderingControl", "rcs"),
-            Triple(CMS, "urn:upnp-org:serviceId:ConnectionManager", "cms"),
-        ).joinToString("\n") { (type, id, key) ->
-            """      <service>
+        val svc =
+            listOf(
+                    Triple(AVT, "urn:upnp-org:serviceId:AVTransport", "avt"),
+                    Triple(RCS, "urn:upnp-org:serviceId:RenderingControl", "rcs"),
+                    Triple(CMS, "urn:upnp-org:serviceId:ConnectionManager", "cms"),
+                )
+                .joinToString("\n") { (type, id, key) ->
+                    """      <service>
         <serviceType>$type</serviceType>
         <serviceId>$id</serviceId>
         <SCPDURL>/scpd/$key.xml</SCPDURL>
         <controlURL>/control/$key</controlURL>
         <eventSubURL>/event/$key</eventSubURL>
       </service>"""
-        }
-        val xml = """<?xml version="1.0" encoding="utf-8"?>
+                }
+        val xml =
+            """<?xml version="1.0" encoding="utf-8"?>
 <root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:dlna="urn:schemas-dlna-org:device-1-0">
   <specVersion><major>1</major><minor>0</minor></specVersion>
   <device>
@@ -295,7 +308,9 @@ $svc
     /** 读取或生成并持久化 UPnP 设备标识。 */
     private fun loadUdn(): String {
         val sp = context.getSharedPreferences("dlna", Context.MODE_PRIVATE)
-        sp.getString("udn", null)?.let { return it }
+        sp.getString("udn", null)?.let {
+            return it
+        }
         val v = UUID.randomUUID().toString()
         sp.edit().putString("udn", v).apply()
         return v

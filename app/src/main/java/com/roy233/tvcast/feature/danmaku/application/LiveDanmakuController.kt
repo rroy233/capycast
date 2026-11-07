@@ -2,11 +2,11 @@ package com.roy233.tvcast.feature.danmaku.application
 
 import android.content.Context
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
 import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClient
 import com.roy233.tvcast.feature.danmaku.domain.LiveDanmakuClientFactory
-import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
-import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
 import com.roy233.tvcast.feature.danmaku.domain.MediaClock
 import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
 import kotlinx.coroutines.CoroutineScope
@@ -18,10 +18,8 @@ import kotlinx.coroutines.launch
 /**
  * 直播弹幕会话控制器。
  *
- * 复用点播的 [DfmDanmakuEngine] 渲染层与 [MediaClock]，但数据源替换为
- * [LiveDanmakuClient] 的实时长连接：直播没有绝对时间轴，时钟从 0 单调递增，
- * 每条弹幕以当前时钟作为出现时刻。暂停时冻结画面并丢弃暂停期间的增量，
- * 避免恢复瞬间补刷。
+ * 复用点播的 [DfmDanmakuEngine] 渲染层与 [MediaClock]，但数据源替换为 [LiveDanmakuClient] 的实时长连接：直播没有绝对时间轴，时钟从 0
+ * 单调递增， 每条弹幕以当前时钟作为出现时刻。暂停时冻结画面并丢弃暂停期间的增量， 避免恢复瞬间补刷。
  *
  * 所有公开方法都应在主线程调用。
  */
@@ -68,7 +66,8 @@ class LiveDanmakuController(
         }
         LogHub.i(
             TAG,
-            "open room=$roomId previousRoom=$activeRoomId closed=$closed " + engine.diagnosticState(),
+            "open room=$roomId previousRoom=$activeRoomId closed=$closed " +
+                engine.diagnosticState(),
         )
         sessionSerial++
         activeRoomId = roomId
@@ -85,11 +84,16 @@ class LiveDanmakuController(
         LogHub.i(TAG, "opened session=$sessionSerial room=$roomId " + engine.diagnosticState())
         client?.close()
         val openedSession = sessionSerial
-        client = clientFactory.create(
-            scope, context, roomId, cookie, uid,
-            { items -> onItems(openedSession, items) },
-            {},
-        )
+        client =
+            clientFactory.create(
+                scope,
+                context,
+                roomId,
+                cookie,
+                uid,
+                { items -> onItems(openedSession, items) },
+                {},
+            )
         client?.start()
         diagnosticJob?.cancel()
         diagnosticJob = scope.launch {
@@ -99,7 +103,8 @@ class LiveDanmakuController(
                     LogHub.d(
                         TAG,
                         "status session=$sessionSerial room=$roomId paused=$paused " +
-                            "enabled=${settings.enabled} pending=${pending.size} " + engine.diagnosticState(),
+                            "enabled=${settings.enabled} pending=${pending.size} " +
+                            engine.diagnosticState(),
                     )
                 }
             }
@@ -131,7 +136,10 @@ class LiveDanmakuController(
             LogHub.d(TAG, "playing ignored: closed session=$sessionSerial")
             return
         }
-        LogHub.d(TAG, "playing session=$sessionSerial room=$activeRoomId before " + engine.diagnosticState())
+        LogHub.d(
+            TAG,
+            "playing session=$sessionSerial room=$activeRoomId before " + engine.diagnosticState(),
+        )
         paused = false
         clock.rebase(clock.nowMs())
         engine.resume()
@@ -144,7 +152,10 @@ class LiveDanmakuController(
             LogHub.d(TAG, "paused ignored: closed session=$sessionSerial")
             return
         }
-        LogHub.d(TAG, "paused session=$sessionSerial room=$activeRoomId before " + engine.diagnosticState())
+        LogHub.d(
+            TAG,
+            "paused session=$sessionSerial room=$activeRoomId before " + engine.diagnosticState(),
+        )
         paused = true
         pending.clear()
         clock.pause(clock.nowMs())
@@ -194,7 +205,8 @@ class LiveDanmakuController(
                 TAG,
                 "items queued source=$sourceSession session=$sessionSerial " +
                     "room=$activeRoomId count=${items.size} " +
-                    "pending=${pending.size} " + engine.diagnosticState(),
+                    "pending=${pending.size} " +
+                    engine.diagnosticState(),
             )
             if (flushJob?.isActive != true) {
                 flushJob = scope.launch {

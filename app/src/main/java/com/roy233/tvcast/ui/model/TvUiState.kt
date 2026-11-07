@@ -1,11 +1,11 @@
 package com.roy233.tvcast.ui.model
 
 import android.graphics.Bitmap
-import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.cast.domain.RecentCast
-import com.roy233.tvcast.feature.update.UpdateUiState
-import com.roy233.tvcast.feature.display.CalibrationState
+import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationPhase
+import com.roy233.tvcast.feature.display.CalibrationState
+import com.roy233.tvcast.feature.update.UpdateUiState
 
 /** 最近投屏卡片的精确焦点身份；同一稿件的不同分 P 也必须区分。 */
 data class RecentCastFocus(val aid: Long, val cid: Long)
@@ -158,18 +158,18 @@ data class TvUiState(
     /**
      * 首页当前展示的最近投屏。
      *
-     * 焦点所在的记录优先，其次是最新一条；收起继续投屏时为空。背景、大标题与主按钮
-     * 都由它派生，因此“焦点换一个卡片，整页跟着换”只需维护一个字段。
+     * 焦点所在的记录优先，其次是最新一条；收起继续投屏时为空。背景、大标题与主按钮 都由它派生，因此“焦点换一个卡片，整页跟着换”只需维护一个字段。
      */
     val featuredRecent: RecentCast?
-        get() = when {
-            !showContinue -> null
-            focusedRecent != null ->
-                recents.firstOrNull {
-                    it.aid == focusedRecent.aid && it.cid == focusedRecent.cid
-                } ?: recents.firstOrNull()
-            else -> recents.firstOrNull()
-        }
+        get() =
+            when {
+                !showContinue -> null
+                focusedRecent != null ->
+                    recents.firstOrNull {
+                        it.aid == focusedRecent.aid && it.cid == focusedRecent.cid
+                    } ?: recents.firstOrNull()
+                else -> recents.firstOrNull()
+            }
 
     /** 当前设置页面；仅为渲染与既有投影提供只读视图。 */
     val settingsPage: SettingsPage
@@ -178,13 +178,13 @@ data class TvUiState(
     /**
      * 打开左侧菜单：菜单成为栈顶，焦点落在当前目的页对应的条目上。
      *
-     * 菜单可见与栈顶锚点必须同时成立，因此打开动作只能经由这里，
-     * 调用点不再单独写 `sidebarVisible = true`。
+     * 菜单可见与栈顶锚点必须同时成立，因此打开动作只能经由这里， 调用点不再单独写 `sidebarVisible = true`。
      */
-    fun withMenuOpen(): TvUiState = copy(
-        sidebarVisible = true,
-        focusRequest = focusRequest.moveTo(menuEntryFor(destination).anchor),
-    )
+    fun withMenuOpen(): TvUiState =
+        copy(
+            sidebarVisible = true,
+            focusRequest = focusRequest.moveTo(menuEntryFor(destination).anchor),
+        )
 
     /** 收起左侧菜单：焦点交还给当前页面的顶层锚点。 */
     fun withMenuClosed(): TvUiState = copy(sidebarVisible = false).focusCurrentPage()
@@ -192,32 +192,34 @@ data class TvUiState(
     /**
      * 结束投屏后返回首页，并把焦点交给首页主操作。
      *
-     * 用户停止、DLNA Stop、自然结束与错误退出都使用这一条 UI 转换，避免某条终止路径
-     * 只切换页面却遗留已销毁播放器的焦点。最近投屏的展示仍由最新记录派生，但不保留
+     * 用户停止、DLNA Stop、自然结束与错误退出都使用这一条 UI 转换，避免某条终止路径 只切换页面却遗留已销毁播放器的焦点。最近投屏的展示仍由最新记录派生，但不保留
      * 已离开卡片的“当前焦点”标识。
      */
-    fun returnToHomeAfterPlayback(): TvUiState = copy(
-        destination = TvDestination.HOME,
-        settingsNavigation = settingsNavigation.reset(),
-        sidebarVisible = false,
-        focusedRecent = null,
-    ).focusCurrentPage()
+    fun returnToHomeAfterPlayback(): TvUiState =
+        copy(
+                destination = TvDestination.HOME,
+                settingsNavigation = settingsNavigation.reset(),
+                sidebarVisible = false,
+                focusedRecent = null,
+            )
+            .focusCurrentPage()
 
     /**
      * 把栈顶焦点指向当前页面的顶层锚点。
      *
-     * 设置页的顶层由它的路由栈决定（可能停在某个子页），其余目的页用自身锚点，
-     * 因此“栈顶 = 当前页面”这一条规则在模型里只写这一次。
+     * 设置页的顶层由它的路由栈决定（可能停在某个子页），其余目的页用自身锚点， 因此“栈顶 = 当前页面”这一条规则在模型里只写这一次。
      */
-    fun focusCurrentPage(): TvUiState = copy(
-        // 首页顶层锚点是主操作；卡片焦点不能跨菜单、浮层或投屏会话保留。
-        focusedRecent = if (destination == TvDestination.HOME) null else focusedRecent,
-        focusRequest = focusRequest.moveTo(
-            if (destination == TvDestination.SETTINGS) {
-                settingsNavigation.topAnchor
-            } else {
-                pageAnchorFor(destination)
-            },
-        ),
-    )
+    fun focusCurrentPage(): TvUiState =
+        copy(
+            // 首页顶层锚点是主操作；卡片焦点不能跨菜单、浮层或投屏会话保留。
+            focusedRecent = if (destination == TvDestination.HOME) null else focusedRecent,
+            focusRequest =
+                focusRequest.moveTo(
+                    if (destination == TvDestination.SETTINGS) {
+                        settingsNavigation.topAnchor
+                    } else {
+                        pageAnchorFor(destination)
+                    },
+                ),
+        )
 }

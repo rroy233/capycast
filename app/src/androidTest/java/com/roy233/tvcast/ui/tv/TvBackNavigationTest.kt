@@ -2,11 +2,11 @@ package com.roy233.tvcast.ui.tv
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.roy233.tvcast.ui.model.PanelKind
-import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.SettingsNavigationState
+import com.roy233.tvcast.ui.model.SettingsPage
+import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
-import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import org.junit.Assert.assertEquals
@@ -18,16 +18,20 @@ class TvBackNavigationTest {
 
     @Test
     fun nestedUpdatePagesReturnOneLevelAtATime() {
-        val settings = TvUiState(
-            destination = TvDestination.SETTINGS,
-            settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE_NOTES),
-        )
+        val settings =
+            TvUiState(
+                destination = TvDestination.SETTINGS,
+                settingsNavigation =
+                    SettingsNavigationState().replaceWith(SettingsPage.UPDATE_NOTES),
+            )
 
         assertEquals(TvBackAction.NAVIGATE_SETTINGS_BACK, TvKeyHandler.resolveBackAction(settings))
         assertEquals(
             TvBackAction.NAVIGATE_SETTINGS_BACK,
             TvKeyHandler.resolveBackAction(
-                settings.copy(settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE)),
+                settings.copy(
+                    settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE),
+                ),
             ),
         )
         assertEquals(
@@ -43,10 +47,11 @@ class TvBackNavigationTest {
         var navigatedBack = false
 
         TvKeyHandler.dispatchBack(
-            state = TvUiState(
-                destination = TvDestination.SETTINGS,
-                settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE),
-            ),
+            state =
+                TvUiState(
+                    destination = TvDestination.SETTINGS,
+                    settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE),
+                ),
             actions = TvActions(onNavigateSettingsBack = { navigatedBack = true }),
         )
 
@@ -67,14 +72,16 @@ class TvBackNavigationTest {
 
     @Test
     fun topmostOverlayClosesBeforeUnderlyingPage() {
-        val state = TvUiState(
-            destination = TvDestination.SETTINGS,
-            settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE_NOTES),
-            panel = PanelKind.QUALITY,
-            helpVisible = true,
-            error = TvError("错误", "详情"),
-            stopCastConfirm = true,
-        )
+        val state =
+            TvUiState(
+                destination = TvDestination.SETTINGS,
+                settingsNavigation =
+                    SettingsNavigationState().replaceWith(SettingsPage.UPDATE_NOTES),
+                panel = PanelKind.QUALITY,
+                helpVisible = true,
+                error = TvError("错误", "详情"),
+                stopCastConfirm = true,
+            )
 
         assertEquals(TvBackAction.CANCEL_STOP_CAST_CONFIRM, TvKeyHandler.resolveBackAction(state))
         assertEquals(
@@ -115,7 +122,8 @@ class TvBackNavigationTest {
                 TvUiState(
                     mode = TvMode.PLAYING,
                     destination = TvDestination.SETTINGS,
-                    settingsNavigation = SettingsNavigationState().replaceWith(SettingsPage.UPDATE_NOTES),
+                    settingsNavigation =
+                        SettingsNavigationState().replaceWith(SettingsPage.UPDATE_NOTES),
                 ),
             ),
         )
@@ -143,7 +151,10 @@ class TvBackNavigationTest {
         val home = TvUiState(loginDialogVisible = true)
 
         assertEquals(TvBackAction.CLOSE_LOGIN, TvKeyHandler.resolveBackAction(home))
-        assertEquals(TvBackAction.HOME_BACK, TvKeyHandler.resolveBackAction(home.copy(loginDialogVisible = false)))
+        assertEquals(
+            TvBackAction.HOME_BACK,
+            TvKeyHandler.resolveBackAction(home.copy(loginDialogVisible = false)),
+        )
     }
 
     @Test

@@ -4,15 +4,14 @@ import android.os.SystemClock
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
-import org.videolan.libvlc.MediaPlayer
 import java.util.Locale
 import kotlin.math.abs
+import org.videolan.libvlc.MediaPlayer
 
 /**
  * 把 libVLC 播放器事件转换为诊断时间线和界面状态更新。
  *
- * 事件回调来自播放器线程，本类只更新内存状态并写入诊断；阻塞性的文件读取和
- * logcat 采集由 [VlcPlaybackReporter] 在后台执行。
+ * 事件回调来自播放器线程，本类只更新内存状态并写入诊断；阻塞性的文件读取和 logcat 采集由 [VlcPlaybackReporter] 在后台执行。
  *
  * @param player 播放器实例。
  * @param state 当前播放会话状态。
@@ -67,9 +66,7 @@ internal class VlcEventRecorder(
             }
             MediaPlayer.Event.Stopped -> {
                 if (isLateTerminalEvent("Stopped")) return
-                if (!state.openingSeen &&
-                    now - state.mediaOpenedAt < VLC_MEDIA_SWITCH_GRACE_MS
-                ) {
+                if (!state.openingSeen && now - state.mediaOpenedAt < VLC_MEDIA_SWITCH_GRACE_MS) {
                     PlaybackDiagnostics.event(
                         "Stopped",
                         "ignored during media switch elapsed=${now - state.mediaOpenedAt}ms",
@@ -293,27 +290,28 @@ internal class VlcEventRecorder(
      * @param type libVLC 事件类型。
      * @return 事件名称。
      */
-    private fun eventName(type: Int): String = when (type) {
-        MediaPlayer.Event.MediaChanged -> "MediaChanged"
-        MediaPlayer.Event.Opening -> "Opening"
-        MediaPlayer.Event.Buffering -> "Buffering"
-        MediaPlayer.Event.Playing -> "Playing"
-        MediaPlayer.Event.Paused -> "Paused"
-        MediaPlayer.Event.Stopped -> "Stopped"
-        MediaPlayer.Event.EndReached -> "EndReached"
-        MediaPlayer.Event.EncounteredError -> "EncounteredError"
-        MediaPlayer.Event.TimeChanged -> "TimeChanged"
-        MediaPlayer.Event.PositionChanged -> "PositionChanged"
-        MediaPlayer.Event.SeekableChanged -> "SeekableChanged"
-        MediaPlayer.Event.PausableChanged -> "PausableChanged"
-        MediaPlayer.Event.LengthChanged -> "LengthChanged"
-        MediaPlayer.Event.Vout -> "Vout"
-        MediaPlayer.Event.ESAdded -> "ESAdded"
-        MediaPlayer.Event.ESDeleted -> "ESDeleted"
-        MediaPlayer.Event.ESSelected -> "ESSelected"
-        MediaPlayer.Event.RecordChanged -> "RecordChanged"
-        else -> "Event$type"
-    }
+    private fun eventName(type: Int): String =
+        when (type) {
+            MediaPlayer.Event.MediaChanged -> "MediaChanged"
+            MediaPlayer.Event.Opening -> "Opening"
+            MediaPlayer.Event.Buffering -> "Buffering"
+            MediaPlayer.Event.Playing -> "Playing"
+            MediaPlayer.Event.Paused -> "Paused"
+            MediaPlayer.Event.Stopped -> "Stopped"
+            MediaPlayer.Event.EndReached -> "EndReached"
+            MediaPlayer.Event.EncounteredError -> "EncounteredError"
+            MediaPlayer.Event.TimeChanged -> "TimeChanged"
+            MediaPlayer.Event.PositionChanged -> "PositionChanged"
+            MediaPlayer.Event.SeekableChanged -> "SeekableChanged"
+            MediaPlayer.Event.PausableChanged -> "PausableChanged"
+            MediaPlayer.Event.LengthChanged -> "LengthChanged"
+            MediaPlayer.Event.Vout -> "Vout"
+            MediaPlayer.Event.ESAdded -> "ESAdded"
+            MediaPlayer.Event.ESDeleted -> "ESDeleted"
+            MediaPlayer.Event.ESSelected -> "ESSelected"
+            MediaPlayer.Event.RecordChanged -> "RecordChanged"
+            else -> "Event$type"
+        }
 
     /**
      * 返回事件详情。
@@ -339,7 +337,8 @@ internal class VlcEventRecorder(
                 "recording=${event.recording} path=${event.recordPath.orEmpty()}"
             else -> ""
         }
-    }.getOrElse { "detail unavailable: ${LogRedaction.reason(it)}" }
+    }
+        .getOrElse { "detail unavailable: ${LogRedaction.reason(it)}" }
 
     /** 日志标签。 */
     private companion object {

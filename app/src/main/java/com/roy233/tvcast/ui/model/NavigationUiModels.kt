@@ -1,13 +1,15 @@
 package com.roy233.tvcast.ui.model
 
 /** 表示电视端当前选中的业务页面。 */
-enum class TvDestination { HOME, SETTINGS }
+enum class TvDestination {
+    HOME,
+    SETTINGS,
+}
 
 /**
  * 界面可恢复的焦点锚点。
  *
- * 锚点是焦点唯一的目标标识：每个界面只声明自己能接住哪些锚点，谁能获得焦点
- * 由路由栈顶的锚点决定，界面自身不判断时机。
+ * 锚点是焦点唯一的目标标识：每个界面只声明自己能接住哪些锚点，谁能获得焦点 由路由栈顶的锚点决定，界面自身不判断时机。
  */
 enum class UiFocusAnchor {
     /** 首页主入口。 */
@@ -32,8 +34,7 @@ enum class UiFocusAnchor {
 /**
  * 当前栈顶的焦点请求。
  *
- * 路由栈每次变化都写入一个新的 [revision] 与栈顶锚点；界面对照自身声明的锚点
- * 认领，未命中的界面不会请求焦点，因此不可见或正在退场的界面抢不走焦点。
+ * 路由栈每次变化都写入一个新的 [revision] 与栈顶锚点；界面对照自身声明的锚点 认领，未命中的界面不会请求焦点，因此不可见或正在退场的界面抢不走焦点。
  */
 data class FocusRequest(val anchor: UiFocusAnchor, val revision: Long = 0L) {
     /** 产生一次指向 [anchor] 的新请求。 */
@@ -41,16 +42,16 @@ data class FocusRequest(val anchor: UiFocusAnchor, val revision: Long = 0L) {
 }
 
 /** 返回某个业务页自身的默认锚点。 */
-fun pageAnchorFor(destination: TvDestination): UiFocusAnchor = when (destination) {
-    TvDestination.HOME -> UiFocusAnchor.HOME_PRIMARY
-    TvDestination.SETTINGS -> UiFocusAnchor.SETTINGS_PLATFORM
-}
+fun pageAnchorFor(destination: TvDestination): UiFocusAnchor =
+    when (destination) {
+        TvDestination.HOME -> UiFocusAnchor.HOME_PRIMARY
+        TvDestination.SETTINGS -> UiFocusAnchor.SETTINGS_PLATFORM
+    }
 
 /**
  * 目的页之上依次叠加的浮层。
  *
- * 浮层与页面、菜单共用同一条层级规则：只有栈顶接收按键并持有焦点。枚举顺序即
- * 优先级，界面只需要读 [TvUiState.topOverlay]，不再各自维护一套判定链。
+ * 浮层与页面、菜单共用同一条层级规则：只有栈顶接收按键并持有焦点。枚举顺序即 优先级，界面只需要读 [TvUiState.topOverlay]，不再各自维护一套判定链。
  */
 enum class UiOverlay {
     CALIBRATION,
@@ -62,18 +63,21 @@ enum class UiOverlay {
 }
 
 /** 表示设置页当前打开的层级。 */
-enum class SettingsPage { ROOT, UPDATE, UPDATE_NOTES }
-
-/** 返回某个设置页自身的默认锚点。 */
-fun settingsAnchorFor(page: SettingsPage): UiFocusAnchor = when (page) {
-    SettingsPage.ROOT -> UiFocusAnchor.SETTINGS_PLATFORM
-    SettingsPage.UPDATE -> UiFocusAnchor.SETTINGS_UPDATE_BACK
-    SettingsPage.UPDATE_NOTES -> UiFocusAnchor.SETTINGS_UPDATE_NOTES_INITIAL
+enum class SettingsPage {
+    ROOT,
+    UPDATE,
+    UPDATE_NOTES,
 }
 
-/**
- * 左侧导航菜单的条目。条目只声明展示文案、目的页与自身锚点。
- */
+/** 返回某个设置页自身的默认锚点。 */
+fun settingsAnchorFor(page: SettingsPage): UiFocusAnchor =
+    when (page) {
+        SettingsPage.ROOT -> UiFocusAnchor.SETTINGS_PLATFORM
+        SettingsPage.UPDATE -> UiFocusAnchor.SETTINGS_UPDATE_BACK
+        SettingsPage.UPDATE_NOTES -> UiFocusAnchor.SETTINGS_UPDATE_NOTES_INITIAL
+    }
+
+/** 左侧导航菜单的条目。条目只声明展示文案、目的页与自身锚点。 */
 enum class MenuEntry(
     val destination: TvDestination,
     val title: String,
@@ -87,12 +91,14 @@ enum class MenuEntry(
 val MENU_ENTRIES: List<MenuEntry> = MenuEntry.entries.toList()
 
 /** 返回当前页面对应的菜单条目，用于菜单打开时的初始焦点。 */
-fun menuEntryFor(destination: TvDestination): MenuEntry =
-    MENU_ENTRIES.first { it.destination == destination }
+fun menuEntryFor(destination: TvDestination): MenuEntry = MENU_ENTRIES.first {
+    it.destination == destination
+}
 
 /** 返回锚点对应的菜单条目；非菜单锚点返回 null。 */
-fun menuEntryOf(anchor: UiFocusAnchor): MenuEntry? =
-    MENU_ENTRIES.firstOrNull { it.anchor == anchor }
+fun menuEntryOf(anchor: UiFocusAnchor): MenuEntry? = MENU_ENTRIES.firstOrNull {
+    it.anchor == anchor
+}
 
 /** 按上下方向移动菜单焦点，两端收敛。 */
 fun MenuEntry.moved(step: Int): MenuEntry =
@@ -107,8 +113,7 @@ data class SettingsRouteEntry(
 /**
  * 设置页的纯 UI 路由栈。
  *
- * 栈只记录层级与每层的返回锚点；栈顶应当获得哪个锚点由 [topAnchor] 给出，
- * 焦点请求本身只存在于 [TvUiState.focusRequest]，避免出现第二个焦点来源。
+ * 栈只记录层级与每层的返回锚点；栈顶应当获得哪个锚点由 [topAnchor] 给出， 焦点请求本身只存在于 [TvUiState.focusRequest]，避免出现第二个焦点来源。
  */
 data class SettingsNavigationState(
     val stack: List<SettingsRouteEntry> = listOf(SettingsRouteEntry(SettingsPage.ROOT, null)),
@@ -144,20 +149,24 @@ data class SettingsNavigationState(
     fun replaceWith(page: SettingsPage): SettingsNavigationState =
         if (currentPage == page) this else routesFor(page)
 
-    private fun routesFor(page: SettingsPage): SettingsNavigationState = when (page) {
-        SettingsPage.ROOT -> reset()
-        SettingsPage.UPDATE -> reset().push(
-            page = SettingsPage.UPDATE,
-            returnFocus = UiFocusAnchor.SETTINGS_UPDATE_ENTRY,
-        )
-        SettingsPage.UPDATE_NOTES -> reset()
-            .push(
-                page = SettingsPage.UPDATE,
-                returnFocus = UiFocusAnchor.SETTINGS_UPDATE_ENTRY,
-            )
-            .push(
-                page = SettingsPage.UPDATE_NOTES,
-                returnFocus = UiFocusAnchor.SETTINGS_UPDATE_RELEASE_NOTES,
-            )
-    }
+    private fun routesFor(page: SettingsPage): SettingsNavigationState =
+        when (page) {
+            SettingsPage.ROOT -> reset()
+            SettingsPage.UPDATE ->
+                reset()
+                    .push(
+                        page = SettingsPage.UPDATE,
+                        returnFocus = UiFocusAnchor.SETTINGS_UPDATE_ENTRY,
+                    )
+            SettingsPage.UPDATE_NOTES ->
+                reset()
+                    .push(
+                        page = SettingsPage.UPDATE,
+                        returnFocus = UiFocusAnchor.SETTINGS_UPDATE_ENTRY,
+                    )
+                    .push(
+                        page = SettingsPage.UPDATE_NOTES,
+                        returnFocus = UiFocusAnchor.SETTINGS_UPDATE_RELEASE_NOTES,
+                    )
+        }
 }

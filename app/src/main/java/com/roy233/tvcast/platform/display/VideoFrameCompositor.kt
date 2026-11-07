@@ -4,10 +4,8 @@ import android.graphics.PixelFormat
 import android.graphics.SurfaceTexture
 import android.opengl.EGL14
 import android.opengl.EGLConfig
-import android.opengl.EGLContext
-import android.opengl.EGLDisplay
-import android.opengl.EGLSurface
 import android.opengl.EGLExt
+import android.opengl.EGLSurface
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.os.Handler
@@ -23,10 +21,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.math.hypot
 
-/**
- * 将解码器的 SurfaceTexture 帧绘入全屏 4K SurfaceView。
- * 补偿和校准标记都在视频像素缓冲中完成，避免厂商视频图层忽略 View 矩形。
- */
+/** 将解码器的 SurfaceTexture 帧绘入全屏 4K SurfaceView。 补偿和校准标记都在视频像素缓冲中完成，避免厂商视频图层忽略 View 矩形。 */
 class VideoFrameCompositor(
     private val outputView: SurfaceView,
     private val onOutputFailure: () -> Unit = {},
@@ -70,7 +65,12 @@ class VideoFrameCompositor(
             try {
                 initializeGl()
             } catch (error: Throwable) {
-                LogHub.e(TAG, "4K compositor initialization failed: ${LogRedaction.reason(error)}", error, stack = true)
+                LogHub.e(
+                    TAG,
+                    "4K compositor initialization failed: ${LogRedaction.reason(error)}",
+                    error,
+                    stack = true,
+                )
                 releaseGl()
             } finally {
                 ready.countDown()
@@ -113,7 +113,14 @@ class VideoFrameCompositor(
         handler.post {
             if (!released && holder.surface.isValid && display != EGL14.EGL_NO_DISPLAY) {
                 destroyWindow()
-                window = EGL14.eglCreateWindowSurface(display, checkNotNull(config), holder.surface, intArrayOf(EGL14.EGL_NONE), 0)
+                window =
+                    EGL14.eglCreateWindowSurface(
+                        display,
+                        checkNotNull(config),
+                        holder.surface,
+                        intArrayOf(EGL14.EGL_NONE),
+                        0,
+                    )
                 if (window == EGL14.EGL_NO_SURFACE) {
                     LogHub.e(TAG, "4K output window creation failed egl=${EGL14.eglGetError()}")
                     reportOutputFailure()
@@ -123,7 +130,10 @@ class VideoFrameCompositor(
                     width = size[0]
                     EGL14.eglQuerySurface(display, window, EGL14.EGL_HEIGHT, size, 0)
                     height = size[0]
-                    LogHub.i(TAG, "output created buffer=${width}x$height view=${outputView.width}x${outputView.height}")
+                    LogHub.i(
+                        TAG,
+                        "output created buffer=${width}x$height view=${outputView.width}x${outputView.height}",
+                    )
                     if (width != OUTPUT_WIDTH || height != OUTPUT_HEIGHT) {
                         LogHub.e(TAG, "4K output buffer mismatch actual=${width}x$height")
                         reportOutputFailure()
@@ -154,30 +164,53 @@ class VideoFrameCompositor(
     private fun initializeGl() {
         display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
         check(display != EGL14.EGL_NO_DISPLAY) { "EGL display unavailable" }
-        check(EGL14.eglInitialize(display, IntArray(2), 0, IntArray(2), 0)) { "EGL initialize failed" }
+        check(EGL14.eglInitialize(display, IntArray(2), 0, IntArray(2), 0)) {
+            "EGL initialize failed"
+        }
         val configs = arrayOfNulls<EGLConfig>(1)
         val count = IntArray(1)
-        val attributes = intArrayOf(
-            EGL14.EGL_RED_SIZE, 8, EGL14.EGL_GREEN_SIZE, 8, EGL14.EGL_BLUE_SIZE, 8,
-            EGL14.EGL_ALPHA_SIZE, 8, EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
-            EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT or EGL14.EGL_PBUFFER_BIT,
-            EGL14.EGL_NONE,
-        )
-        check(EGL14.eglChooseConfig(display, attributes, 0, configs, 0, 1, count, 0) && count[0] > 0) {
+        val attributes =
+            intArrayOf(
+                EGL14.EGL_RED_SIZE,
+                8,
+                EGL14.EGL_GREEN_SIZE,
+                8,
+                EGL14.EGL_BLUE_SIZE,
+                8,
+                EGL14.EGL_ALPHA_SIZE,
+                8,
+                EGL14.EGL_RENDERABLE_TYPE,
+                EGL14.EGL_OPENGL_ES2_BIT,
+                EGL14.EGL_SURFACE_TYPE,
+                EGL14.EGL_WINDOW_BIT or EGL14.EGL_PBUFFER_BIT,
+                EGL14.EGL_NONE,
+            )
+        check(
+            EGL14.eglChooseConfig(display, attributes, 0, configs, 0, 1, count, 0) && count[0] > 0,
+        ) {
             "EGL config unavailable"
         }
         config = checkNotNull(configs[0])
-        context = EGL14.eglCreateContext(
-            display, config, EGL14.EGL_NO_CONTEXT,
-            intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE), 0,
-        )
+        context =
+            EGL14.eglCreateContext(
+                display,
+                config,
+                EGL14.EGL_NO_CONTEXT,
+                intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE),
+                0,
+            )
         check(context != EGL14.EGL_NO_CONTEXT) { "EGL context unavailable" }
-        pbuffer = EGL14.eglCreatePbufferSurface(
-            display, config, intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE), 0,
-        )
+        pbuffer =
+            EGL14.eglCreatePbufferSurface(
+                display,
+                config,
+                intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE),
+                0,
+            )
         check(pbuffer != EGL14.EGL_NO_SURFACE && makeCurrent(pbuffer)) { "EGL pbuffer unavailable" }
         program = createProgram(VERTEX_SHADER.trimIndent(), FRAGMENT_SHADER.trimIndent())
-        markerProgram = createProgram(MARKER_VERTEX_SHADER.trimIndent(), MARKER_FRAGMENT_SHADER.trimIndent())
+        markerProgram =
+            createProgram(MARKER_VERTEX_SHADER.trimIndent(), MARKER_FRAGMENT_SHADER.trimIndent())
         positionLocation = GLES20.glGetAttribLocation(program, "aPosition")
         textureLocation = GLES20.glGetAttribLocation(program, "aTexCoord")
         transformLocation = GLES20.glGetUniformLocation(program, "uTexTransform")
@@ -189,20 +222,40 @@ class VideoFrameCompositor(
         textureId = ids[0]
         check(textureId != 0) { "external texture unavailable" }
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-        inputTexture = SurfaceTexture(textureId).also { texture ->
-            texture.setDefaultBufferSize(OUTPUT_WIDTH, OUTPUT_HEIGHT)
-            texture.setOnFrameAvailableListener({
-                if (!released) {
-                    framePending = true
-                    draw()
-                }
-            }, handler)
-            inputSurface = Surface(texture)
-        }
+        GLES20.glTexParameteri(
+            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
+            GLES20.GL_TEXTURE_MIN_FILTER,
+            GLES20.GL_LINEAR,
+        )
+        GLES20.glTexParameteri(
+            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
+            GLES20.GL_TEXTURE_MAG_FILTER,
+            GLES20.GL_LINEAR,
+        )
+        GLES20.glTexParameteri(
+            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
+            GLES20.GL_TEXTURE_WRAP_S,
+            GLES20.GL_CLAMP_TO_EDGE,
+        )
+        GLES20.glTexParameteri(
+            GLES11Ext.GL_TEXTURE_EXTERNAL_OES,
+            GLES20.GL_TEXTURE_WRAP_T,
+            GLES20.GL_CLAMP_TO_EDGE,
+        )
+        inputTexture =
+            SurfaceTexture(textureId).also { texture ->
+                texture.setDefaultBufferSize(OUTPUT_WIDTH, OUTPUT_HEIGHT)
+                texture.setOnFrameAvailableListener(
+                    {
+                        if (!released) {
+                            framePending = true
+                            draw()
+                        }
+                    },
+                    handler,
+                )
+                inputSurface = Surface(texture)
+            }
         LogHub.i(TAG, "4K decoder input ready size=${OUTPUT_WIDTH}x$OUTPUT_HEIGHT")
     }
 
@@ -229,9 +282,12 @@ class VideoFrameCompositor(
         if (hasFrame) drawVideo()
         if (hasFrame && markerCorner > 0) drawMarkers()
         if (frameUpdated) {
-            inputTexture?.timestamp?.takeIf { it > 0L }?.let {
-                EGLExt.eglPresentationTimeANDROID(display, window, it)
-            }
+            inputTexture
+                ?.timestamp
+                ?.takeIf { it > 0L }
+                ?.let {
+                    EGLExt.eglPresentationTimeANDROID(display, window, it)
+                }
         }
         if (!EGL14.eglSwapBuffers(display, window)) {
             LogHub.e(TAG, "4K output swap failed egl=${EGL14.eglGetError()}")
@@ -248,12 +304,31 @@ class VideoFrameCompositor(
     private fun drawVideo() {
         val safe = contentAspect?.let { quad.fitInside(it, width.toFloat() / height) } ?: quad
         val weights = safe.perspectiveWeights()
-        val vertices = floatBuffer(floatArrayOf(
-            clipX(safe.bottomLeft.x), clipY(safe.bottomLeft.y), weights.bottomLeft, 0f, 0f,
-            clipX(safe.bottomRight.x), clipY(safe.bottomRight.y), weights.bottomRight, 1f, 0f,
-            clipX(safe.topLeft.x), clipY(safe.topLeft.y), weights.topLeft, 0f, 1f,
-            clipX(safe.topRight.x), clipY(safe.topRight.y), weights.topRight, 1f, 1f,
-        ))
+        val vertices =
+            floatBuffer(
+                floatArrayOf(
+                    clipX(safe.bottomLeft.x),
+                    clipY(safe.bottomLeft.y),
+                    weights.bottomLeft,
+                    0f,
+                    0f,
+                    clipX(safe.bottomRight.x),
+                    clipY(safe.bottomRight.y),
+                    weights.bottomRight,
+                    1f,
+                    0f,
+                    clipX(safe.topLeft.x),
+                    clipY(safe.topLeft.y),
+                    weights.topLeft,
+                    0f,
+                    1f,
+                    clipX(safe.topRight.x),
+                    clipY(safe.topRight.y),
+                    weights.topRight,
+                    1f,
+                    1f,
+                ),
+            )
         GLES20.glUseProgram(program)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
@@ -276,8 +351,13 @@ class VideoFrameCompositor(
         GLES20.glEnableVertexAttribArray(markerPositionLocation)
         for (corner in 1..4) {
             val red = corner == markerCorner
-            GLES20.glUniform4f(markerColorLocation, if (red) 1f else 0.78f, if (red) 0.12f else 0.78f,
-                if (red) 0.12f else 0.78f, 1f)
+            GLES20.glUniform4f(
+                markerColorLocation,
+                if (red) 1f else 0.78f,
+                if (red) 0.12f else 0.78f,
+                if (red) 0.12f else 0.78f,
+                1f,
+            )
             val current = safe.point(corner)
             val first = safe.point(if (corner == 4) 1 else corner + 1)
             val second = safe.point(if (corner == 1) 4 else corner - 1)
@@ -298,19 +378,29 @@ class VideoFrameCompositor(
         val endY = startY + dy * (MARK_LENGTH / length)
         val normalX = -dy / length * MARK_WIDTH / 2f
         val normalY = dx / length * MARK_WIDTH / 2f
-        val vertices = floatBuffer(floatArrayOf(
-            pixelClipX(startX + normalX), pixelClipY(startY + normalY),
-            pixelClipX(startX - normalX), pixelClipY(startY - normalY),
-            pixelClipX(endX + normalX), pixelClipY(endY + normalY),
-            pixelClipX(endX - normalX), pixelClipY(endY - normalY),
-        ))
+        val vertices =
+            floatBuffer(
+                floatArrayOf(
+                    pixelClipX(startX + normalX),
+                    pixelClipY(startY + normalY),
+                    pixelClipX(startX - normalX),
+                    pixelClipY(startY - normalY),
+                    pixelClipX(endX + normalX),
+                    pixelClipY(endY + normalY),
+                    pixelClipX(endX - normalX),
+                    pixelClipY(endY - normalY),
+                ),
+            )
         GLES20.glVertexAttribPointer(markerPositionLocation, 2, GLES20.GL_FLOAT, false, 0, vertices)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
     }
 
     private fun clipX(x: Float) = 2f * x - 1f
+
     private fun clipY(y: Float) = 1f - 2f * y
+
     private fun pixelClipX(x: Float) = 2f * x / width - 1f
+
     private fun pixelClipY(y: Float) = 2f * y / height - 1f
 
     private fun makeCurrent(surface: EGLSurface): Boolean =
@@ -331,11 +421,17 @@ class VideoFrameCompositor(
         inputTexture?.release()
         inputTexture = null
         if (display != EGL14.EGL_NO_DISPLAY) {
-            if (context != EGL14.EGL_NO_CONTEXT && pbuffer != EGL14.EGL_NO_SURFACE) makeCurrent(pbuffer)
+            if (context != EGL14.EGL_NO_CONTEXT && pbuffer != EGL14.EGL_NO_SURFACE)
+                makeCurrent(pbuffer)
             if (textureId != 0) GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
             if (program != 0) GLES20.glDeleteProgram(program)
             if (markerProgram != 0) GLES20.glDeleteProgram(markerProgram)
-            EGL14.eglMakeCurrent(display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
+            EGL14.eglMakeCurrent(
+                display,
+                EGL14.EGL_NO_SURFACE,
+                EGL14.EGL_NO_SURFACE,
+                EGL14.EGL_NO_CONTEXT,
+            )
             if (pbuffer != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(display, pbuffer)
             if (context != EGL14.EGL_NO_CONTEXT) EGL14.eglDestroyContext(display, context)
             EGL14.eglTerminate(display)
@@ -366,12 +462,20 @@ class VideoFrameCompositor(
         GLES20.glCompileShader(shader)
         val status = IntArray(1)
         GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, status, 0)
-        check(status[0] != 0) { "video shader compile failed: ${GLES20.glGetShaderInfoLog(shader)}" }
+        check(status[0] != 0) {
+            "video shader compile failed: ${GLES20.glGetShaderInfoLog(shader)}"
+        }
         return shader
     }
 
-    private fun floatBuffer(values: FloatArray) = ByteBuffer.allocateDirect(values.size * 4)
-        .order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(values); position(0) }
+    private fun floatBuffer(values: FloatArray) =
+        ByteBuffer.allocateDirect(values.size * 4)
+            .order(ByteOrder.nativeOrder())
+            .asFloatBuffer()
+            .apply {
+                put(values)
+                position(0)
+            }
 
     companion object {
         private const val TAG = "VideoCompositor"
@@ -380,7 +484,8 @@ class VideoFrameCompositor(
         private const val STARTUP_TIMEOUT_MS = 3000L
         private const val MARK_LENGTH = 120
         private const val MARK_WIDTH = 12
-        private const val VERTEX_SHADER = """
+        private const val VERTEX_SHADER =
+            """
             attribute vec3 aPosition;
             attribute vec2 aTexCoord;
             uniform mat4 uTexTransform;
@@ -390,7 +495,8 @@ class VideoFrameCompositor(
                 vTexCoord = (uTexTransform * vec4(aTexCoord, 0.0, 1.0)).xy;
             }
         """
-        private const val FRAGMENT_SHADER = """
+        private const val FRAGMENT_SHADER =
+            """
             #extension GL_OES_EGL_image_external : require
             precision mediump float;
             varying vec2 vTexCoord;
@@ -399,11 +505,13 @@ class VideoFrameCompositor(
                 gl_FragColor = texture2D(uTexture, vTexCoord);
             }
         """
-        private const val MARKER_VERTEX_SHADER = """
+        private const val MARKER_VERTEX_SHADER =
+            """
             attribute vec2 aPosition;
             void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }
         """
-        private const val MARKER_FRAGMENT_SHADER = """
+        private const val MARKER_FRAGMENT_SHADER =
+            """
             precision mediump float;
             uniform vec4 uColor;
             void main() { gl_FragColor = uColor; }

@@ -1,8 +1,5 @@
 package com.roy233.tvcast.ui.designsystem
 
-import com.roy233.tvcast.ui.theme.TvColors
-import com.roy233.tvcast.ui.theme.TvDimens
-import com.roy233.tvcast.ui.theme.TvType
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -31,9 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.roy233.tvcast.ui.tv.FocusTarget
-import com.roy233.tvcast.ui.tv.focusTarget
-import com.roy233.tvcast.ui.tv.focusTrace
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -47,6 +41,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.ui.theme.TvColors
+import com.roy233.tvcast.ui.theme.TvDimens
+import com.roy233.tvcast.ui.theme.TvType
+import com.roy233.tvcast.ui.tv.FocusTarget
+import com.roy233.tvcast.ui.tv.focusTarget
+import com.roy233.tvcast.ui.tv.focusTrace
 import kotlinx.coroutines.launch
 
 /** 绘制支持焦点、选中状态和滚动定位的设置行。 */
@@ -71,63 +71,71 @@ fun FocusableRow(
     val focused by interaction.collectIsFocusedAsState()
     val scope = rememberCoroutineScope()
     val bring = remember { BringIntoViewRequester() }
-    val scale by animateFloatAsState(
-        targetValue = if (focused) 1.012f else 1f,
-        animationSpec = if (reduceMotion) snap() else spring(dampingRatio = 0.85f, stiffness = 420f),
-        label = "row-scale",
-    )
+    val scale by
+        animateFloatAsState(
+            targetValue = if (focused) 1.012f else 1f,
+            animationSpec =
+                if (reduceMotion) snap() else spring(dampingRatio = 0.85f, stiffness = 420f),
+            label = "row-scale",
+        )
     val shape = RoundedCornerShape(TvDimens.rowCorner)
 
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(rowHeight)
-            .focusTarget(focusTarget)
-            .then(
-                if (focusTarget == null && focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                },
-            )
-            .focusTrace("row:$title")
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(shape)
-            .background(
-                when {
-                    focused && destructive -> TvColors.error.copy(alpha = 0.20f)
-                    focused -> Color.White.copy(alpha = 0.13f)
-                    pressed -> Color.White.copy(alpha = 0.06f)
-                    selected -> Color.White.copy(alpha = 0.06f)
-                    else -> Color.Transparent
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(rowHeight)
+                .focusTarget(focusTarget)
+                .then(
+                    if (focusTarget == null && focusRequester != null) {
+                        Modifier.focusRequester(focusRequester)
+                    } else {
+                        Modifier
+                    },
+                )
+                .focusTrace("row:$title")
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
                 }
-            )
-            .bringIntoViewRequester(bring)
-            .focusProperties { canFocus = enabled }
-            .onFocusChanged {
-                if (it.isFocused) {
-                    scope.launch { bring.bringIntoView() }
+                .clip(shape)
+                .background(
+                    when {
+                        focused && destructive -> TvColors.error.copy(alpha = 0.20f)
+                        focused -> Color.White.copy(alpha = 0.13f)
+                        pressed -> Color.White.copy(alpha = 0.06f)
+                        selected -> Color.White.copy(alpha = 0.06f)
+                        else -> Color.Transparent
+                    },
+                )
+                .bringIntoViewRequester(bring)
+                .focusProperties { canFocus = enabled }
+                .onFocusChanged {
+                    if (it.isFocused) {
+                        scope.launch { bring.bringIntoView() }
+                    }
                 }
-            }
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .padding(horizontal = 18.dp),
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    enabled = enabled,
+                    role = Role.Button,
+                    onClick = onClick,
+                )
+                .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BasicText(
             text = title,
-            style = TvType.body.copy(
-                color = when {
-                    !enabled -> TvColors.textDisabled
-                    destructive -> if (focused) Color.White else TvColors.error
-                    else -> TvColors.textPrimary
-                }
-            ),
+            style =
+                TvType.body.copy(
+                    color =
+                        when {
+                            !enabled -> TvColors.textDisabled
+                            destructive -> if (focused) Color.White else TvColors.error
+                            else -> TvColors.textPrimary
+                        },
+                ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -146,18 +154,14 @@ fun FocusableRow(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = null,
                 tint = TvColors.accent,
-                modifier = Modifier
-                    .padding(start = 10.dp)
-                    .size(20.dp),
+                modifier = Modifier.padding(start = 10.dp).size(20.dp),
             )
         } else if (showChevron) {
             Icon(
                 imageVector = Icons.Rounded.ChevronRight,
                 contentDescription = null,
                 tint = TvColors.textTertiary,
-                modifier = Modifier
-                    .padding(start = 10.dp)
-                    .size(20.dp),
+                modifier = Modifier.padding(start = 10.dp).size(20.dp),
             )
         }
     }
@@ -171,10 +175,7 @@ fun SettingsInfoRow(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .padding(horizontal = 18.dp),
+        modifier = modifier.fillMaxWidth().height(52.dp).padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BasicText(

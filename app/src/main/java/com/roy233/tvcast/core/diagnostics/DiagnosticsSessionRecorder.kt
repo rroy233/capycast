@@ -1,17 +1,17 @@
 package com.roy233.tvcast.core.diagnostics
 
 import android.os.SystemClock
-import org.json.JSONArray
-import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * 保存一次播放会话的内存状态与时间线，并负责会话 JSON 的序列化。
  *
- * 不涉及文件读写：持久化由 [PlaybackDiagnostics] 通过 [DiagnosticsFileStore]
- * 完成。会话替换、失败与崩溃的关闭顺序在这里固定，确保 `/playback` 输出稳定。
+ * 不涉及文件读写：持久化由 [PlaybackDiagnostics] 通过 [DiagnosticsFileStore] 完成。会话替换、失败与崩溃的关闭顺序在这里固定，确保
+ * `/playback` 输出稳定。
  */
 internal class DiagnosticsSessionRecorder {
 
@@ -48,7 +48,13 @@ internal class DiagnosticsSessionRecorder {
     data class Close(val id: String, val line: String)
 
     /** 一次 [fail] 的结果。 */
-    data class Failure(val id: String, val code: String, val message: String, val detail: String, val line: String)
+    data class Failure(
+        val id: String,
+        val code: String,
+        val message: String,
+        val detail: String,
+        val line: String,
+    )
 
     /** 一次 [recordCrash] 的结果。 */
     data class Crash(val id: String, val reason: String, val stack: String)
@@ -123,20 +129,22 @@ internal class DiagnosticsSessionRecorder {
     }
 
     fun track(kind: String, fields: Map<String, String>) {
-        val entry = JSONObject().apply {
-            put("kind", kind)
-            fields.forEach { (key, value) ->
-                put(key, LogRedaction.text(value).take(MAX_ATTRIBUTE_LENGTH))
+        val entry =
+            JSONObject().apply {
+                put("kind", kind)
+                fields.forEach { (key, value) ->
+                    put(key, LogRedaction.text(value).take(MAX_ATTRIBUTE_LENGTH))
+                }
             }
-        }
         synchronized(lock) {
             if (tracks.length() < MAX_TRACKS) tracks.put(entry)
         }
     }
 
-    fun event(name: String, detail: String): String = synchronized(lock) {
-        formatEventLocked(name.take(60), detail)
-    }
+    fun event(name: String, detail: String): String =
+        synchronized(lock) {
+            formatEventLocked(name.take(60), detail)
+        }
 
     fun stats(sample: JSONObject) {
         synchronized(lock) {
@@ -156,17 +164,21 @@ internal class DiagnosticsSessionRecorder {
         val line: String
         synchronized(lock) {
             id = sessionId.ifBlank { "no-session" }
-            val snapshot = JSONObject().apply {
-                put("elapsedMs", elapsedLocked())
-                put("code", code.take(80))
-                put("message", safeMessage)
-                put("detail", safeDetail)
-                put("state", "failed:${code.take(60)}")
-                put("lastStats", statsLast ?: JSONObject.NULL)
-                put("attributes", JSONObject().apply {
-                    attributes.forEach { (key, value) -> put(key, value) }
-                })
-            }
+            val snapshot =
+                JSONObject().apply {
+                    put("elapsedMs", elapsedLocked())
+                    put("code", code.take(80))
+                    put("message", safeMessage)
+                    put("detail", safeDetail)
+                    put("state", "failed:${code.take(60)}")
+                    put("lastStats", statsLast ?: JSONObject.NULL)
+                    put(
+                        "attributes",
+                        JSONObject().apply {
+                            attributes.forEach { (key, value) -> put(key, value) }
+                        },
+                    )
+                }
             failure = snapshot
             line = formatEventLocked("Failure", "code=${code.take(80)} message=$safeMessage")
             if (sessionOpen) {
@@ -179,11 +191,9 @@ internal class DiagnosticsSessionRecorder {
 
     fun recordCrash(threadName: String, throwable: Throwable): Crash {
         val stack = runCatching {
-            throwable.stackTraceToString()
-                .lineSequence()
-                .take(40)
-                .joinToString("\n")
-        }.getOrDefault("")
+            throwable.stackTraceToString().lineSequence().take(40).joinToString("\n")
+        }
+            .getOrDefault("")
         val safeStack = LogRedaction.text(stack)
         val id: String
         val reason = LogRedaction.reason(throwable)
@@ -196,35 +206,39 @@ internal class DiagnosticsSessionRecorder {
         return Crash(id, reason, safeStack)
     }
 
-    fun summary(): String = synchronized(lock) {
-        val id = sessionId.ifBlank { "none" }
-        val currentFailure = failure
-        if (currentFailure == null) {
-            "session=$id state=$sessionState events=${events.size}"
-        } else {
-            "session=$id state=$sessionState code=${currentFailure.optString("code")} " +
-                "message=${currentFailure.optString("message").take(160)} events=${events.size}"
+    fun summary(): String =
+        synchronized(lock) {
+            val id = sessionId.ifBlank { "none" }
+            val currentFailure = failure
+            if (currentFailure == null) {
+                "session=$id state=$sessionState events=${events.size}"
+            } else {
+                "session=$id state=$sessionState code=${currentFailure.optString("code")} " +
+                    "message=${currentFailure.optString("message").take(160)} events=${events.size}"
+            }
         }
-    }
 
     /** 构造当前会话的 JSON 内容。 */
-    fun sessionJson(): JSONObject = synchronized(lock) {
-        buildSessionJsonLocked()
-    }
+    fun sessionJson(): JSONObject =
+        synchronized(lock) {
+            buildSessionJsonLocked()
+        }
 
     /** 构造跨会话运行时属性的 JSON 内容。 */
-    fun runtimeJson(): JSONObject = synchronized(lock) {
-        JSONObject().apply {
-            runtimeInfo.forEach { (key, value) -> put(key, value) }
+    fun runtimeJson(): JSONObject =
+        synchronized(lock) {
+            JSONObject().apply {
+                runtimeInfo.forEach { (key, value) -> put(key, value) }
+            }
         }
-    }
 
     /** 读取本次运行保留的 libVLC 原生日志起始偏移。 */
     fun vlcLogStartOffset(): Long = synchronized(lock) { vlcLogStartOffset }
 
     /** 在会话内存中追加一条带相对时间的事件。 */
     private fun formatEventLocked(name: String, detail: String): String {
-        val line = PlaybackReportSerializer.formatEvent(elapsedLocked(), name, detail, MAX_EVENT_DETAIL)
+        val line =
+            PlaybackReportSerializer.formatEvent(elapsedLocked(), name, detail, MAX_EVENT_DETAIL)
         events.addLast(line)
         while (events.size > MAX_EVENTS) events.removeFirst()
         return line
@@ -246,32 +260,50 @@ internal class DiagnosticsSessionRecorder {
         }
 
     /** 构造会话 JSON 内容。 */
-    private fun buildSessionJsonLocked(): JSONObject = JSONObject().apply {
-        put("id", sessionId)
-        put("source", sessionSource)
-        put("startedAt", sessionStartedWall)
-        put("state", sessionState)
-        put("open", sessionOpen)
-        put("elapsedMs", elapsedLocked())
-        put("attributes", JSONObject().apply {
-            attributes.forEach { (key, value) -> put(key, value) }
-        })
-        put("tracks", JSONArray().apply {
-            for (index in 0 until tracks.length()) put(tracks.get(index))
-        })
-        put("events", JSONArray().apply {
-            events.forEach { put(it) }
-        })
-        put("stats", JSONObject().apply {
-            put("samples", statsSamples.length())
-            put("first", statsFirst ?: JSONObject.NULL)
-            put("last", statsLast ?: JSONObject.NULL)
-            put("series", JSONArray().apply {
-                for (index in 0 until statsSamples.length()) put(statsSamples.get(index))
-            })
-        })
-        put("failure", failure ?: JSONObject.NULL)
-    }
+    private fun buildSessionJsonLocked(): JSONObject =
+        JSONObject().apply {
+            put("id", sessionId)
+            put("source", sessionSource)
+            put("startedAt", sessionStartedWall)
+            put("state", sessionState)
+            put("open", sessionOpen)
+            put("elapsedMs", elapsedLocked())
+            put(
+                "attributes",
+                JSONObject().apply {
+                    attributes.forEach { (key, value) -> put(key, value) }
+                },
+            )
+            put(
+                "tracks",
+                JSONArray().apply {
+                    for (index in 0 until tracks.length()) put(tracks.get(index))
+                },
+            )
+            put(
+                "events",
+                JSONArray().apply {
+                    events.forEach { put(it) }
+                },
+            )
+            put(
+                "stats",
+                JSONObject().apply {
+                    put("samples", statsSamples.length())
+                    put("first", statsFirst ?: JSONObject.NULL)
+                    put("last", statsLast ?: JSONObject.NULL)
+                    put(
+                        "series",
+                        JSONArray().apply {
+                            for (index in 0 until statsSamples.length()) put(
+                                statsSamples.get(index),
+                            )
+                        },
+                    )
+                },
+            )
+            put("failure", failure ?: JSONObject.NULL)
+        }
 
     private companion object {
         const val MAX_EVENTS = 320

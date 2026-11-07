@@ -29,7 +29,8 @@ class VideoViewportHost(
     fun applySaved(corners: DisplayCorners, completed: Boolean) {
         saved = corners.sanitized()
         this.completed = completed
-        if (playbackCompositor.isInitialized()) playbackCompositor.value.setQuad(saved.toVideoQuad())
+        if (playbackCompositor.isInitialized())
+            playbackCompositor.value.setQuad(saved.toVideoQuad())
         LogHub.i(
             "VideoViewport",
             "saved pixel compensation completed=$completed tl=${saved.topLeft} tr=${saved.topRight} br=${saved.bottomRight} bl=${saved.bottomLeft}",
@@ -60,19 +61,27 @@ class VideoViewportHost(
     }
 
     fun showCalibration(corners: DisplayCorners, corner: Int): Boolean {
-        val compositor = calibrationCompositor ?: VideoFrameCompositor(calibrationView, onCalibrationFailure)
-            .also { calibrationCompositor = it }
-        val input = compositor.decoderSurface() ?: run {
-            hideCalibration(release = true)
-            return false
-        }
+        val compositor =
+            calibrationCompositor
+                ?: VideoFrameCompositor(calibrationView, onCalibrationFailure).also {
+                    calibrationCompositor = it
+                }
+        val input =
+            compositor.decoderSurface()
+                ?: run {
+                    hideCalibration(release = true)
+                    return false
+                }
         compositor.setQuad(corners.toVideoQuad())
         compositor.setMarkerCorner(corner)
         calibrationView.visibility = View.VISIBLE
         if (calibrationPlayer == null) {
             calibrationPlayer = CalibrationPatternPlayer(root.context, input, onCalibrationFailure)
         }
-        return runCatching { calibrationPlayer?.start(); true }
+        return runCatching {
+            calibrationPlayer?.start()
+            true
+        }
             .getOrElse { error ->
                 LogHub.e("VideoViewport", "calibration playback failed", error, stack = true)
                 hideCalibration(release = true)
@@ -96,10 +105,11 @@ class VideoViewportHost(
         if (playbackCompositor.isInitialized()) playbackCompositor.value.release()
     }
 
-    private fun DisplayCorners.toVideoQuad() = VideoQuad(
-        topLeft = VideoPoint(topLeft.x, topLeft.y),
-        topRight = VideoPoint(topRight.x, topRight.y),
-        bottomRight = VideoPoint(bottomRight.x, bottomRight.y),
-        bottomLeft = VideoPoint(bottomLeft.x, bottomLeft.y),
-    )
+    private fun DisplayCorners.toVideoQuad() =
+        VideoQuad(
+            topLeft = VideoPoint(topLeft.x, topLeft.y),
+            topRight = VideoPoint(topRight.x, topRight.y),
+            bottomRight = VideoPoint(bottomRight.x, bottomRight.y),
+            bottomLeft = VideoPoint(bottomLeft.x, bottomLeft.y),
+        )
 }

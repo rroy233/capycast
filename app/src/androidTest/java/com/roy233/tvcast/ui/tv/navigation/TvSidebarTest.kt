@@ -17,8 +17,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TvSidebarTest {
 
-    @get:Rule
-    val composeRule = createComposeRule()
+    @get:Rule val composeRule = createComposeRule()
 
     @Test
     fun floatingSidebarExposesPanelAndNavigationEntries() {
@@ -38,10 +37,11 @@ class TvSidebarTest {
         composeRule.setContent {
             Sidebar(
                 state = TvUiState(destination = TvDestination.HOME),
-                actions = TvActions(
-                    onCloseSidebar = { closed = true },
-                    onNavigateSettings = { navigatedToSettings = true },
-                ),
+                actions =
+                    TvActions(
+                        onCloseSidebar = { closed = true },
+                        onNavigateSettings = { navigatedToSettings = true },
+                    ),
             )
         }
 

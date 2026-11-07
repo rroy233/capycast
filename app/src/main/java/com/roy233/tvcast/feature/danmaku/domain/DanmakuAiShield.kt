@@ -5,8 +5,7 @@ import kotlin.math.ceil
 /**
  * 智能云屏蔽档位。
  *
- * 按分段内 `weight` 排名隐藏最低的一部分，而不是使用固定的 0–10 阈值：
- * 实测 web 接口的 `weight` 是 8–11，固定 3/6/9 基本不会生效。
+ * 按分段内 `weight` 排名隐藏最低的一部分，而不是使用固定的 0–10 阈值： 实测 web 接口的 `weight` 是 8–11，固定 3/6/9 基本不会生效。
  *
  * @property hiddenRatio 隐藏比例，0 表示关闭。
  */
@@ -20,9 +19,7 @@ enum class AiShieldLevel(val hiddenRatio: Double) {
 /**
  * 智能云屏蔽过滤器。
  *
- * B 站服务端给每条弹幕一个 AI 权重（`DanmakuElem.weight`），本类按权重
- * 从低到高隐藏指定比例。同一分段内权重相同的条目按 dmid 稳定排序，
- * 保证结果可复现。
+ * B 站服务端给每条弹幕一个 AI 权重（`DanmakuElem.weight`），本类按权重 从低到高隐藏指定比例。同一分段内权重相同的条目按 dmid 稳定排序， 保证结果可复现。
  */
 object DanmakuAiShield {
 
@@ -39,7 +36,8 @@ object DanmakuAiShield {
         if (hideCount == 0) return items
 
         val hidden = HashSet<Long>(hideCount)
-        items.asSequence()
+        items
+            .asSequence()
             .sortedWith(compareBy<DanmakuItem> { it.weight }.thenBy { it.id })
             .take(hideCount)
             .forEach { hidden += it.id }

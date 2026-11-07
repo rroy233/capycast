@@ -14,25 +14,32 @@ object VodPlaybackRules {
         "${track.id}:${track.codecId}:${track.codecs}:${track.mimeType}:${track.width}x${track.height}"
 
     /** 编码优先级：HEVC > AV1 > H.264 > 其他。 */
-    fun videoCodecRank(track: MediaTrack): Int = when (track.codecId) {
-        12 -> 3
-        13 -> 2
-        7 -> 1
-        else -> 0
-    }
+    fun videoCodecRank(track: MediaTrack): Int =
+        when (track.codecId) {
+            12 -> 3
+            13 -> 2
+            7 -> 1
+            else -> 0
+        }
 
     /** 把恢复状态机的失败类型映射为日志与分支使用的稳定标识。 */
-    fun recoveryReason(failure: VodRecoveryController.Failure): String = when (failure) {
-        VodRecoveryController.Failure.TWO_SEVERE_REBUFFERS -> "two-severe-rebuffers"
-        VodRecoveryController.Failure.PERSISTENT_BUFFERING -> "persistent-buffering-5s"
-        VodRecoveryController.Failure.OPEN_TIMEOUT -> "player-open-timeout"
-    }
+    fun recoveryReason(failure: VodRecoveryController.Failure): String =
+        when (failure) {
+            VodRecoveryController.Failure.TWO_SEVERE_REBUFFERS -> "two-severe-rebuffers"
+            VodRecoveryController.Failure.PERSISTENT_BUFFERING -> "persistent-buffering-5s"
+            VodRecoveryController.Failure.OPEN_TIMEOUT -> "player-open-timeout"
+        }
 
     /** 只有播放器错误或已经经过稳定期验证的恢复故障才允许消耗 PCDN 候选。 */
-    fun isSubstantiveVodFailure(reason: String): Boolean = when (reason) {
-        "player-error", "media3-player-error", "playback-time-stalled-5s",
-        "two-severe-rebuffers", "persistent-buffering-5s", "player-open-timeout",
-        "representation-fallback-open-failed" -> true
-        else -> false
-    }
+    fun isSubstantiveVodFailure(reason: String): Boolean =
+        when (reason) {
+            "player-error",
+            "media3-player-error",
+            "playback-time-stalled-5s",
+            "two-severe-rebuffers",
+            "persistent-buffering-5s",
+            "player-open-timeout",
+            "representation-fallback-open-failed" -> true
+            else -> false
+        }
 }

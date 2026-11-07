@@ -18,18 +18,40 @@ import kotlinx.coroutines.withContext
 /** 手动画质、音轨和直播画质选择的宿主端口。 */
 interface PlaybackSelectionHost {
     val coroutineScope: CoroutineScope
+
     fun currentRequest(): PlaybackRequest?
+
     fun isCastActive(): Boolean
+
     fun positionMs(): Long
+
     fun vodCoordinator(): VodPlaybackCoordinator
+
     fun liveCoordinator(): LivePlaybackCoordinator
+
     fun openSelectedPlayback(request: PlaybackRequest, positionMs: Long): Boolean
+
     fun liveAccessKey(): String?
-    suspend fun resolveLiveQuality(accessKey: String, roomId: Long, quality: Int, forceAvc: Boolean): LivePlayInfo
-    fun switchSelectedLiveRoute(target: RankedLiveSource, reason: String, from: com.roy233.tvcast.feature.playback.model.LiveStreamCandidate?): Boolean
+
+    suspend fun resolveLiveQuality(
+        accessKey: String,
+        roomId: Long,
+        quality: Int,
+        forceAvc: Boolean,
+    ): LivePlayInfo
+
+    fun switchSelectedLiveRoute(
+        target: RankedLiveSource,
+        reason: String,
+        from: com.roy233.tvcast.feature.playback.model.LiveStreamCandidate?,
+    ): Boolean
+
     suspend fun onSelectedLiveRouteOpenFailure(reason: String)
+
     fun onQualitySelected(label: String)
+
     fun onAudioSelected(label: String)
+
     fun showSelectionToast(message: String)
 }
 
@@ -69,23 +91,31 @@ class PlaybackSelectionCoordinator(private val host: PlaybackSelectionHost) {
         host.vodCoordinator().switching = true
         host.coroutineScope.launch {
             try {
-                val routes = withContext(Dispatchers.IO) { host.vodCoordinator().cdn.rankTrack(track) }
-                if (host.currentRequest()?.video?.id != request.video.id || !host.isCastActive()) return@launch
+                val routes =
+                    withContext(Dispatchers.IO) { host.vodCoordinator().cdn.rankTrack(track) }
+                if (host.currentRequest()?.video?.id != request.video.id || !host.isCastActive())
+                    return@launch
                 val route = routes.firstOrNull() ?: RankedVodRoute(track.url)
                 val orderedRoutes = routes.ifEmpty { listOf(route) }
-                val nextRequest = request.copy(video = track.copy(
-                    url = route.url,
-                    backupUrls = orderedRoutes.filterNot { it.url == route.url }.map { it.url },
-                    isPcdn = CdnRouteRules.isPcdn(route.url),
-                ))
+                val nextRequest =
+                    request.copy(
+                        video =
+                            track.copy(
+                                url = route.url,
+                                backupUrls =
+                                    orderedRoutes.filterNot { it.url == route.url }.map { it.url },
+                                isPcdn = CdnRouteRules.isPcdn(route.url),
+                            ),
+                    )
                 val oldSession = host.vodCoordinator().activeSession
-                host.vodCoordinator().activeSession = VodSession(
-                    request = nextRequest,
-                    videoRoutes = orderedRoutes,
-                    audioRoutes = oldSession?.audioRoutes.orEmpty(),
-                    lastPositionMs = position,
-                    lastProgressAtMs = SystemClock.elapsedRealtime(),
-                )
+                host.vodCoordinator().activeSession =
+                    VodSession(
+                        request = nextRequest,
+                        videoRoutes = orderedRoutes,
+                        audioRoutes = oldSession?.audioRoutes.orEmpty(),
+                        lastPositionMs = position,
+                        lastProgressAtMs = SystemClock.elapsedRealtime(),
+                    )
                 host.vodCoordinator().startBackupRefresh()
                 if (host.openSelectedPlayback(nextRequest, position)) {
                     host.onQualitySelected(nextRequest.qualityLabel)
@@ -111,14 +141,17 @@ class PlaybackSelectionCoordinator(private val host: PlaybackSelectionHost) {
         host.liveCoordinator().switching = true
         host.coroutineScope.launch {
             try {
-                val token = host.liveAccessKey()
-                    ?: error("TV login expired during live quality switch")
+                val token =
+                    host.liveAccessKey() ?: error("TV login expired during live quality switch")
                 val forceAvc = session.active.codecid == 7
-                val resolved = withContext(Dispatchers.IO) {
-                    val live = host.resolveLiveQuality(token, session.stream.roomId, qn, forceAvc)
-                    live to host.liveCoordinator().cdn.rankInitial(live.qualityCandidates)
-                }
-                if (host.liveCoordinator().activeSession !== session || !host.isCastActive()) return@launch
+                val resolved =
+                    withContext(Dispatchers.IO) {
+                        val live =
+                            host.resolveLiveQuality(token, session.stream.roomId, qn, forceAvc)
+                        live to host.liveCoordinator().cdn.rankInitial(live.qualityCandidates)
+                    }
+                if (host.liveCoordinator().activeSession !== session || !host.isCastActive())
+                    return@launch
                 if (resolved.second.isEmpty()) error("live quality switch returned no routes")
                 val actual = resolved.first
                 val old = session.active
@@ -127,8 +160,9 @@ class PlaybackSelectionCoordinator(private val host: PlaybackSelectionHost) {
                 session.attemptedUrls.clear()
                 session.avcFallbackAttempted = forceAvc
                 session.downshiftedQualities.clear()
-                val next = session.routes.firstOrNull { it.candidate.quality == actual.quality }
-                    ?: session.routes.first()
+                val next =
+                    session.routes.firstOrNull { it.candidate.quality == actual.quality }
+                        ?: session.routes.first()
                 PlaybackDiagnostics.event(
                     "LiveQualitySwitch",
                     "requested=$qn actual=${actual.quality} " +
@@ -148,8 +182,7 @@ class PlaybackSelectionCoordinator(private val host: PlaybackSelectionHost) {
             } catch (failure: Throwable) {
                 LogHub.e(
                     TAG,
-                    "live quality switch failed qn=$qn " +
-                        "error=${failure.javaClass.simpleName}",
+                    "live quality switch failed qn=$qn " + "error=${failure.javaClass.simpleName}",
                 )
                 PlaybackDiagnostics.event(
                     "LiveQualitySwitchFailed",
@@ -194,15 +227,22 @@ class PlaybackSelectionCoordinator(private val host: PlaybackSelectionHost) {
         host.vodCoordinator().switching = true
         host.coroutineScope.launch {
             try {
-                val routes = withContext(Dispatchers.IO) { host.vodCoordinator().cdn.rankTrack(track) }
-                if (host.currentRequest()?.video?.id != request.video.id || !host.isCastActive()) return@launch
+                val routes =
+                    withContext(Dispatchers.IO) { host.vodCoordinator().cdn.rankTrack(track) }
+                if (host.currentRequest()?.video?.id != request.video.id || !host.isCastActive())
+                    return@launch
                 val route = routes.firstOrNull() ?: RankedVodRoute(track.url)
                 val orderedRoutes = routes.ifEmpty { listOf(route) }
-                val nextRequest = request.copy(audio = track.copy(
-                    url = route.url,
-                    backupUrls = orderedRoutes.filterNot { it.url == route.url }.map { it.url },
-                    isPcdn = CdnRouteRules.isPcdn(route.url),
-                ))
+                val nextRequest =
+                    request.copy(
+                        audio =
+                            track.copy(
+                                url = route.url,
+                                backupUrls =
+                                    orderedRoutes.filterNot { it.url == route.url }.map { it.url },
+                                isPcdn = CdnRouteRules.isPcdn(route.url),
+                            ),
+                    )
                 host.vodCoordinator().activeSession?.let { session ->
                     session.request = nextRequest
                     session.audioRoutes = orderedRoutes
@@ -220,5 +260,7 @@ class PlaybackSelectionCoordinator(private val host: PlaybackSelectionHost) {
         }
     }
 
-    private companion object { const val TAG = "SimpleBili" }
+    private companion object {
+        const val TAG = "SimpleBili"
+    }
 }

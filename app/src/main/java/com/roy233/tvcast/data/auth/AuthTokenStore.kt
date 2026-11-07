@@ -16,7 +16,8 @@ class AuthTokenStore(context: Context) : BiliSessionReader, AccountSessionStore 
 
     /** 保存登录令牌及其关联的账号信息。 */
     override fun save(token: Token) {
-        prefs.edit()
+        prefs
+            .edit()
             .putString("access_key", token.accessKey)
             .putLong("mid", token.mid)
             .putString("cookie", token.cookie)

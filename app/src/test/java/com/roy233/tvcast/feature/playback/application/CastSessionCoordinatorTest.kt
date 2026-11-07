@@ -1,10 +1,8 @@
 package com.roy233.tvcast.feature.playback.application
 
 import android.content.Context
-import com.roy233.tvcast.data.auth.CastAuth
-import com.roy233.tvcast.data.bili.BiliApi
-import com.roy233.tvcast.feature.cast.domain.CastContent
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.feature.cast.domain.CastContent
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.ui.model.PlaybackUiState
@@ -16,7 +14,6 @@ import kotlinx.coroutines.cancel
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** 验证新投屏替换旧会话，以及无效元数据触发的终止行为。 */
@@ -31,11 +28,12 @@ class CastSessionCoordinatorTest {
 
     @Test
     fun `unrecognised cast stops the previous session and reports a non retryable error`() {
-        CastSessionCoordinator(host).handleCast(
-            uri = "https://example.com/cast",
-            title = "测试投屏",
-            longDescription = "",
-        )
+        CastSessionCoordinator(host)
+            .handleCast(
+                uri = "https://example.com/cast",
+                title = "测试投屏",
+                longDescription = "",
+            )
 
         assertEquals(
             listOf(
@@ -72,17 +70,23 @@ class CastSessionCoordinatorTest {
         var error: ErrorReport? = null
 
         override fun remembersPlaybackContent(): Boolean = playbackState.rememberPlaybackContent
+
         override fun playbackSpeed(): Float = playbackState.playbackSpeed
+
         override fun showRecentLoading(title: String) {
             playbackState = playbackState.copy(mode = TvMode.LOADING, castTitle = title)
         }
+
         override fun showIncomingCast(title: String) {
             playbackState = playbackState.copy(mode = TvMode.LOADING, castTitle = title)
         }
+
         override fun showResolveLoading(title: String) {
             playbackState = playbackState.copy(mode = TvMode.LOADING, castTitle = title)
         }
+
         override fun showPlayback(request: PlaybackRequest, seekToMs: Long) = Unit
+
         override fun setDesiredPlaybackSpeed(speed: Float) {
             playbackState = playbackState.copy(playbackSpeed = speed)
         }
@@ -154,7 +158,11 @@ class CastSessionCoordinatorTest {
 
         override fun setCastDurationMs(durationMs: Long) = Unit
 
-        override fun startLiveSession(info: LivePlayInfo, routes: List<RankedLiveSource>, title: String) = Unit
+        override fun startLiveSession(
+            info: LivePlayInfo,
+            routes: List<RankedLiveSource>,
+            title: String,
+        ) = Unit
 
         override fun accessKey(): String? = null
 
@@ -202,7 +210,8 @@ class CastSessionCoordinatorTest {
 
         override fun vodSessionCoordinator(): VodPlaybackCoordinator = error("unused in this test")
 
-        override fun liveSessionCoordinator(): LivePlaybackCoordinator = error("unused in this test")
+        override fun liveSessionCoordinator(): LivePlaybackCoordinator =
+            error("unused in this test")
     }
 
     private data class ErrorReport(

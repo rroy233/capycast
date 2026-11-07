@@ -1,6 +1,5 @@
 package com.roy233.tvcast.ui.designsystem
 
-
 /** 将毫秒数格式化为播放器显示的时间文本。 */
 fun formatTime(ms: Long): String {
     val safe = ms.coerceAtLeast(0L) / 1000L

@@ -6,8 +6,7 @@ import java.util.Locale
 /**
  * 提供面向诊断日志的脱敏工具。
  *
- * 播放地址中包含带签名的查询参数，日志会被用户复制到 Issue 中，因此这里统一
- * 只保留协议、主机、端口、路径和查询参数名，绝不记录参数值、Cookie 或 nva 投屏载荷。
+ * 播放地址中包含带签名的查询参数，日志会被用户复制到 Issue 中，因此这里统一 只保留协议、主机、端口、路径和查询参数名，绝不记录参数值、Cookie 或 nva 投屏载荷。
  */
 object LogRedaction {
 
@@ -29,7 +28,8 @@ object LogRedaction {
     /** 匹配投屏载荷参数。 */
     private val nvaPattern = Regex("""(?i)_nva_ext_=[^&\s"']+""")
     /** 匹配可能出现在文本日志中的凭据请求头。 */
-    private val credentialPattern = Regex("""(?i)\b(cookie|set-cookie|authorization)\s*[:=]\s*[^\r\n]+""")
+    private val credentialPattern =
+        Regex("""(?i)\b(cookie|set-cookie|authorization)\s*[:=]\s*[^\r\n]+""")
     /** 地址末尾常见的标点，匹配后需要原样保留。 */
     private val trailingPunctuation = charArrayOf(')', ']', '}', ',', '.', ';', '\'')
 
@@ -43,32 +43,36 @@ object LogRedaction {
         val text = raw?.trim().orEmpty()
         if (text.isEmpty()) return "(empty)"
         val normalized = if (text.startsWith("//")) "https:$text" else text
-        val parsed = runCatching { URI(normalized) }.getOrNull()
-            ?: return text.substringBefore('?').take(MAX_SUMMARY_LENGTH)
+        val parsed =
+            runCatching { URI(normalized) }.getOrNull()
+                ?: return text.substringBefore('?').take(MAX_SUMMARY_LENGTH)
         val scheme = parsed.scheme?.lowercase(Locale.US).orEmpty()
         val host = parsed.host.orEmpty()
         if (scheme.isEmpty() || host.isEmpty()) {
             return text.substringBefore('?').take(MAX_SUMMARY_LENGTH)
         }
         val port = if (parsed.port >= 0) ":${parsed.port}" else ""
-        val path = parsed.rawPath.orEmpty().let {
-            if (it.length > MAX_PATH_LENGTH) it.take(MAX_PATH_LENGTH) + "…" else it
-        }
+        val path =
+            parsed.rawPath.orEmpty().let {
+                if (it.length > MAX_PATH_LENGTH) it.take(MAX_PATH_LENGTH) + "…" else it
+            }
         val names = queryParameterNames(parsed.rawQuery)
-        val query = if (names.isEmpty()) {
-            ""
-        } else {
-            val listed = names.sorted().take(MAX_QUERY_NAMES).joinToString(",")
-            val rest = names.size - MAX_QUERY_NAMES
-            "?params=$listed" + if (rest > 0) ",+$rest" else ""
-        }
+        val query =
+            if (names.isEmpty()) {
+                ""
+            } else {
+                val listed = names.sorted().take(MAX_QUERY_NAMES).joinToString(",")
+                val rest = names.size - MAX_QUERY_NAMES
+                "?params=$listed" + if (rest > 0) ",+$rest" else ""
+            }
         return "$scheme://$host$port$path$query".take(MAX_SUMMARY_LENGTH)
     }
 
     /** 从原始查询串中提取参数名集合。 */
     private fun queryParameterNames(rawQuery: String?): Set<String> {
         if (rawQuery.isNullOrBlank()) return emptySet()
-        return rawQuery.split('&')
+        return rawQuery
+            .split('&')
             .asSequence()
             .map { it.substringBefore('=') }
             .filter { it.isNotBlank() }
@@ -99,15 +103,18 @@ object LogRedaction {
         var value = raw.orEmpty()
         if (value.isEmpty()) return ""
         value = nvaPattern.replace(value, "_nva_ext_=$REDACTED")
-        value = credentialPattern.replace(value) { match ->
-            "${match.groupValues[1]}: $REDACTED"
-        }
-        value = urlPattern.replace(value) { match ->
-            urlWithTrailingPunctuation(match.value)
-        }
-        value = protocolRelativePattern.replace(value) { match ->
-            urlWithTrailingPunctuation(match.value)
-        }
+        value =
+            credentialPattern.replace(value) { match ->
+                "${match.groupValues[1]}: $REDACTED"
+            }
+        value =
+            urlPattern.replace(value) { match ->
+                urlWithTrailingPunctuation(match.value)
+            }
+        value =
+            protocolRelativePattern.replace(value) { match ->
+                urlWithTrailingPunctuation(match.value)
+            }
         return value
     }
 

@@ -13,10 +13,10 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * The phone's DLNA SetAVTransportURI carries the real video identity inside
- * `<upnp:longDescription>` as an encrypted `_nva_ext_` blob. Its payload
- * uses the following encoding sequence:
+ * `<upnp:longDescription>` as an encrypted `_nva_ext_` blob. Its payload uses the following
+ * encoding sequence:
  *
- *   base64url -> AES/CBC/PKCS7 -> raw deflate -> UTF-8 JSON
+ * base64url -> AES/CBC/PKCS7 -> raw deflate -> UTF-8 JSON
  *
  * Key and IV use the default `nva.ext.aes_key` value (`1pzhA828t4i.6Oq@`).
  */
@@ -46,28 +46,29 @@ object NvaExtDecoder {
             val compressed = cipher.doFinal(encrypted)
             val json = String(inflate(compressed), Charsets.UTF_8)
             val decodedPayload = gson.fromJson(json, NvaPayload::class.java)
-            val content = CastContent(
-                aid = decodedPayload.aid,
-                cid = decodedPayload.cid,
-                oid = decodedPayload.oid,
-                bvid = decodedPayload.bvid,
-                qn = decodedPayload.qn,
-                userDesireQn = decodedPayload.userDesireQn,
-                userDesireSpeed = decodedPayload.userDesireSpeed,
-                epId = decodedPayload.eid,
-                seasonId = decodedPayload.sid,
-                roomId = decodedPayload.roomId,
-                contentType = decodedPayload.ct,
-                businessSessionId = decodedPayload.bizSessionId,
-                link = decodedPayload.nl?.let { CastLink(it.deviceId, it.callback) },
-                mediaVersion = decodedPayload.mv,
-                transportType = decodedPayload.tp,
-            )
+            val content =
+                CastContent(
+                    aid = decodedPayload.aid,
+                    cid = decodedPayload.cid,
+                    oid = decodedPayload.oid,
+                    bvid = decodedPayload.bvid,
+                    qn = decodedPayload.qn,
+                    userDesireQn = decodedPayload.userDesireQn,
+                    userDesireSpeed = decodedPayload.userDesireSpeed,
+                    epId = decodedPayload.eid,
+                    seasonId = decodedPayload.sid,
+                    roomId = decodedPayload.roomId,
+                    contentType = decodedPayload.ct,
+                    businessSessionId = decodedPayload.bizSessionId,
+                    link = decodedPayload.nl?.let { CastLink(it.deviceId, it.callback) },
+                    mediaVersion = decodedPayload.mv,
+                    transportType = decodedPayload.tp,
+                )
             LogHub.i(
                 TAG,
                 "nva_ext aid=${content.aid} cid=${content.cid} oid=${content.oid} " +
                     "bvid=${content.bvid} qn=${content.qn} eid=${content.epId} sid=${content.seasonId} " +
-                    "room=${content.roomId}"
+                    "room=${content.roomId}",
             )
             content
         } catch (t: Throwable) {
@@ -89,7 +90,8 @@ object NvaExtDecoder {
         val sid: Long = 0L,
         val roomId: Long = 0L,
         val ct: Int = 0,
-        @com.google.gson.annotations.SerializedName("biz_session_id") val bizSessionId: String? = null,
+        @com.google.gson.annotations.SerializedName("biz_session_id")
+        val bizSessionId: String? = null,
         val nl: NvaLinkPayload? = null,
         val mv: Long = 0L,
         val tp: Int = 0,

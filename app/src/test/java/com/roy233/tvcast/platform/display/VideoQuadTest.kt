@@ -11,10 +11,12 @@ class VideoQuadTest {
 
     @Test
     fun `trapezoid receives continuous projective weights`() {
-        val weights = VideoQuad(
-            topLeft = VideoPoint(0.1f, 0f),
-            topRight = VideoPoint(0.9f, 0f),
-        ).perspectiveWeights()
+        val weights =
+            VideoQuad(
+                    topLeft = VideoPoint(0.1f, 0f),
+                    topRight = VideoPoint(0.9f, 0f),
+                )
+                .perspectiveWeights()
         assertEquals(1f, weights.topLeft, 0.0001f)
         assertEquals(1f, weights.topRight, 0.0001f)
         assertEquals(0.8f, weights.bottomRight, 0.0001f)

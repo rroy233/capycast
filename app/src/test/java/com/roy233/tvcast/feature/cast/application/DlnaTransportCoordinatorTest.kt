@@ -23,7 +23,14 @@ class DlnaTransportCoordinatorTest {
         coordinator.pause()
 
         assertEquals(
-            listOf("pending:false", "paused:false", "play-state:true", "pending:true", "paused:true", "play-state:false"),
+            listOf(
+                "pending:false",
+                "paused:false",
+                "play-state:true",
+                "pending:true",
+                "paused:true",
+                "play-state:false",
+            ),
             calls,
         )
     }
@@ -91,10 +98,18 @@ class DlnaTransportCoordinatorTest {
         queued.forEach { it() }
         assertEquals(
             listOf(
-                "pending:false", "paused:false", "play-state:true",
-                "pending:true", "paused:true", "play-state:false",
-                "seekTo:2000", "seek-state:2000", "seekDanmaku:2000",
-                "volume:75", "volume-state:75", "stopCastFromDlna",
+                "pending:false",
+                "paused:false",
+                "play-state:true",
+                "pending:true",
+                "paused:true",
+                "play-state:false",
+                "seekTo:2000",
+                "seek-state:2000",
+                "seekDanmaku:2000",
+                "volume:75",
+                "volume-state:75",
+                "stopCastFromDlna",
             ),
             calls,
         )
@@ -112,11 +127,19 @@ class DlnaTransportCoordinatorTest {
         val enforceMainAccess: Boolean = false,
     ) {
         var onMain = false
-        fun verifyThread() { if (enforceMainAccess) assertTrue("player accessed off main thread", onMain) }
+
+        fun verifyThread() {
+            if (enforceMainAccess) assertTrue("player accessed off main thread", onMain)
+        }
+
         fun <T> onMain(action: () -> T): T {
             val prior = onMain
             onMain = true
-            return try { action() } finally { onMain = prior }
+            return try {
+                action()
+            } finally {
+                onMain = prior
+            }
         }
     }
 
@@ -131,38 +154,100 @@ class DlnaTransportCoordinatorTest {
         ) { _, method, arguments ->
             when (method.name) {
                 "onCast" -> Unit
-                "setPendingPause" -> { state.verifyThread(); calls += "pending:${arguments[0]}"; Unit }
-                "engineAvailable" -> { state.verifyThread(); state.engineAvailable }
-                "setPaused" -> { state.verifyThread(); calls += "paused:${arguments[0]}"; Unit }
-                "stopCastFromDlna" -> { state.verifyThread(); calls += method.name; Unit }
-                "currentIsLive" -> { state.verifyThread(); state.isLive }
-                "currentCid" -> { state.verifyThread(); 123L }
-                "seekTo" -> { state.verifyThread(); calls += "seekTo:${arguments[0]}"; Unit }
-                "seekDanmaku" -> { state.verifyThread(); calls += "seekDanmaku:${arguments[0]}"; Unit }
-                "isSeekable" -> { state.verifyThread(); state.seekable }
-                "setVolume" -> { state.verifyThread(); calls += "volume:${arguments[0]}"; Unit }
-                "positionMs" -> { state.verifyThread(); 5000L }
-                "durationMs" -> { state.verifyThread(); 9000L }
-                "isPlaying" -> { state.verifyThread(); true }
-                "volume" -> { state.verifyThread(); 30 }
+                "setPendingPause" -> {
+                    state.verifyThread()
+                    calls += "pending:${arguments[0]}"
+                    Unit
+                }
+                "engineAvailable" -> {
+                    state.verifyThread()
+                    state.engineAvailable
+                }
+                "setPaused" -> {
+                    state.verifyThread()
+                    calls += "paused:${arguments[0]}"
+                    Unit
+                }
+                "stopCastFromDlna" -> {
+                    state.verifyThread()
+                    calls += method.name
+                    Unit
+                }
+                "currentIsLive" -> {
+                    state.verifyThread()
+                    state.isLive
+                }
+                "currentCid" -> {
+                    state.verifyThread()
+                    123L
+                }
+                "seekTo" -> {
+                    state.verifyThread()
+                    calls += "seekTo:${arguments[0]}"
+                    Unit
+                }
+                "seekDanmaku" -> {
+                    state.verifyThread()
+                    calls += "seekDanmaku:${arguments[0]}"
+                    Unit
+                }
+                "isSeekable" -> {
+                    state.verifyThread()
+                    state.seekable
+                }
+                "setVolume" -> {
+                    state.verifyThread()
+                    calls += "volume:${arguments[0]}"
+                    Unit
+                }
+                "positionMs" -> {
+                    state.verifyThread()
+                    5000L
+                }
+                "durationMs" -> {
+                    state.verifyThread()
+                    9000L
+                }
+                "isPlaying" -> {
+                    state.verifyThread()
+                    true
+                }
+                "volume" -> {
+                    state.verifyThread()
+                    30
+                }
                 "onMainThread" -> {
                     val action = arguments[0] as Function0<*>
                     if (queue == null) state.onMain { action.invoke() }
-                    else queue += { state.onMain { action.invoke() }; Unit }
+                    else
+                        queue += {
+                            state.onMain { action.invoke() }
+                            Unit
+                        }
                     Unit
                 }
                 "readOnMainThread" -> state.onMain { (arguments[0] as Function0<*>).invoke() }
-                "showDlnaPlayState" -> { calls += "play-state:${arguments[0]}"; Unit }
-                "showDlnaSeekState" -> { calls += "seek-state:${arguments[0]}"; Unit }
-                "showDlnaVolumeState" -> { calls += "volume-state:${arguments[0]}"; Unit }
+                "showDlnaPlayState" -> {
+                    calls += "play-state:${arguments[0]}"
+                    Unit
+                }
+                "showDlnaSeekState" -> {
+                    calls += "seek-state:${arguments[0]}"
+                    Unit
+                }
+                "showDlnaVolumeState" -> {
+                    calls += "volume-state:${arguments[0]}"
+                    Unit
+                }
                 else -> defaultReturn(method.returnType)
             }
         } as DlnaTransportHost
 
-    private fun defaultReturn(type: Class<*>): Any? = when (type) {
-        java.lang.Boolean.TYPE -> false
-        java.lang.Long.TYPE -> 0L
-        java.lang.Integer.TYPE -> 0
-        else -> null
-    }
+    private fun defaultReturn(type: Class<*>): Any? =
+        when (type) {
+            java.lang.Boolean.TYPE -> false
+            java.lang.Long.TYPE -> 0L
+            java.lang.Integer.TYPE -> 0
+            else -> null
+        }
 }

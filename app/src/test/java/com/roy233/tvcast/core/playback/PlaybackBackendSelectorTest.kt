@@ -7,14 +7,19 @@ class PlaybackBackendSelectorTest {
 
     @Test
     fun routesSplitDashVodThroughMedia3() {
-        assertEquals(PlaybackBackend.MEDIA3, PlaybackBackendSelector.select(request(progressiveUrl = null)))
+        assertEquals(
+            PlaybackBackend.MEDIA3,
+            PlaybackBackendSelector.select(request(progressiveUrl = null)),
+        )
     }
 
     @Test
     fun keepsProgressiveVodOnVlc() {
         assertEquals(
             PlaybackBackend.VLC,
-            PlaybackBackendSelector.select(request(progressiveUrl = "https://example.com/video.mp4")),
+            PlaybackBackendSelector.select(
+                request(progressiveUrl = "https://example.com/video.mp4"),
+            ),
         )
     }
 
@@ -24,15 +29,16 @@ class PlaybackBackendSelectorTest {
     }
 
     private fun request(progressiveUrl: String? = null, isLive: Boolean = false): PlaybackRequest {
-        val video = MediaTrack(
-            id = 80,
-            codecId = 7,
-            width = 1920,
-            height = 1080,
-            bandwidth = 4_000_000L,
-            url = "https://example.com/video.m4s",
-            backupUrls = emptyList(),
-        )
+        val video =
+            MediaTrack(
+                id = 80,
+                codecId = 7,
+                width = 1920,
+                height = 1080,
+                bandwidth = 4_000_000L,
+                url = "https://example.com/video.m4s",
+                backupUrls = emptyList(),
+            )
         return PlaybackRequest(
             title = "test",
             bvid = "BVtest",

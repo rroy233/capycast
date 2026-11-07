@@ -8,17 +8,18 @@ import org.junit.Test
 
 class VodPlaybackRulesTest {
 
-    private fun track(id: Int, codecid: Int, codecs: String = "hvc1") = MediaTrack(
-        id = id,
-        codecId = codecid,
-        width = 3840,
-        height = 2160,
-        bandwidth = 5_000_000,
-        url = "https://example.com/video.m4s",
-        backupUrls = emptyList(),
-        mimeType = "video/mp4",
-        codecs = codecs,
-    )
+    private fun track(id: Int, codecid: Int, codecs: String = "hvc1") =
+        MediaTrack(
+            id = id,
+            codecId = codecid,
+            width = 3840,
+            height = 2160,
+            bandwidth = 5_000_000,
+            url = "https://example.com/video.m4s",
+            backupUrls = emptyList(),
+            mimeType = "video/mp4",
+            codecs = codecs,
+        )
 
     @Test
     fun `representation key includes every identity field`() {
@@ -55,14 +56,15 @@ class VodPlaybackRulesTest {
     @Test
     fun `only verified failures consume pcdn candidates`() {
         listOf(
-            "player-error",
-            "media3-player-error",
-            "playback-time-stalled-5s",
-            "two-severe-rebuffers",
-            "persistent-buffering-5s",
-            "player-open-timeout",
-            "representation-fallback-open-failed",
-        ).forEach { assertTrue(it, VodPlaybackRules.isSubstantiveVodFailure(it)) }
+                "player-error",
+                "media3-player-error",
+                "playback-time-stalled-5s",
+                "two-severe-rebuffers",
+                "persistent-buffering-5s",
+                "player-open-timeout",
+                "representation-fallback-open-failed",
+            )
+            .forEach { assertTrue(it, VodPlaybackRules.isSubstantiveVodFailure(it)) }
         assertFalse(VodPlaybackRules.isSubstantiveVodFailure("initial-buffering"))
     }
 }

@@ -57,32 +57,34 @@ data class PlaybackRequest(
         get() = qualityLabels[video.id].orEmpty().ifBlank { qnLabel(video.id) }
 
     val audioLabel: String
-        get() = when (audio?.id) {
-            30250 -> "Dolby Atmos"
-            30280 -> "192K"
-            30232 -> "132K"
-            30216 -> "64K"
-            else -> audio?.id?.let { "audio=$it" } ?: "no audio"
-        }
+        get() =
+            when (audio?.id) {
+                30250 -> "Dolby Atmos"
+                30280 -> "192K"
+                30232 -> "132K"
+                30216 -> "64K"
+                else -> audio?.id?.let { "audio=$it" } ?: "no audio"
+            }
 
-    private fun qnLabel(qn: Int): String = when (qn) {
-        127 -> "8K"
-        126 -> "Dolby"
-        125 -> "HDR"
-        120 -> "4K"
-        116 -> "1080P60"
-        112 -> "1080P+"
-        80 -> "1080P"
-        74 -> "720P60"
-        64 -> "720P"
-        32 -> "480P"
-        16 -> "360P"
-        10000 -> "原画"
-        400 -> "蓝光"
-        250 -> "超清"
-        150 -> "高清"
-        else -> "qn=$qn"
-    }
+    private fun qnLabel(qn: Int): String =
+        when (qn) {
+            127 -> "8K"
+            126 -> "Dolby"
+            125 -> "HDR"
+            120 -> "4K"
+            116 -> "1080P60"
+            112 -> "1080P+"
+            80 -> "1080P"
+            74 -> "720P60"
+            64 -> "720P"
+            32 -> "480P"
+            16 -> "360P"
+            10000 -> "原画"
+            400 -> "蓝光"
+            250 -> "超清"
+            150 -> "高清"
+            else -> "qn=$qn"
+        }
 }
 
 /** 统一播放状态快照。未知时长和位置均使用非负值，未知时长为 0。 */
@@ -97,11 +99,18 @@ data class PlaybackSnapshot(
 /** 播放器平台事件的稳定表示。 */
 sealed interface PlaybackEvent {
     data object Playing : PlaybackEvent
+
     data object Paused : PlaybackEvent
+
     data object Stopped : PlaybackEvent
+
     data object Ended : PlaybackEvent
+
     data class Buffering(val isBuffering: Boolean, val percent: Float? = null) : PlaybackEvent
-    data class Failed(val code: String, val message: String, val cause: Throwable? = null) : PlaybackEvent
+
+    data class Failed(val code: String, val message: String, val cause: Throwable? = null) :
+        PlaybackEvent
+
     data class VideoSizeChanged(val width: Int, val height: Int) : PlaybackEvent
 }
 

@@ -27,16 +27,19 @@ class LiveCdnCoordinator(
         val measuredUrls = measured.mapTo(mutableSetOf()) { it.candidate.url }
         val successful = measured.filter { it.result?.success == true }.sortedWith(PROBE_ORDER)
         val failed = measured.filter { it.result?.success != true }.sortedWith(PROBE_ORDER)
-        val ranked = if (official.isNotEmpty()) {
-            successful.filterNot { it.candidate.pcdn } +
-                official.filterNot { it.url in measuredUrls }.map(::RankedLiveSource) +
-                successful.filter { it.candidate.pcdn } +
-                pcdn.filterNot { it.url in measuredUrls }.map(::RankedLiveSource) +
-                failed.filterNot { it.candidate.pcdn } +
-                failed.filter { it.candidate.pcdn }
-        } else {
-            successful + failed + pcdn.filterNot { it.url in measuredUrls }.map(::RankedLiveSource)
-        }
+        val ranked =
+            if (official.isNotEmpty()) {
+                successful.filterNot { it.candidate.pcdn } +
+                    official.filterNot { it.url in measuredUrls }.map(::RankedLiveSource) +
+                    successful.filter { it.candidate.pcdn } +
+                    pcdn.filterNot { it.url in measuredUrls }.map(::RankedLiveSource) +
+                    failed.filterNot { it.candidate.pcdn } +
+                    failed.filter { it.candidate.pcdn }
+            } else {
+                successful +
+                    failed +
+                    pcdn.filterNot { it.url in measuredUrls }.map(::RankedLiveSource)
+            }
         logRanking("initial", ranked)
         return ranked.distinctBy { it.candidate.url }
     }
@@ -48,20 +51,24 @@ class LiveCdnCoordinator(
         val ordered = prefer(candidates).filterNot { it.url in excludedUrls }
         if (ordered.isEmpty()) return emptyList()
         val official = ordered.filterNot { it.pcdn }
-        val measured = probeInParallel((official.ifEmpty { ordered.filter { it.pcdn } }).take(MAX_PARALLEL_PROBES))
-            .sortedWith(PROBE_ORDER)
+        val measured =
+            probeInParallel(
+                    (official.ifEmpty { ordered.filter { it.pcdn } }).take(MAX_PARALLEL_PROBES),
+                )
+                .sortedWith(PROBE_ORDER)
         logRanking("backup-refresh", measured)
         return measured
     }
 
-    fun prefer(candidates: List<LiveStreamCandidate>): List<LiveStreamCandidate> = candidates
-        .distinctBy { it.url }
-        .sortedWith(
-            compareBy<LiveStreamCandidate> { it.pcdn }
-                .thenBy { formatRank(it.format) }
-                .thenBy { codecRank(it.codecid) }
-                .thenBy { it.responseIndex },
-        )
+    fun prefer(candidates: List<LiveStreamCandidate>): List<LiveStreamCandidate> =
+        candidates
+            .distinctBy { it.url }
+            .sortedWith(
+                compareBy<LiveStreamCandidate> { it.pcdn }
+                    .thenBy { formatRank(it.format) }
+                    .thenBy { codecRank(it.codecid) }
+                    .thenBy { it.responseIndex },
+            )
 
     fun nextSameQuality(
         ordered: List<RankedLiveSource>,
@@ -71,17 +78,29 @@ class LiveCdnCoordinator(
         it.candidate.quality == quality && it.candidate.url !in attemptedUrls
     }
 
-    private suspend fun probeInParallel(candidates: List<LiveStreamCandidate>): List<RankedLiveSource> =
-        coroutineScope {
-            candidates.map { candidate ->
+    private suspend fun probeInParallel(
+        candidates: List<LiveStreamCandidate>,
+    ): List<RankedLiveSource> = coroutineScope {
+        candidates
+            .map { candidate ->
                 async(Dispatchers.IO) {
-                    val result = runCatching { probe.probe(candidate.url) }.getOrElse { error ->
-                        LiveProbeResult(false, Long.MAX_VALUE, 0L, 0, error.javaClass.simpleName)
+                    val result = runCatching {
+                        probe.probe(candidate.url)
                     }
+                        .getOrElse { error ->
+                            LiveProbeResult(
+                                false,
+                                Long.MAX_VALUE,
+                                0L,
+                                0,
+                                error.javaClass.simpleName,
+                            )
+                        }
                     RankedLiveSource(candidate, result)
                 }
-            }.awaitAll()
-        }
+            }
+            .awaitAll()
+    }
 
     private fun logRanking(reason: String, routes: List<RankedLiveSource>) {
         LogHub.i(
@@ -98,22 +117,30 @@ class LiveCdnCoordinator(
     private companion object {
         const val TAG = "LiveCdn"
         const val MAX_PARALLEL_PROBES = 3
-        fun formatRank(format: String): Int = when (format.lowercase()) {
-            "fmp4", "mp4", "m4s" -> 0
-            "flv" -> 1
-            else -> 2
-        }
-        fun codecRank(codecid: Int): Int = when (codecid) {
-            12 -> 0
-            7 -> 1
-            13 -> 2
-            else -> 3
-        }
-        val PROBE_ORDER = compareBy<RankedLiveSource> { it.result?.success != true }
-            .thenBy { formatRank(it.candidate.format) }
-            .thenBy { codecRank(it.candidate.codecid) }
-            .thenBy { it.result?.firstByteMs ?: Long.MAX_VALUE }
-            .thenByDescending { it.result?.throughputBytesPerSecond ?: 0L }
-            .thenBy { it.candidate.responseIndex }
+
+        fun formatRank(format: String): Int =
+            when (format.lowercase()) {
+                "fmp4",
+                "mp4",
+                "m4s" -> 0
+                "flv" -> 1
+                else -> 2
+            }
+
+        fun codecRank(codecid: Int): Int =
+            when (codecid) {
+                12 -> 0
+                7 -> 1
+                13 -> 2
+                else -> 3
+            }
+
+        val PROBE_ORDER =
+            compareBy<RankedLiveSource> { it.result?.success != true }
+                .thenBy { formatRank(it.candidate.format) }
+                .thenBy { codecRank(it.candidate.codecid) }
+                .thenBy { it.result?.firstByteMs ?: Long.MAX_VALUE }
+                .thenByDescending { it.result?.throughputBytesPerSecond ?: 0L }
+                .thenBy { it.candidate.responseIndex }
     }
 }

@@ -19,7 +19,8 @@ class DanmakuPreferences(context: Context) {
     fun load(): DanmakuSettings {
         val level = runCatching {
             AiShieldLevel.valueOf(prefs.getString(KEY_AI_SHIELD, AiShieldLevel.OFF.name)!!)
-        }.getOrDefault(AiShieldLevel.OFF)
+        }
+            .getOrDefault(AiShieldLevel.OFF)
         return DanmakuSettings(
             enabled = prefs.getBoolean(KEY_ENABLED, true),
             aiShield = level,
@@ -33,7 +34,8 @@ class DanmakuPreferences(context: Context) {
 
     /** 保存设置。 */
     fun save(settings: DanmakuSettings) {
-        prefs.edit()
+        prefs
+            .edit()
             .putBoolean(KEY_ENABLED, settings.enabled)
             .putString(KEY_AI_SHIELD, settings.aiShield.name)
             .putFloat(KEY_OPACITY, settings.opacity)

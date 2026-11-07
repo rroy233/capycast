@@ -1,7 +1,6 @@
 package com.roy233.tvcast.data.bili
 
 import com.roy233.tvcast.feature.playback.domain.VodRecoveryController as DomainVodRecoveryController
-
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -61,7 +60,10 @@ class DomainVodRecoveryControllerTest {
     fun `persistent buffering and open timeout are each emitted once`() {
         val buffering = stableController()
         buffering.onBufferingChanged(buffering = true, nowMs = 3_000L)
-        assertEquals(DomainVodRecoveryController.Failure.PERSISTENT_BUFFERING, buffering.onTick(8_000L))
+        assertEquals(
+            DomainVodRecoveryController.Failure.PERSISTENT_BUFFERING,
+            buffering.onTick(8_000L),
+        )
         assertNull(buffering.onTick(9_000L))
 
         val opening = DomainVodRecoveryController()
@@ -91,10 +93,12 @@ class DomainVodRecoveryControllerTest {
         assertEquals(DomainVodRecoveryController.Phase.SWITCHING, update.phase)
     }
 
-    private fun stableController(): DomainVodRecoveryController = DomainVodRecoveryController().also { controller ->
-        controller.onOpening(positionMs = 0L, nowMs = 0L)
-        controller.onPlaying(positionMs = 0L, nowMs = 100L)
-        val progress = controller.onProgress(positionMs = 1_500L, activelyPlaying = true, nowMs = 2_200L)
-        assertTrue(progress.becameStable)
-    }
+    private fun stableController(): DomainVodRecoveryController =
+        DomainVodRecoveryController().also { controller ->
+            controller.onOpening(positionMs = 0L, nowMs = 0L)
+            controller.onPlaying(positionMs = 0L, nowMs = 100L)
+            val progress =
+                controller.onProgress(positionMs = 1_500L, activelyPlaying = true, nowMs = 2_200L)
+            assertTrue(progress.becameStable)
+        }
 }

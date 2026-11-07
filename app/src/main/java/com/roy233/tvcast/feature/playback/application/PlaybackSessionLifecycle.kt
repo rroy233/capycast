@@ -8,28 +8,51 @@ import com.roy233.tvcast.feature.cast.domain.CastContent
 /** 错误、重试与停止流程需要的会话和展示命令。 */
 interface PlaybackSessionHost {
     fun modeForLog(): String
+
     fun hasCurrentRequest(): Boolean
+
     fun isCastActive(): Boolean
+
     fun lastCastContent(): CastContent?
+
     fun lastCastTitle(): String
+
     fun resolveCast(content: CastContent, title: String)
+
     fun cancelResolveJob()
+
     fun finishSessionHistory(reason: String)
+
     fun clearLiveSession(reason: String)
+
     fun resetPendingPlayback()
+
     fun clearPendingPause()
+
     fun isEngineInitialized(): Boolean
+
     fun stopPlaybackForSession(reason: String)
+
     fun clearSessionIdentity(clearCastMetadata: Boolean, clearResolving: Boolean)
+
     fun markCastFailed(code: String)
+
     fun playerStateSnapshot(): String
+
     fun runOnMain(action: () -> Unit)
+
     fun showRetryState(hasCurrent: Boolean)
+
     fun showDismissedState()
+
     fun showStoppedState()
+
     fun showErrorState(title: String, message: String, code: String, canRetry: Boolean)
+
     fun flushHistoryPosition()
+
     fun closeHistory()
+
     fun showDlnaStoppedState()
 }
 
@@ -37,7 +60,9 @@ interface PlaybackSessionHost {
 class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
     private var retryAction: (() -> Unit)? = null
 
-    fun setRetry(action: (() -> Unit)?) { retryAction = action }
+    fun setRetry(action: (() -> Unit)?) {
+        retryAction = action
+    }
 
     fun retry() {
         val action = retryAction
@@ -57,7 +82,10 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
     }
 
     fun dismissError() {
-        LogHub.i(TAG, "dismiss error; current=${host.hasCurrentRequest()} castActive=${host.isCastActive()}")
+        LogHub.i(
+            TAG,
+            "dismiss error; current=${host.hasCurrentRequest()} castActive=${host.isCastActive()}",
+        )
         host.finishSessionHistory("dismiss-error")
         host.clearLiveSession("dismiss-error")
         if (host.isEngineInitialized()) host.stopPlaybackForSession("dismiss-error")
@@ -108,18 +136,28 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
         retryAction = null
     }
 
-    fun showError(title: String, message: String, code: String, canRetry: Boolean, keepVideo: Boolean) {
+    fun showError(
+        title: String,
+        message: String,
+        code: String,
+        canRetry: Boolean,
+        keepVideo: Boolean,
+    ) {
         host.finishSessionHistory("error:$code")
-        val snapshot = if (host.isEngineInitialized()) {
-            runCatching { host.playerStateSnapshot() }.getOrDefault("(unavailable)")
-        } else "(player engine unavailable)"
+        val snapshot =
+            if (host.isEngineInitialized()) {
+                runCatching { host.playerStateSnapshot() }.getOrDefault("(unavailable)")
+            } else "(player engine unavailable)"
         LogHub.e(
             TAG,
             "showError code=$code canRetry=$canRetry keepVideo=$keepVideo " +
                 "title=$title message=${LogRedaction.text(message)} snapshot=$snapshot",
         )
         PlaybackDiagnostics.attribute("ui.errorCode", code)
-        PlaybackDiagnostics.event("UiError", "code=$code canRetry=$canRetry keepVideo=$keepVideo title=$title")
+        PlaybackDiagnostics.event(
+            "UiError",
+            "code=$code canRetry=$canRetry keepVideo=$keepVideo title=$title",
+        )
         if (!keepVideo) {
             host.clearLiveSession("show-error:$code")
             if (host.isEngineInitialized()) host.stopPlaybackForSession("show-error:$code")
@@ -129,5 +167,7 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
         host.runOnMain { host.showErrorState(title, message, code, canRetry) }
     }
 
-    private companion object { const val TAG = "SimpleBili" }
+    private companion object {
+        const val TAG = "SimpleBili"
+    }
 }

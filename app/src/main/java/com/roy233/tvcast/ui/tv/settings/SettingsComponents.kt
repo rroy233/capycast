@@ -46,19 +46,20 @@ internal fun SettingsSection(title: String, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         BasicText(
             text = title,
-            style = TvType.caption.copy(
-                color = TvColors.textSecondary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-            ),
+            style =
+                TvType.caption.copy(
+                    color = TvColors.textSecondary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
             modifier = Modifier.padding(start = 4.dp, bottom = 9.dp),
         )
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(Color.White.copy(alpha = 0.045f))
-                .border(1.dp, Color.White.copy(alpha = 0.09f), shape),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .clip(shape)
+                    .background(Color.White.copy(alpha = 0.045f))
+                    .border(1.dp, Color.White.copy(alpha = 0.09f), shape),
         ) {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
                 content()
@@ -72,23 +73,27 @@ internal fun SettingsSection(title: String, content: @Composable () -> Unit) {
 internal fun SettingsInfoRow(title: String, value: String) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (focused) 1.012f else 1f,
-        animationSpec = spring(dampingRatio = 0.84f, stiffness = 420f),
-        label = "settings-info-focus",
-    )
+    val scale by
+        animateFloatAsState(
+            targetValue = if (focused) 1.012f else 1f,
+            animationSpec = spring(dampingRatio = 0.84f, stiffness = 420f),
+            label = "settings-info-focus",
+        )
     val focusShape = RoundedCornerShape(14.dp)
     if (value.length > 34) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(78.dp)
-                .graphicsLayer { scaleX = scale; scaleY = scale }
-                .clip(focusShape)
-                .background(if (focused) Color.White.copy(alpha = 0.14f) else Color.Transparent)
-                .semantics(mergeDescendants = true) { }
-                .focusable(interactionSource = interaction)
-                .padding(horizontal = 20.dp, vertical = 10.dp),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .height(78.dp)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                    .clip(focusShape)
+                    .background(if (focused) Color.White.copy(alpha = 0.14f) else Color.Transparent)
+                    .semantics(mergeDescendants = true) {}
+                    .focusable(interactionSource = interaction)
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             BasicText(
@@ -106,15 +111,18 @@ internal fun SettingsInfoRow(title: String, value: String) {
         return
     }
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(62.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(focusShape)
-            .background(if (focused) Color.White.copy(alpha = 0.14f) else Color.Transparent)
-            .semantics(mergeDescendants = true) { }
-            .focusable(interactionSource = interaction)
-            .padding(horizontal = 20.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .height(62.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(focusShape)
+                .background(if (focused) Color.White.copy(alpha = 0.14f) else Color.Transparent)
+                .semantics(mergeDescendants = true) {}
+                .focusable(interactionSource = interaction)
+                .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
@@ -144,33 +152,38 @@ internal fun SettingsToggleRow(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val thumbOffset by animateFloatAsState(
-        targetValue = if (checked) 30f else 2f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
-        label = "settings-toggle-thumb",
-    )
-    val scale by animateFloatAsState(
-        targetValue = if (focused) 1.012f else 1f,
-        animationSpec = spring(dampingRatio = 0.84f, stiffness = 420f),
-        label = "settings-toggle-focus",
-    )
+    val thumbOffset by
+        animateFloatAsState(
+            targetValue = if (checked) 30f else 2f,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
+            label = "settings-toggle-thumb",
+        )
+    val scale by
+        animateFloatAsState(
+            targetValue = if (focused) 1.012f else 1f,
+            animationSpec = spring(dampingRatio = 0.84f, stiffness = 420f),
+            label = "settings-toggle-focus",
+        )
     val shape = RoundedCornerShape(14.dp)
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(shape)
-            .background(if (focused) Color.White.copy(alpha = 0.14f) else Color.Transparent)
-            .focusable(interactionSource = interaction)
-            .toggleable(
-                value = checked,
-                interactionSource = interaction,
-                indication = null,
-                role = Role.Switch,
-                onValueChange = onCheckedChange,
-            )
-            .padding(horizontal = 20.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .height(64.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(shape)
+                .background(if (focused) Color.White.copy(alpha = 0.14f) else Color.Transparent)
+                .focusable(interactionSource = interaction)
+                .toggleable(
+                    value = checked,
+                    interactionSource = interaction,
+                    indication = null,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange,
+                )
+                .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BasicText(
@@ -181,28 +194,29 @@ internal fun SettingsToggleRow(
             overflow = TextOverflow.Ellipsis,
         )
         Box(
-            modifier = Modifier
-                .width(62.dp)
-                .height(34.dp)
-                .clip(CircleShape)
-                .background(if (checked) TvColors.accent else Color.White.copy(alpha = 0.20f)),
+            modifier =
+                Modifier.width(62.dp)
+                    .height(34.dp)
+                    .clip(CircleShape)
+                    .background(if (checked) TvColors.accent else Color.White.copy(alpha = 0.20f)),
         ) {
             Box(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .offset(x = thumbOffset.dp)
-                    .size(28.dp)
-                    .background(Color.White, CircleShape),
+                modifier =
+                    Modifier.align(Alignment.CenterStart)
+                        .offset(x = thumbOffset.dp)
+                        .size(28.dp)
+                        .background(Color.White, CircleShape),
             )
         }
         Spacer(Modifier.width(12.dp))
         BasicText(
             text = if (checked) "开启" else "关闭",
-            style = TvType.caption.copy(
-                color = if (checked) TvColors.textPrimary else TvColors.textSecondary,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.Medium,
-            ),
+            style =
+                TvType.caption.copy(
+                    color = if (checked) TvColors.textPrimary else TvColors.textSecondary,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
             modifier = Modifier.width(42.dp),
             maxLines = 1,
         )
@@ -213,8 +227,7 @@ internal fun SettingsToggleRow(
 @Composable
 internal fun SettingsRowDivider() {
     Spacer(
-        Modifier
-            .fillMaxWidth()
+        Modifier.fillMaxWidth()
             .padding(start = 20.dp, end = 20.dp)
             .height(1.dp)
             .background(Color.White.copy(alpha = 0.08f)),

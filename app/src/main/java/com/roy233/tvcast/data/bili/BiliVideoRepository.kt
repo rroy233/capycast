@@ -5,21 +5,24 @@ import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.data.auth.BiliSessionReader
+import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.util.concurrent.TimeUnit
 
 /** 普通视频元数据、playurl 与轨道解析的会话限定仓库。 */
 class BiliVideoRepository(
     private val sessionReader: BiliSessionReader,
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build(),
+    private val client: OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build(),
 ) {
     private val http = BiliHttpClient(client, BiliApi.UA)
-    private fun get(url: String, purpose: String): String = http.get(url, purpose, sessionReader.cookie())
+
+    private fun get(url: String, purpose: String): String =
+        http.get(url, purpose, sessionReader.cookie())
 
     /**
      * 请求统一 API 并校验业务状态码。
@@ -82,8 +85,7 @@ class BiliVideoRepository(
             title = view.get("title")?.asString ?: title
             bvid = view.get("bvid")?.asString ?: bvid
             duration = view.get("duration")?.asLong ?: duration
-            cover = (view.get("pic")?.asString ?: cover)
-                .replace("http://", "https://")
+            cover = (view.get("pic")?.asString ?: cover).replace("http://", "https://")
             if (realCid <= 0) realCid = view.get("cid")?.asLong ?: 0L
             val pages = view.getAsJsonArray("pages")
             if (pages != null) {
@@ -111,22 +113,22 @@ class BiliVideoRepository(
 
     /** 在不携带账号 Cookie 的情况下查询视频封面。 */
     private fun publicCover(aid: Long): String {
-        val request = Request.Builder()
-            .url("https://api.bilibili.com/x/web-interface/view?aid=$aid")
-            .header("User-Agent", BiliApi.UA)
-            .header("Referer", "https://www.bilibili.com/")
-            .header("Accept", "application/json, text/plain, */*")
-            .build()
+        val request =
+            Request.Builder()
+                .url("https://api.bilibili.com/x/web-interface/view?aid=$aid")
+                .header("User-Agent", BiliApi.UA)
+                .header("Referer", "https://www.bilibili.com/")
+                .header("Accept", "application/json, text/plain, */*")
+                .build()
         client.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) {
                 LogHub.d(TAG, "publicCover failed aid=$aid status=${resp.code}")
                 return ""
             }
             val text = resp.body?.string() ?: return ""
-            val data = JsonParser.parseString(text).asJsonObject
-                .getAsJsonObject("data") ?: return ""
-            return data.get("pic")?.asString.orEmpty()
-                .replace("http://", "https://")
+            val data =
+                JsonParser.parseString(text).asJsonObject.getAsJsonObject("data") ?: return ""
+            return data.get("pic")?.asString.orEmpty().replace("http://", "https://")
         }
     }
 
@@ -147,15 +149,16 @@ class BiliVideoRepository(
     ): BiliApi.PlayInfo {
         val dash = play.getAsJsonObject("dash")
         if (dash != null) {
-            val videos = dash.arrayOrNull("video")?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
-                ?: emptyList()
-            val baseAudios = dash.arrayOrNull("audio")
-                ?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
-                ?: emptyList()
-            val dolbyAudios = dash.objectOrNull("dolby")
-                ?.arrayOrNull("audio")
-                ?.map { CdnCandidateSelector.parseTrack(it.asJsonObject, isDolbyAudio = true) }
-                ?: emptyList()
+            val videos =
+                dash.arrayOrNull("video")?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
+                    ?: emptyList()
+            val baseAudios =
+                dash.arrayOrNull("audio")?.map { CdnCandidateSelector.parseTrack(it.asJsonObject) }
+                    ?: emptyList()
+            val dolbyAudios =
+                dash.objectOrNull("dolby")?.arrayOrNull("audio")?.map {
+                    CdnCandidateSelector.parseTrack(it.asJsonObject, isDolbyAudio = true)
+                } ?: emptyList()
             val audios = (baseAudios + dolbyAudios).distinctBy { it.url }
             logPlayResponse(play, dash, videos, audios)
             if (videos.isNotEmpty()) {
@@ -192,9 +195,10 @@ class BiliVideoRepository(
         if (durl != null && durl.size() > 0) {
             val first = durl[0].asJsonObject
             val url = first.get("url").asString
-            val ordered = CdnCandidateSelector.order(
-                listOf(url) + CdnCandidateSelector.backupUrls(first)
-            )
+            val ordered =
+                CdnCandidateSelector.order(
+                    listOf(url) + CdnCandidateSelector.backupUrls(first),
+                )
             val selected = ordered.firstOrNull() ?: url
             val lengthMs = first.get("length")?.asLong ?: 0L
             LogHub.i(
@@ -203,10 +207,17 @@ class BiliVideoRepository(
                     "candidates=${ordered.size} host=${LogRedaction.host(selected)} " +
                     "pcdn=${CdnCandidateSelector.isPcdn(selected)}",
             )
-            val track = BiliApi.Track(
-                0, 0, 0, 0, 0, selected, ordered.drop(1),
-                pcdn = CdnCandidateSelector.isPcdn(selected),
-            )
+            val track =
+                BiliApi.Track(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    selected,
+                    ordered.drop(1),
+                    pcdn = CdnCandidateSelector.isPcdn(selected),
+                )
             return BiliApi.PlayInfo(
                 title = title,
                 bvid = bvid,
@@ -250,19 +261,23 @@ class BiliVideoRepository(
                 "isPreview=${play.get("is_preview")?.asBoolean ?: false}",
         )
         val formats = play.arrayOrNull("support_formats") ?: return
-        val summary = formats.take(12).joinToString(" ") { element ->
-            val format = runCatching { element.asJsonObject }.getOrNull()
-                ?: return@joinToString "?"
-            val codecs = runCatching {
-                format.arrayOrNull("codecs")?.joinToString(",") { codec -> codec.asString }
-            }.getOrNull()
-            val label = BiliApi.qualityLabelFromFormat(format)
-            "qn=${format.get("quality")?.asInt ?: -1}" +
-                if (label.isBlank()) "" else "[$label]" +
-                if (codecs.isNullOrBlank()) "" else "($codecs)"
-        }
+        val summary =
+            formats.take(12).joinToString(" ") { element ->
+                val format =
+                    runCatching { element.asJsonObject }.getOrNull() ?: return@joinToString "?"
+                val codecs = runCatching {
+                    format.arrayOrNull("codecs")?.joinToString(",") { codec -> codec.asString }
+                }
+                    .getOrNull()
+                val label = BiliApi.qualityLabelFromFormat(format)
+                "qn=${format.get("quality")?.asInt ?: -1}" +
+                    if (label.isBlank()) ""
+                    else "[$label]" + if (codecs.isNullOrBlank()) "" else "($codecs)"
+            }
         LogHub.i(TAG, "playurl supportFormats=$summary")
     }
 
-    private companion object { const val TAG = "BiliApi" }
+    private companion object {
+        const val TAG = "BiliApi"
+    }
 }

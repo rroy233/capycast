@@ -9,7 +9,8 @@ import com.roy233.tvcast.data.bili.mapper.BiliPlaybackMapper
 class BiliPlaybackResolver(
     sessionReader: BiliSessionReader,
     private val videoRepository: BiliVideoRepository = BiliVideoRepository(sessionReader),
-    private val pgcResolver: PgcPlaybackResolver = PgcPlaybackResolver(cookieProvider = sessionReader::cookie),
+    private val pgcResolver: PgcPlaybackResolver =
+        PgcPlaybackResolver(cookieProvider = sessionReader::cookie),
 ) : PlaybackResolver {
     override suspend fun resolveVod(
         aid: Long,
@@ -19,11 +20,12 @@ class BiliPlaybackResolver(
         epId: Long,
         seasonId: Long,
     ): PlaybackRequest {
-        val response = if (epId > 0L || seasonId > 0L) {
-            pgcResolver.resolve(epId, seasonId, cid, aid, bvid, title)
-        } else {
-            videoRepository.resolveByAidCid(aid, cid, title, bvid)
-        }
+        val response =
+            if (epId > 0L || seasonId > 0L) {
+                pgcResolver.resolve(epId, seasonId, cid, aid, bvid, title)
+            } else {
+                videoRepository.resolveByAidCid(aid, cid, title, bvid)
+            }
         return BiliPlaybackMapper.map(response)
     }
 }

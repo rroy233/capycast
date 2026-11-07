@@ -1,12 +1,12 @@
 package com.roy233.tvcast.data.bili.danmaku
 
+import com.roy233.tvcast.data.auth.BiliSessionReader
 import com.roy233.tvcast.data.bili.BiliApi
 import com.roy233.tvcast.data.bili.BiliHttpClient
-import com.roy233.tvcast.data.auth.BiliSessionReader
 import com.roy233.tvcast.feature.danmaku.domain.DmSegment
 import com.roy233.tvcast.feature.danmaku.domain.DmViewInfo
-import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
 
 /**
  * B 站弹幕接口。
@@ -15,13 +15,15 @@ import java.util.concurrent.TimeUnit
  */
 class DanmakuApi(
     private val sessionReader: BiliSessionReader,
-    client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build(),
+    client: OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build(),
 ) {
     private val http = BiliHttpClient(client, BiliApi.UA)
+
     private fun getBytes(url: String, purpose: String): ByteArray =
         http.getBytes(url, purpose, sessionReader.cookie())
 

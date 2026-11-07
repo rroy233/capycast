@@ -6,7 +6,13 @@ import kotlinx.coroutines.CoroutineScope
 /** 直播弹幕长连接端口。 */
 interface LiveDanmakuClient {
     /** 连接生命周期状态，供宿主记录诊断信息。 */
-    enum class State { CONNECTING, CONNECTED, AUTHENTICATED, DISCONNECTED, FAILED }
+    enum class State {
+        CONNECTING,
+        CONNECTED,
+        AUTHENTICATED,
+        DISCONNECTED,
+        FAILED,
+    }
 
     /** 开始连接；已连接时调用会先断开旧连接。 */
     fun start()

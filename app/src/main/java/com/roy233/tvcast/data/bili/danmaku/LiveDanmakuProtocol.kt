@@ -3,17 +3,16 @@ package com.roy233.tvcast.data.bili.danmaku
 import com.google.gson.JsonParser
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
-import org.brotli.dec.BrotliInputStream
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.zip.Inflater
+import org.brotli.dec.BrotliInputStream
 
 /**
  * B 站直播弹幕长连接二进制协议编解码。
  *
- * 包结构对齐 bilibili-live-ws：4 字节大端总长 + 2 字节头长 + 2 字节协议版本 +
- * 4 字节操作码 + 4 字节序号 + 消息体。protover=2 时消息体为 zlib 压缩的多个子包，
- * 解压后按同一格式递归解析。
+ * 包结构对齐 bilibili-live-ws：4 字节大端总长 + 2 字节头长 + 2 字节协议版本 + 4 字节操作码 + 4 字节序号 + 消息体。protover=2 时消息体为
+ * zlib 压缩的多个子包， 解压后按同一格式递归解析。
  */
 object LiveDanmakuProtocol {
 
@@ -106,7 +105,8 @@ object LiveDanmakuProtocol {
             val body = bytes.copyOfRange(offset + HEADER_SIZE, offset + size)
             offset += size
             when (protocol) {
-                PROTOCOL_PLAIN, PROTOCOL_POPULARITY -> result += Packet(op, protocol, body)
+                PROTOCOL_PLAIN,
+                PROTOCOL_POPULARITY -> result += Packet(op, protocol, body)
                 PROTOCOL_ZLIB -> result += decode(inflate(body), depth + 1)
                 PROTOCOL_BROTLI -> result += decode(brotliDecompress(body), depth + 1)
                 else -> LogHub.w(TAG, "unknown protocol=$protocol op=$op")
@@ -118,18 +118,18 @@ object LiveDanmakuProtocol {
     /**
      * 将一条 `DANMU_MSG` 业务包解析为弹幕条目。
      *
-     * 字段索引对齐网页端协议：`info[1]` 为文本，`info[0]` 为属性数组，
-     * 依次含 mode/fontSize/color/userHash/dmid。无进度时间轴，[DanmakuItem.progressMs]
-     * 由调用方按实时时钟填充。
+     * 字段索引对齐网页端协议：`info[1]` 为文本，`info[0]` 为属性数组， 依次含
+     * mode/fontSize/color/userHash/dmid。无进度时间轴，[DanmakuItem.progressMs] 由调用方按实时时钟填充。
      *
      * @return 非弹幕消息或解析失败时返回 null。
      */
     fun parseDanmaku(body: ByteArray): DanmakuItem? {
-        val root = try {
-            JsonParser.parseString(String(body, Charsets.UTF_8)).asJsonObject
-        } catch (_: Exception) {
-            return null
-        }
+        val root =
+            try {
+                JsonParser.parseString(String(body, Charsets.UTF_8)).asJsonObject
+            } catch (_: Exception) {
+                return null
+            }
         if (root.get("cmd")?.asString != "DANMU_MSG") return null
         val info = root.getAsJsonArray("info") ?: return null
         if (info.size() < 2) return null

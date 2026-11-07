@@ -5,13 +5,13 @@ import android.media.AudioFormat
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.View
 import android.view.Surface
+import android.view.View
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
-import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.core.playback.PlaybackEvent
+import com.roy233.tvcast.core.playback.PlaybackRequest
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -107,17 +107,19 @@ class VlcPlayerEngine(
         videoLayout.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             openWhenSurfaceReady("layout-change")
         }
-        videoLayout.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(view: View) {
-                LogHub.i(TAG, "video layout attached size=${reporter.viewSize()}")
-                openWhenSurfaceReady("view-attached")
-            }
+        videoLayout.addOnAttachStateChangeListener(
+            object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(view: View) {
+                    LogHub.i(TAG, "video layout attached size=${reporter.viewSize()}")
+                    openWhenSurfaceReady("view-attached")
+                }
 
-            override fun onViewDetachedFromWindow(view: View) {
-                LogHub.w(TAG, "video layout detached; future opens wait for a new Surface")
-                state.viewsAttached = false
-            }
-        })
+                override fun onViewDetachedFromWindow(view: View) {
+                    LogHub.w(TAG, "video layout detached; future opens wait for a new Surface")
+                    state.viewsAttached = false
+                }
+            },
+        )
         videoLayout.post { openWhenSurfaceReady("initial-layout") }
     }
 
@@ -170,9 +172,7 @@ class VlcPlayerEngine(
         )
     }
 
-    /**
-     * 在视频布局拥有有效尺寸后打开媒体。Surface 尚未就绪时保留请求并在布局回调中重试。
-     */
+    /** 在视频布局拥有有效尺寸后打开媒体。Surface 尚未就绪时保留请求并在布局回调中重试。 */
     private fun openOrWaitForSurface(request: OpenRequest, reason: String): Boolean {
         if (!ensureViewsAttached(reason)) {
             pendingOpenRequest = request
@@ -229,11 +229,12 @@ class VlcPlayerEngine(
             monitor.start()
             true
         } catch (t: Throwable) {
-            val reason = if (request.info.isLive) {
-                t.javaClass.simpleName
-            } else {
-                LogRedaction.reason(t)
-            }
+            val reason =
+                if (request.info.isLive) {
+                    t.javaClass.simpleName
+                } else {
+                    LogRedaction.reason(t)
+                }
             LogHub.e(
                 TAG,
                 "open failed: $reason",
@@ -262,13 +263,14 @@ class VlcPlayerEngine(
     private fun createPlayer(reason: String) {
         internalPlayer = MediaPlayer(libVlc)
         reporter = VlcPlaybackReporter(internalPlayer, state, videoLayout)
-        monitor = VlcPlaybackMonitor(
-            internalPlayer,
-            state,
-            reporter,
-            handler,
-            ::requestVoutRecovery,
-        )
+        monitor =
+            VlcPlaybackMonitor(
+                internalPlayer,
+                state,
+                reporter,
+                handler,
+                ::requestVoutRecovery,
+            )
         eventRecorder = VlcEventRecorder(internalPlayer, state, monitor, reporter)
         internalPlayer.setEventListener { event -> dispatchEvent(event) }
         VlcRuntimeLogger.logStartup(
@@ -280,31 +282,49 @@ class VlcPlayerEngine(
         )
         state.viewsAttached = false
         LogHub.i(TAG, "player instance created reason=$reason view=${reporter.viewSize()}")
-        PlaybackDiagnostics.event("PlayerInstance", "created reason=$reason view=${reporter.viewSize()}")
+        PlaybackDiagnostics.event(
+            "PlayerInstance",
+            "created reason=$reason view=${reporter.viewSize()}",
+        )
         ensureViewsAttached("player-created:$reason")
     }
 
-    /**
-     * 仅在用户选中 dash.dolby.audio 且 libVLC 确认当前输出可直通时启用数字音频。
-     * 失败时保留普通解码路径，避免电视内置扬声器无声。
-     */
+    /** 仅在用户选中 dash.dolby.audio 且 libVLC 确认当前输出可直通时启用数字音频。 失败时保留普通解码路径，避免电视内置扬声器无声。 */
     private fun configureDolbyAudioPassthrough(info: PlaybackRequest) {
         val dolbyAudio = info.audio?.isDolbyAudio == true
         val available = dolbyAudio && runCatching { player.canDoPassthrough() }.getOrDefault(false)
-        val configurationApplied = runCatching { player.setAudioDigitalOutputEnabled(available) }.getOrElse { error ->
-            LogHub.e(TAG, "could not configure digital audio output: ${LogRedaction.reason(error)}", error, stack = true)
-            false
+        val configurationApplied = runCatching {
+            player.setAudioDigitalOutputEnabled(available)
         }
+            .getOrElse { error ->
+                LogHub.e(
+                    TAG,
+                    "could not configure digital audio output: ${LogRedaction.reason(error)}",
+                    error,
+                    stack = true,
+                )
+                false
+            }
         val passthroughEnabled = available && configurationApplied
         if (passthroughEnabled) {
-            runCatching { player.forceAudioDigitalEncodings(intArrayOf(AudioFormat.ENCODING_E_AC3)) }
+            runCatching {
+                player.forceAudioDigitalEncodings(intArrayOf(AudioFormat.ENCODING_E_AC3))
+            }
                 .onFailure { error ->
-                    LogHub.e(TAG, "could not force E-AC-3 passthrough: ${LogRedaction.reason(error)}", error, stack = true)
+                    LogHub.e(
+                        TAG,
+                        "could not force E-AC-3 passthrough: ${LogRedaction.reason(error)}",
+                        error,
+                        stack = true,
+                    )
                 }
         }
         PlaybackDiagnostics.attribute("audio.dolbyTrack", dolbyAudio.toString())
         PlaybackDiagnostics.attribute("audio.passthroughRequested", available.toString())
-        PlaybackDiagnostics.attribute("audio.passthroughConfigurationApplied", configurationApplied.toString())
+        PlaybackDiagnostics.attribute(
+            "audio.passthroughConfigurationApplied",
+            configurationApplied.toString(),
+        )
         PlaybackDiagnostics.attribute("audio.passthroughEnabled", passthroughEnabled.toString())
         LogHub.i(
             TAG,
@@ -317,12 +337,12 @@ class VlcPlayerEngine(
     /**
      * 仅在布局已附着且拥有可用尺寸时绑定 libVLC 视频视图。
      *
-     * VLCVideoLayout 在 Activity 的 onCreate 阶段通常为 0×0。等待布局就绪可避免
-     * 首次投屏把播放器绑定到尚未创建完成的 Android Surface。
+     * VLCVideoLayout 在 Activity 的 onCreate 阶段通常为 0×0。等待布局就绪可避免 首次投屏把播放器绑定到尚未创建完成的 Android Surface。
      */
     private fun ensureViewsAttached(reason: String): Boolean {
         if (state.viewsAttached) return true
-        val ready = videoLayout.isAttachedToWindow && videoLayout.width > 0 && videoLayout.height > 0
+        val ready =
+            videoLayout.isAttachedToWindow && videoLayout.width > 0 && videoLayout.height > 0
         if (!ready) {
             LogHub.d(
                 TAG,
@@ -351,15 +371,16 @@ class VlcPlayerEngine(
                 "attached reason=$reason view=${reporter.viewSize()}",
             )
             true
-        }.getOrElse {
-            LogHub.e(TAG, "attachViews failed reason=$reason", it, stack = true)
-            PlaybackDiagnostics.runtime("views.attached", "false")
-            PlaybackDiagnostics.event(
-                "Surface",
-                "attach failed reason=$reason detail=${LogRedaction.reason(it)}",
-            )
-            false
         }
+            .getOrElse {
+                LogHub.e(TAG, "attachViews failed reason=$reason", it, stack = true)
+                PlaybackDiagnostics.runtime("views.attached", "false")
+                PlaybackDiagnostics.event(
+                    "Surface",
+                    "attach failed reason=$reason detail=${LogRedaction.reason(it)}",
+                )
+                false
+            }
     }
 
     /** Surface 就绪回调：开始已延迟的播放，或记录等待超时。 */
@@ -382,7 +403,8 @@ class VlcPlayerEngine(
             PlaybackDiagnostics.fail(
                 code = "PLAYER_SURFACE_UNAVAILABLE",
                 message = "视频渲染 Surface 未就绪",
-                detail = "waited=${waited}ms view=${reporter.viewSize()} attached=${videoLayout.isAttachedToWindow}",
+                detail =
+                    "waited=${waited}ms view=${reporter.viewSize()} attached=${videoLayout.isAttachedToWindow}",
             )
             return
         }
@@ -393,8 +415,7 @@ class VlcPlayerEngine(
     /**
      * 在已开始播放、但没有有效视频输出时销毁并重建 MediaPlayer，再恢复媒体和位置。
      *
-     * 回调从监控器到达时不直接触碰播放器线程；统一切回主线程，防止旧实例的终止事件
-     * 与新实例媒体设置交错。
+     * 回调从监控器到达时不直接触碰播放器线程；统一切回主线程，防止旧实例的终止事件 与新实例媒体设置交错。
      */
     private fun requestVoutRecovery(reason: String) {
         if (released || recoveryQueued) return
@@ -415,12 +436,14 @@ class VlcPlayerEngine(
                 PlaybackDiagnostics.fail(
                     code = "VLC_VOUT_RECOVERY_EXHAUSTED",
                     message = "视频输出重建后仍未恢复",
-                    detail = "attempts=$voutRecoveryAttempts reason=$reason ${reporter.failureSnapshot()}",
+                    detail =
+                        "attempts=$voutRecoveryAttempts reason=$reason ${reporter.failureSnapshot()}",
                 )
                 return@post
             }
-            val position = runCatching { internalPlayer.time }.getOrDefault(-1L)
-                .takeIf { it >= 0L } ?: request.seekToMs
+            val position =
+                runCatching { internalPlayer.time }.getOrDefault(-1L).takeIf { it >= 0L }
+                    ?: request.seekToMs
             voutRecoveryAttempts += 1
             LogHub.w(
                 TAG,
@@ -447,19 +470,23 @@ class VlcPlayerEngine(
         state.currentMedia = null
         state.viewsAttached = false
         if (suppressEvents) oldPlayer.setEventListener(null)
-        runCatching { oldPlayer.stop() }.onFailure {
-            LogHub.e(TAG, "player stop failed reason=$reason", it, stack = true)
-        }
-        runCatching { oldPlayer.detachViews() }.onFailure {
-            LogHub.e(TAG, "detachViews failed reason=$reason", it, stack = true)
-        }
-        runCatching { oldPlayer.release() }.onFailure {
-            LogHub.e(TAG, "player release failed reason=$reason", it, stack = true)
-        }
-        oldMedia?.let { media ->
-            runCatching { media.release() }.onFailure {
-                LogHub.e(TAG, "media release failed reason=$reason", it, stack = true)
+        runCatching { oldPlayer.stop() }
+            .onFailure {
+                LogHub.e(TAG, "player stop failed reason=$reason", it, stack = true)
             }
+        runCatching { oldPlayer.detachViews() }
+            .onFailure {
+                LogHub.e(TAG, "detachViews failed reason=$reason", it, stack = true)
+            }
+        runCatching { oldPlayer.release() }
+            .onFailure {
+                LogHub.e(TAG, "player release failed reason=$reason", it, stack = true)
+            }
+        oldMedia?.let { media ->
+            runCatching { media.release() }
+                .onFailure {
+                    LogHub.e(TAG, "media release failed reason=$reason", it, stack = true)
+                }
         }
         LogHub.i(TAG, "player instance released reason=$reason")
         PlaybackDiagnostics.event("PlayerInstance", "released reason=$reason")
@@ -539,7 +566,9 @@ class VlcPlayerEngine(
             TAG,
             "control rate reason=$reason from=$before to=$target after=$after call=${result.isSuccess}",
         )
-        result.onFailure { LogHub.e(TAG, "set rate failed reason=$reason target=$target", it, stack = true) }
+        result.onFailure {
+            LogHub.e(TAG, "set rate failed reason=$reason target=$target", it, stack = true)
+        }
         PlaybackDiagnostics.event(
             "Control",
             "rate reason=$reason target=$target after=$after call=${result.isSuccess}",
@@ -647,9 +676,10 @@ class VlcPlayerEngine(
         PlaybackDiagnostics.event("Engine", "release")
         PlaybackDiagnostics.closeSession("engine-release")
         releasePlayerInstance("engine-release")
-        runCatching { libVlc.release() }.onFailure {
-            LogHub.e(TAG, "release libvlc failed", it)
-        }
+        runCatching { libVlc.release() }
+            .onFailure {
+                LogHub.e(TAG, "release libvlc failed", it)
+            }
         LogHub.i(TAG, "released nativeLogBytes=${PlaybackDiagnostics.vlcLogBytes()}")
     }
 
@@ -659,21 +689,24 @@ class VlcPlayerEngine(
             .onFailure {
                 LogHub.e(TAG, "record event failed type=${event.type}", it, stack = true)
             }
-        val mapped = when (event.type) {
-            MediaPlayer.Event.Playing -> PlaybackEvent.Playing
-            MediaPlayer.Event.Paused -> PlaybackEvent.Paused
-            MediaPlayer.Event.Stopped -> PlaybackEvent.Stopped
-            MediaPlayer.Event.EndReached -> PlaybackEvent.Ended
-            MediaPlayer.Event.Buffering -> PlaybackEvent.Buffering(
-                isBuffering = event.buffering < 100f,
-                percent = event.buffering,
-            )
-            MediaPlayer.Event.EncounteredError -> PlaybackEvent.Failed(
-                code = "PLAYBACK_FAILED",
-                message = stateSnapshot(),
-            )
-            else -> null
-        }
+        val mapped =
+            when (event.type) {
+                MediaPlayer.Event.Playing -> PlaybackEvent.Playing
+                MediaPlayer.Event.Paused -> PlaybackEvent.Paused
+                MediaPlayer.Event.Stopped -> PlaybackEvent.Stopped
+                MediaPlayer.Event.EndReached -> PlaybackEvent.Ended
+                MediaPlayer.Event.Buffering ->
+                    PlaybackEvent.Buffering(
+                        isBuffering = event.buffering < 100f,
+                        percent = event.buffering,
+                    )
+                MediaPlayer.Event.EncounteredError ->
+                    PlaybackEvent.Failed(
+                        code = "PLAYBACK_FAILED",
+                        message = stateSnapshot(),
+                    )
+                else -> null
+            }
         mapped ?: return
         runCatching { onEvent(mapped) }
             .onFailure {

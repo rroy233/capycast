@@ -12,6 +12,7 @@ private val semanticVersionPattern = Regex("^\\d+\\.\\d+\\.\\d+(?:-beta\\.\\d+)?
 require(semanticVersionPattern.matches(APP_VERSION_NAME)) {
     "APP_VERSION_NAME must follow MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-beta.N"
 }
+
 require(APP_VERSION_CODE > 0) {
     "APP_VERSION_CODE must be a positive integer"
 }
@@ -42,12 +43,13 @@ android {
     }
 
     /** 读取未纳入版本控制的发布签名配置。 */
-    val releaseKeystoreProperties = Properties().apply {
-        val propertiesFile = rootProject.file("keystore.properties")
-        if (propertiesFile.isFile) {
-            propertiesFile.inputStream().use { input -> load(input) }
+    val releaseKeystoreProperties =
+        Properties().apply {
+            val propertiesFile = rootProject.file("keystore.properties")
+            if (propertiesFile.isFile) {
+                propertiesFile.inputStream().use { input -> load(input) }
+            }
         }
-    }
 
     signingConfigs {
         create("release") {

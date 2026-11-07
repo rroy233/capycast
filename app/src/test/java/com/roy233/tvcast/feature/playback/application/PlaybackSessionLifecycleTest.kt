@@ -13,8 +13,14 @@ class PlaybackSessionLifecycleTest {
 
         assertEquals(
             listOf(
-                "cancelResolveJob", "finishSessionHistory", "clearLiveSession", "resetPendingPlayback",
-                "stopPlaybackForSession", "clearSessionIdentity", "markCastFailed", "showStoppedState",
+                "cancelResolveJob",
+                "finishSessionHistory",
+                "clearLiveSession",
+                "resetPendingPlayback",
+                "stopPlaybackForSession",
+                "clearSessionIdentity",
+                "markCastFailed",
+                "showStoppedState",
             ),
             calls.filter { it in STOP_CALLS },
         )
@@ -23,12 +29,17 @@ class PlaybackSessionLifecycleTest {
     @Test
     fun `error close stops player before clearing identity`() {
         val calls = mutableListOf<String>()
-        PlaybackSessionLifecycle(host(calls)).showError("播放失败", "网络异常", "PLAYBACK_FAILED", true, false)
+        PlaybackSessionLifecycle(host(calls))
+            .showError("播放失败", "网络异常", "PLAYBACK_FAILED", true, false)
 
         assertEquals(
             listOf(
-                "finishSessionHistory", "clearLiveSession", "stopPlaybackForSession",
-                "clearSessionIdentity", "runOnMain", "showErrorState",
+                "finishSessionHistory",
+                "clearLiveSession",
+                "stopPlaybackForSession",
+                "clearSessionIdentity",
+                "runOnMain",
+                "showErrorState",
             ),
             calls.filter { it in ERROR_CALLS },
         )
@@ -41,8 +52,13 @@ class PlaybackSessionLifecycleTest {
 
         assertEquals(
             listOf(
-                "clearPendingPause", "finishSessionHistory", "clearLiveSession",
-                "stopPlaybackForSession", "clearSessionIdentity", "runOnMain", "showDlnaStoppedState",
+                "clearPendingPause",
+                "finishSessionHistory",
+                "clearLiveSession",
+                "stopPlaybackForSession",
+                "clearSessionIdentity",
+                "runOnMain",
+                "showDlnaStoppedState",
             ),
             calls.filter { it in DLNA_CALLS },
         )
@@ -53,7 +69,10 @@ class PlaybackSessionLifecycleTest {
         val calls = mutableListOf<String>()
         PlaybackSessionLifecycle(host(calls)).destroy()
 
-        assertEquals(listOf("closeHistory", "clearLiveSession"), calls.filter { it in DESTROY_CALLS })
+        assertEquals(
+            listOf("closeHistory", "clearLiveSession"),
+            calls.filter { it in DESTROY_CALLS },
+        )
     }
 
     private fun host(calls: MutableList<String>): PlaybackSessionHost =
@@ -66,30 +85,48 @@ class PlaybackSessionLifecycleTest {
                 "modeForLog" -> "PLAYING"
                 "isEngineInitialized" -> true
                 "runOnMain" -> {
-                    @Suppress("UNCHECKED_CAST")
-                    (args!![0] as Function0<Unit>).invoke()
+                    @Suppress("UNCHECKED_CAST") (args!![0] as Function0<Unit>).invoke()
                     null
                 }
-                else -> when (method.returnType) {
-                    java.lang.Boolean.TYPE -> false
-                    else -> null
-                }
+                else ->
+                    when (method.returnType) {
+                        java.lang.Boolean.TYPE -> false
+                        else -> null
+                    }
             }
         } as PlaybackSessionHost
 
     private companion object {
-        val STOP_CALLS = setOf(
-            "cancelResolveJob", "finishSessionHistory", "clearLiveSession", "resetPendingPlayback",
-            "stopPlaybackForSession", "clearSessionIdentity", "markCastFailed", "showStoppedState",
-        )
-        val ERROR_CALLS = setOf(
-            "finishSessionHistory", "clearLiveSession", "stopPlaybackForSession",
-            "clearSessionIdentity", "runOnMain", "showErrorState",
-        )
-        val DLNA_CALLS = setOf(
-            "clearPendingPause", "finishSessionHistory", "clearLiveSession", "stopPlaybackForSession",
-            "clearSessionIdentity", "runOnMain", "showDlnaStoppedState",
-        )
+        val STOP_CALLS =
+            setOf(
+                "cancelResolveJob",
+                "finishSessionHistory",
+                "clearLiveSession",
+                "resetPendingPlayback",
+                "stopPlaybackForSession",
+                "clearSessionIdentity",
+                "markCastFailed",
+                "showStoppedState",
+            )
+        val ERROR_CALLS =
+            setOf(
+                "finishSessionHistory",
+                "clearLiveSession",
+                "stopPlaybackForSession",
+                "clearSessionIdentity",
+                "runOnMain",
+                "showErrorState",
+            )
+        val DLNA_CALLS =
+            setOf(
+                "clearPendingPause",
+                "finishSessionHistory",
+                "clearLiveSession",
+                "stopPlaybackForSession",
+                "clearSessionIdentity",
+                "runOnMain",
+                "showDlnaStoppedState",
+            )
         val DESTROY_CALLS = setOf("closeHistory", "clearLiveSession")
     }
 }

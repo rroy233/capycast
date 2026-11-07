@@ -4,26 +4,28 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** 播放线路的端点分类、去重和优先级规则。 */
 object CdnRouteRules {
-    private val pcdnSuffixes = listOf(
-        ".szbdyd.com",
-        ".mountaintoys.cn",
-        ".nexusedgeio.com",
-        ".ahdohpiechei.com",
-    )
+    private val pcdnSuffixes =
+        listOf(
+            ".szbdyd.com",
+            ".mountaintoys.cn",
+            ".nexusedgeio.com",
+            ".ahdohpiechei.com",
+        )
     private val ipv4Host = Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$")
 
-    fun order(urls: List<String>): List<String> = urls
-        .asSequence()
-        .filter { it.isNotBlank() }
-        .distinct()
-        .withIndex()
-        .sortedWith(
-            compareBy<IndexedValue<String>> { isPcdn(it.value) }
-                .thenBy { !isOfficialCdn(it.value) }
-                .thenBy { it.index },
-        )
-        .map { it.value }
-        .toList()
+    fun order(urls: List<String>): List<String> =
+        urls
+            .asSequence()
+            .filter { it.isNotBlank() }
+            .distinct()
+            .withIndex()
+            .sortedWith(
+                compareBy<IndexedValue<String>> { isPcdn(it.value) }
+                    .thenBy { !isOfficialCdn(it.value) }
+                    .thenBy { it.index },
+            )
+            .map { it.value }
+            .toList()
 
     fun isPcdn(raw: String): Boolean {
         val url = httpUrlOf(raw) ?: return false

@@ -31,12 +31,13 @@ object DlnaTime {
     fun parse(text: String?): Long {
         if (text.isNullOrBlank()) return 0L
         val nums = text.trim().split(':').map { it.toDoubleOrNull() ?: 0.0 }
-        val sec = when (nums.size) {
-            3 -> nums[0] * 3600 + nums[1] * 60 + nums[2]
-            2 -> nums[0] * 60 + nums[1]
-            1 -> nums[0]
-            else -> 0.0
-        }
+        val sec =
+            when (nums.size) {
+                3 -> nums[0] * 3600 + nums[1] * 60 + nums[2]
+                2 -> nums[0] * 60 + nums[1]
+                1 -> nums[0]
+                else -> 0.0
+            }
         return (sec * 1000).toLong().coerceAtLeast(0L)
     }
 

@@ -15,20 +15,32 @@ class CastRequestResolver(
     private val resolveVod: suspend (Long, Long, String, String, Long, Long) -> PlaybackRequest,
     private val rankVod: suspend (PlaybackRequest) -> RankedVodPlayback,
 ) {
-    suspend fun resolve(nva: CastContent, title: String): CastResolution = when {
-        nva.hasLive -> {
-            val key = accessKey() ?: error("TV account login is required for live playback")
-            val info = resolveLive(key, nva.roomId)
-            val routes = rankLive(info)
-            if (routes.isEmpty()) error("live response has no eligible CDN routes")
-            CastResolution.Live(info, routes)
+    suspend fun resolve(nva: CastContent, title: String): CastResolution =
+        when {
+            nva.hasLive -> {
+                val key = accessKey() ?: error("TV account login is required for live playback")
+                val info = resolveLive(key, nva.roomId)
+                val routes = rankLive(info)
+                if (routes.isEmpty()) error("live response has no eligible CDN routes")
+                CastResolution.Live(info, routes)
+            }
+            nva.hasPgc ->
+                CastResolution.Vod(
+                    rankVod(
+                        resolveVod(
+                            nva.aid,
+                            nva.cid,
+                            nva.bvid.orEmpty(),
+                            title,
+                            nva.epId,
+                            nva.seasonId,
+                        ),
+                    ),
+                )
+            nva.hasUgc ->
+                CastResolution.Vod(
+                    rankVod(resolveVod(nva.aid, nva.cid, nva.bvid.orEmpty(), title, 0L, 0L)),
+                )
+            else -> error("no playable identity in nva_ext")
         }
-        nva.hasPgc -> CastResolution.Vod(
-            rankVod(resolveVod(nva.aid, nva.cid, nva.bvid.orEmpty(), title, nva.epId, nva.seasonId)),
-        )
-        nva.hasUgc -> CastResolution.Vod(
-            rankVod(resolveVod(nva.aid, nva.cid, nva.bvid.orEmpty(), title, 0L, 0L)),
-        )
-        else -> error("no playable identity in nva_ext")
-    }
 }

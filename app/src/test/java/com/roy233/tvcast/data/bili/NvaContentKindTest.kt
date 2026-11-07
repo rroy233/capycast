@@ -9,12 +9,13 @@ class NvaContentKindTest {
 
     @Test
     fun `PGC identity wins when cast payload also includes aid and cid`() {
-        val content = CastContent(
-            aid = 593217401L,
-            cid = 2L,
-            epId = 468955L,
-            seasonId = 41012L,
-        )
+        val content =
+            CastContent(
+                aid = 593217401L,
+                cid = 2L,
+                epId = 468955L,
+                seasonId = 41012L,
+            )
 
         assertEquals(CastContentKind.PGC, content.kind)
         assertEquals(true, content.hasPgc)

@@ -5,14 +5,14 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import com.roy233.tvcast.feature.display.CalibrationDirection
+import com.roy233.tvcast.feature.display.CalibrationPhase
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.model.UiOverlay
-import com.roy233.tvcast.feature.display.CalibrationDirection
-import com.roy233.tvcast.feature.display.CalibrationPhase
 import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
 import com.roy233.tvcast.ui.tv.player.handlePlaybackSeekKey
 
@@ -71,7 +71,6 @@ internal enum class MenuKeyAction {
 
     /** 确认类按键交给已获焦点的菜单条目自己响应。 */
     ACTIVATE_FOCUSED,
-
     SWALLOW,
 }
 
@@ -97,13 +96,16 @@ object TvKeyHandler {
     }
 
     /** 导航菜单的按键策略：上下移动焦点，向右收起菜单，确认键交给条目。 */
-    internal fun resolveMenuKeyAction(event: KeyEvent): MenuKeyAction = when (event.key) {
-        Key.DirectionUp -> MenuKeyAction.FOCUS_PREVIOUS
-        Key.DirectionDown -> MenuKeyAction.FOCUS_NEXT
-        Key.DirectionRight -> MenuKeyAction.CLOSE_MENU
-        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> MenuKeyAction.ACTIVATE_FOCUSED
-        else -> MenuKeyAction.SWALLOW
-    }
+    internal fun resolveMenuKeyAction(event: KeyEvent): MenuKeyAction =
+        when (event.key) {
+            Key.DirectionUp -> MenuKeyAction.FOCUS_PREVIOUS
+            Key.DirectionDown -> MenuKeyAction.FOCUS_NEXT
+            Key.DirectionRight -> MenuKeyAction.CLOSE_MENU
+            Key.DirectionCenter,
+            Key.Enter,
+            Key.NumPadEnter -> MenuKeyAction.ACTIVATE_FOCUSED
+            else -> MenuKeyAction.SWALLOW
+        }
 
     /**
      * 左侧是否已到当前页面的边界。
@@ -113,24 +115,24 @@ object TvKeyHandler {
     internal fun canOpenMenuFromEdge(state: TvUiState): Boolean =
         resolveKeySurface(state) == KeySurface.PAGE && state.mode == TvMode.IDLE
 
-
     /** 按照由上到下的界面层级，解析返回键的唯一目标。 */
-    internal fun resolveBackAction(state: TvUiState): TvBackAction = when {
-        state.calibration.phase != CalibrationPhase.HIDDEN -> TvBackAction.CANCEL_CALIBRATION
-        state.stopCastConfirm -> TvBackAction.CANCEL_STOP_CAST_CONFIRM
-        state.error != null -> TvBackAction.DISMISS_ERROR
-        state.panel != null && state.panel != PanelKind.ROOT -> TvBackAction.BACK_PANEL
-        state.panel == PanelKind.ROOT -> TvBackAction.CLOSE_PANEL
-        state.helpVisible -> TvBackAction.CLOSE_HELP
-        state.loginDialogVisible -> TvBackAction.CLOSE_LOGIN
-        state.mode == TvMode.PLAYING || (state.mode == TvMode.LOADING && state.castActive) ->
-            TvBackAction.REQUEST_STOP_CAST
-        state.sidebarVisible -> TvBackAction.CLOSE_SIDEBAR
-        state.destination == TvDestination.SETTINGS &&
-            state.settingsNavigation.canNavigateBack -> TvBackAction.NAVIGATE_SETTINGS_BACK
-        state.destination == TvDestination.SETTINGS -> TvBackAction.OPEN_SIDEBAR
-        else -> TvBackAction.HOME_BACK
-    }
+    internal fun resolveBackAction(state: TvUiState): TvBackAction =
+        when {
+            state.calibration.phase != CalibrationPhase.HIDDEN -> TvBackAction.CANCEL_CALIBRATION
+            state.stopCastConfirm -> TvBackAction.CANCEL_STOP_CAST_CONFIRM
+            state.error != null -> TvBackAction.DISMISS_ERROR
+            state.panel != null && state.panel != PanelKind.ROOT -> TvBackAction.BACK_PANEL
+            state.panel == PanelKind.ROOT -> TvBackAction.CLOSE_PANEL
+            state.helpVisible -> TvBackAction.CLOSE_HELP
+            state.loginDialogVisible -> TvBackAction.CLOSE_LOGIN
+            state.mode == TvMode.PLAYING || (state.mode == TvMode.LOADING && state.castActive) ->
+                TvBackAction.REQUEST_STOP_CAST
+            state.sidebarVisible -> TvBackAction.CLOSE_SIDEBAR
+            state.destination == TvDestination.SETTINGS &&
+                state.settingsNavigation.canNavigateBack -> TvBackAction.NAVIGATE_SETTINGS_BACK
+            state.destination == TvDestination.SETTINGS -> TvBackAction.OPEN_SIDEBAR
+            else -> TvBackAction.HOME_BACK
+        }
 
     /** 将解析后的返回层级分发到宿主操作。 */
     internal fun dispatchBack(state: TvUiState, actions: TvActions) {
@@ -201,27 +203,36 @@ object TvKeyHandler {
 
         if (surface == KeySurface.CALIBRATION) {
             if (state.calibration.phase == CalibrationPhase.ADJUST) {
-                val direction = when (event.key) {
-                    Key.DirectionLeft -> CalibrationDirection.LEFT
-                    Key.DirectionUp -> CalibrationDirection.UP
-                    Key.DirectionRight -> CalibrationDirection.RIGHT
-                    Key.DirectionDown -> CalibrationDirection.DOWN
-                    else -> null
-                }
+                val direction =
+                    when (event.key) {
+                        Key.DirectionLeft -> CalibrationDirection.LEFT
+                        Key.DirectionUp -> CalibrationDirection.UP
+                        Key.DirectionRight -> CalibrationDirection.RIGHT
+                        Key.DirectionDown -> CalibrationDirection.DOWN
+                        else -> null
+                    }
                 if (direction != null) {
                     actions.onAdjustCalibration(direction)
                     return true
                 }
-                if (event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter) {
+                if (
+                    event.key == Key.DirectionCenter ||
+                        event.key == Key.Enter ||
+                        event.key == Key.NumPadEnter
+                ) {
                     if (event.nativeKeyEvent.repeatCount == 0) actions.onNextCalibrationCorner()
                     return true
                 }
             }
             // 提示与确认弹窗的方向键和确认键交给获得焦点的按钮。
             return state.calibration.phase == CalibrationPhase.ADJUST ||
-                (event.key != Key.DirectionLeft && event.key != Key.DirectionRight &&
-                    event.key != Key.DirectionUp && event.key != Key.DirectionDown &&
-                    event.key != Key.DirectionCenter && event.key != Key.Enter && event.key != Key.NumPadEnter)
+                (event.key != Key.DirectionLeft &&
+                    event.key != Key.DirectionRight &&
+                    event.key != Key.DirectionUp &&
+                    event.key != Key.DirectionDown &&
+                    event.key != Key.DirectionCenter &&
+                    event.key != Key.Enter &&
+                    event.key != Key.NumPadEnter)
         }
 
         if (event.key == Key.Menu) {
@@ -264,27 +275,28 @@ object TvKeyHandler {
         }
 
         if (state.mode == TvMode.PLAYING && !state.isLive && !state.hudVisible && !modal) {
-            if (handlePlaybackSeekKey(
+            if (
+                handlePlaybackSeekKey(
                     event = event,
                     isSeeking = state.seekPreviewPositionMs != null,
                     seekAccelerator = seekAccelerator,
                     onPreviewSeekBy = actions.onPreviewSeekBy,
                     onConfirmSeek = actions.onConfirmSeek,
                 )
-            ) return true
+            )
+                return true
         }
 
-        if (state.mode == TvMode.PLAYING &&
-            !state.hudVisible &&
-            !modal &&
-            (
-                event.key == Key.DirectionCenter ||
+        if (
+            state.mode == TvMode.PLAYING &&
+                !state.hudVisible &&
+                !modal &&
+                (event.key == Key.DirectionCenter ||
                     event.key == Key.Enter ||
                     event.key == Key.DirectionUp ||
                     event.key == Key.DirectionDown ||
                     event.key == Key.DirectionLeft ||
-                    event.key == Key.DirectionRight
-                )
+                    event.key == Key.DirectionRight)
         ) {
             actions.onShowHud()
             return true

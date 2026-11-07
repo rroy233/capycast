@@ -24,8 +24,7 @@ internal class VlcPlaybackReporter(
 ) {
 
     /** 是否已有原生日志采集线程在运行。 */
-    @Volatile
-    private var nativeCaptureRunning = false
+    @Volatile private var nativeCaptureRunning = false
 
     /**
      * 记录所有媒体轨道和播放器轨道选择。
@@ -38,10 +37,12 @@ internal class VlcPlaybackReporter(
         val playerSpu = runCatching { player.spuTracksCount }.getOrDefault(-1)
         val videoTracks = runCatching {
             player.getVideoTracks()?.joinToString(",") { "${it.id}:${it.name}" }.orEmpty()
-        }.getOrDefault("")
+        }
+            .getOrDefault("")
         val audioTracks = runCatching {
             player.getAudioTracks()?.joinToString(",") { "${it.id}:${it.name}" }.orEmpty()
-        }.getOrDefault("")
+        }
+            .getOrDefault("")
         val media = state.currentMedia
         val parsed = runCatching { media?.isParsed }.getOrNull()
         val trackCount = runCatching { media?.trackCount }.getOrNull() ?: -1
@@ -62,15 +63,17 @@ internal class VlcPlaybackReporter(
                     "  mediaTrack[$index] " +
                         fields.entries.joinToString(" ") { "${it.key}=${it.value}" },
                 )
-                val trackKey = listOf(
-                    track.type,
-                    track.id,
-                    track.codec.orEmpty(),
-                    track.widthOrZero(),
-                    track.heightOrZero(),
-                    track.channelsOrZero(),
-                    track.rateOrZero(),
-                ).joinToString("|")
+                val trackKey =
+                    listOf(
+                            track.type,
+                            track.id,
+                            track.codec.orEmpty(),
+                            track.widthOrZero(),
+                            track.heightOrZero(),
+                            track.channelsOrZero(),
+                            track.rateOrZero(),
+                        )
+                        .joinToString("|")
                 if (state.loggedMediaTracks.add(trackKey)) {
                     PlaybackDiagnostics.track(VlcTrackFormat.trackTypeName(track.type), fields)
                 }
@@ -84,8 +87,7 @@ internal class VlcPlaybackReporter(
     /**
      * 记录失败现场并写入失败诊断。
      *
-     * 调用方应先执行一次 `sampleStats(force = true)`，确保快照包含最新的
-     * 解码、丢帧和读取统计。
+     * 调用方应先执行一次 `sampleStats(force = true)`，确保快照包含最新的 解码、丢帧和读取统计。
      *
      * @param stage 失败阶段。
      */
@@ -166,7 +168,8 @@ internal class VlcPlaybackReporter(
             7 -> "Error"
             else -> "Unknown(${player.playerState})"
         }
-    }.getOrElse { "Unavailable(${LogRedaction.reason(it)})" }
+    }
+        .getOrElse { "Unavailable(${LogRedaction.reason(it)})" }
 
     /**
      * 返回视频布局尺寸文本。
@@ -231,10 +234,12 @@ internal class VlcPlaybackReporter(
             } finally {
                 nativeCaptureRunning = false
             }
-        }.apply {
-            name = "vlc-native-log"
-            isDaemon = true
-        }.start()
+        }
+            .apply {
+                name = "vlc-native-log"
+                isDaemon = true
+            }
+            .start()
     }
 
     /**
@@ -244,18 +249,19 @@ internal class VlcPlaybackReporter(
      * @return 诊断字段映射。
      */
     private fun trackFields(track: IMedia.Track): Map<String, String> {
-        val fields = linkedMapOf(
-            "source" to "media",
-            "type" to VlcTrackFormat.trackTypeName(track.type),
-            "codec" to track.codec.orEmpty(),
-            "originalCodec" to track.originalCodec.orEmpty(),
-            "id" to track.id.toString(),
-            "profile" to track.profile.toString(),
-            "level" to track.level.toString(),
-            "bitrate" to track.bitrate.toString(),
-            "language" to track.language.orEmpty(),
-            "description" to track.description.orEmpty(),
-        )
+        val fields =
+            linkedMapOf(
+                "source" to "media",
+                "type" to VlcTrackFormat.trackTypeName(track.type),
+                "codec" to track.codec.orEmpty(),
+                "originalCodec" to track.originalCodec.orEmpty(),
+                "id" to track.id.toString(),
+                "profile" to track.profile.toString(),
+                "level" to track.level.toString(),
+                "bitrate" to track.bitrate.toString(),
+                "language" to track.language.orEmpty(),
+                "description" to track.description.orEmpty(),
+            )
         when (track) {
             is IMedia.VideoTrack -> {
                 fields["width"] = track.width.toString()
@@ -274,20 +280,16 @@ internal class VlcPlaybackReporter(
     }
 
     /** 读取视频轨道宽度，非视频轨道返回 0。 */
-    private fun IMedia.Track.widthOrZero(): Int =
-        (this as? IMedia.VideoTrack)?.width ?: 0
+    private fun IMedia.Track.widthOrZero(): Int = (this as? IMedia.VideoTrack)?.width ?: 0
 
     /** 读取视频轨道高度，非视频轨道返回 0。 */
-    private fun IMedia.Track.heightOrZero(): Int =
-        (this as? IMedia.VideoTrack)?.height ?: 0
+    private fun IMedia.Track.heightOrZero(): Int = (this as? IMedia.VideoTrack)?.height ?: 0
 
     /** 读取音频轨道声道数，非音频轨道返回 0。 */
-    private fun IMedia.Track.channelsOrZero(): Int =
-        (this as? IMedia.AudioTrack)?.channels ?: 0
+    private fun IMedia.Track.channelsOrZero(): Int = (this as? IMedia.AudioTrack)?.channels ?: 0
 
     /** 读取音频轨道采样率，非音频轨道返回 0。 */
-    private fun IMedia.Track.rateOrZero(): Int =
-        (this as? IMedia.AudioTrack)?.rate ?: 0
+    private fun IMedia.Track.rateOrZero(): Int = (this as? IMedia.AudioTrack)?.rate ?: 0
 
     /** 日志标签。 */
     private companion object {

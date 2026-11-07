@@ -5,6 +5,8 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.feature.account.model.AccountSessionStore
 import com.roy233.tvcast.feature.account.model.Token
+import java.util.UUID
+import kotlin.math.max
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -13,8 +15,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
-import kotlin.math.max
 
 /** 负责将电视投屏的点播与直播进度同步到当前 B 站账号。 */
 class PlaybackHistoryCoordinator(
@@ -105,10 +105,12 @@ class PlaybackHistoryCoordinator(
 
     /** 播放结束、停止、错误或 Activity 销毁时发送最后一次快照。 */
     fun finish(reason: String, ended: Boolean = false) {
-        val session = activeSession ?: run {
-            stopLiveHeartbeat()
-            return
-        }
+        val session =
+            activeSession
+                ?: run {
+                    stopLiveHeartbeat()
+                    return
+                }
         closePlaySegment(session)
         isPlaying = false
         stopLiveHeartbeat()
@@ -130,7 +132,10 @@ class PlaybackHistoryCoordinator(
             flushJob = null
             activeSession = null
             outbox.clearAll()
-            LogHub.i(TAG, "playback history sync disabled account=$accountMid; all pending snapshots cleared")
+            LogHub.i(
+                TAG,
+                "playback history sync disabled account=$accountMid; all pending snapshots cleared",
+            )
             return
         }
         LogHub.i(TAG, "playback history sync enabled account=$accountMid")
@@ -158,7 +163,10 @@ class PlaybackHistoryCoordinator(
         if (!isEnabled() || mid <= 0L || authBlockedMid == mid || flushJob?.isActive == true) return
         val token = sessionStore.load() ?: return
         if (token.mid != mid) {
-            LogHub.w(TAG, "history retry skipped: token account changed requested=$mid current=${token.mid}")
+            LogHub.w(
+                TAG,
+                "history retry skipped: token account changed requested=$mid current=${token.mid}",
+            )
             return
         }
         flushJob = scope.launch {
@@ -166,13 +174,19 @@ class PlaybackHistoryCoordinator(
                 val report = outbox.pendingForAccount(mid).firstOrNull() ?: break
                 val currentToken = sessionStore.load()
                 if (currentToken == null || currentToken.mid != report.accountMid) {
-                    LogHub.w(TAG, "history retry stopped: no matching account for snapshot=${report.sessionId}")
+                    LogHub.w(
+                        TAG,
+                        "history retry stopped: no matching account for snapshot=${report.sessionId}",
+                    )
                     break
                 }
                 val auth = currentToken.toWebHistoryAuth()
                 if (auth == null) {
                     authBlockedMid = mid
-                    LogHub.e(TAG, "history sync blocked: Web session cookie or CSRF missing account=$mid")
+                    LogHub.e(
+                        TAG,
+                        "history sync blocked: Web session cookie or CSRF missing account=$mid",
+                    )
                     break
                 }
                 try {
@@ -180,7 +194,8 @@ class PlaybackHistoryCoordinator(
                     withContext(Dispatchers.IO) {
                         when {
                             report.reportKind == REPORT_KIND_LIVE_ENTRY ||
-                                report.business == HISTORY_BUSINESS_LIVE || report.type == HISTORY_TYPE_LIVE ->
+                                report.business == HISTORY_BUSINESS_LIVE ||
+                                report.type == HISTORY_TYPE_LIVE ->
                                 api.reportLiveEntry(auth, report.cid)
                             else -> {
                                 if (report.progressSeconds < 0L && report.durationSeconds <= 0L) {
@@ -194,11 +209,12 @@ class PlaybackHistoryCoordinator(
                                     api.reportProgress(
                                         auth,
                                         report.copy(
-                                            progressSeconds = if (report.progressSeconds < 0L) {
-                                                report.durationSeconds
-                                            } else {
-                                                report.progressSeconds
-                                            },
+                                            progressSeconds =
+                                                if (report.progressSeconds < 0L) {
+                                                    report.durationSeconds
+                                                } else {
+                                                    report.progressSeconds
+                                                },
                                         ),
                                     )
                                 }
@@ -245,26 +261,36 @@ class PlaybackHistoryCoordinator(
 
     private fun ensureSession(content: PlaybackHistoryContent) {
         if (!isEnabled()) return
-        val token = sessionStore.load() ?: run {
-            LogHub.w(TAG, "history session skipped: TV login required stableKey=${content.stableKey}")
-            return
-        }
+        val token =
+            sessionStore.load()
+                ?: run {
+                    LogHub.w(
+                        TAG,
+                        "history session skipped: TV login required stableKey=${content.stableKey}",
+                    )
+                    return
+                }
         val current = activeSession
-        if (current != null && current.stableKey == content.stableKey && current.accountMid == token.mid) {
+        if (
+            current != null &&
+                current.stableKey == content.stableKey &&
+                current.accountMid == token.mid
+        ) {
             current.content = content
             return
         }
         val wasPlaying = isPlaying
         if (current != null) finish("content-changed")
         isPlaying = wasPlaying
-        val session = Session(
-            id = UUID.randomUUID().toString(),
-            stableKey = content.stableKey,
-            accountMid = token.mid,
-            content = content,
-            lastReportedAtMs = SystemClock.elapsedRealtime(),
-            segmentStartedAtMs = if (isPlaying) SystemClock.elapsedRealtime() else null,
-        )
+        val session =
+            Session(
+                id = UUID.randomUUID().toString(),
+                stableKey = content.stableKey,
+                accountMid = token.mid,
+                content = content,
+                lastReportedAtMs = SystemClock.elapsedRealtime(),
+                segmentStartedAtMs = if (isPlaying) SystemClock.elapsedRealtime() else null,
+            )
         activeSession = session
         LogHub.i(
             TAG,
@@ -291,39 +317,44 @@ class PlaybackHistoryCoordinator(
         if (session.content.isLive) return
         val token = sessionStore.load()
         if (token == null || token.mid != session.accountMid) {
-            LogHub.w(TAG, "history snapshot queued without matching token reason=$reason account=${session.accountMid}")
+            LogHub.w(
+                TAG,
+                "history snapshot queued without matching token reason=$reason account=${session.accountMid}",
+            )
         }
         val content = session.content
         val nearEnd = lastDurationMs > 0L && lastDurationMs - lastPositionMs <= COMPLETION_WINDOW_MS
-        val progress = if (ended || nearEnd) {
-            lastDurationMs.takeIf { it > 0L }?.div(MILLIS_PER_SECOND) ?:
+        val progress =
+            if (ended || nearEnd) {
+                lastDurationMs.takeIf { it > 0L }?.div(MILLIS_PER_SECOND)
+                    ?: lastPositionMs / MILLIS_PER_SECOND
+            } else {
                 lastPositionMs / MILLIS_PER_SECOND
-        } else {
-            lastPositionMs / MILLIS_PER_SECOND
-        }
-        val report = PlaybackHistoryReport(
-            sessionId = session.id,
-            accountMid = session.accountMid,
-            aid = content.aid,
-            cid = content.cid,
-            sid = content.sid,
-            epid = content.epid,
-            serialId = content.serialId,
-            type = content.type,
-            business = content.business,
-            progressSeconds = progress,
-            playDurationSeconds = playedDurationMs(session) / MILLIS_PER_SECOND,
-            isInteracted = true,
-            bvid = content.bvid,
-            durationSeconds = lastDurationMs / MILLIS_PER_SECOND,
-            startTsSec = session.startTsSec,
-            reportKind = REPORT_KIND_VIDEO,
-            scene = content.scene,
-            fromScene = content.fromScene,
-            fromSpmid = content.fromSpmid,
-            resourceFrom = content.resourceFrom,
-            updatedAtMs = max(System.currentTimeMillis(), session.lastSnapshotAtMs + 1L),
-        )
+            }
+        val report =
+            PlaybackHistoryReport(
+                sessionId = session.id,
+                accountMid = session.accountMid,
+                aid = content.aid,
+                cid = content.cid,
+                sid = content.sid,
+                epid = content.epid,
+                serialId = content.serialId,
+                type = content.type,
+                business = content.business,
+                progressSeconds = progress,
+                playDurationSeconds = playedDurationMs(session) / MILLIS_PER_SECOND,
+                isInteracted = true,
+                bvid = content.bvid,
+                durationSeconds = lastDurationMs / MILLIS_PER_SECOND,
+                startTsSec = session.startTsSec,
+                reportKind = REPORT_KIND_VIDEO,
+                scene = content.scene,
+                fromScene = content.fromScene,
+                fromSpmid = content.fromSpmid,
+                resourceFrom = content.resourceFrom,
+                updatedAtMs = max(System.currentTimeMillis(), session.lastSnapshotAtMs + 1L),
+            )
         session.lastSnapshotAtMs = report.updatedAtMs
         outbox.upsert(report)
         session.lastReportedAtMs = SystemClock.elapsedRealtime()
@@ -339,27 +370,31 @@ class PlaybackHistoryCoordinator(
     private fun queueLiveEntry(session: Session) {
         if (!isEnabled()) return
         val content = session.content
-        val report = PlaybackHistoryReport(
-            sessionId = session.id,
-            accountMid = session.accountMid,
-            aid = 0L,
-            cid = content.roomId,
-            sid = 0L,
-            epid = 0L,
-            serialId = 0L,
-            type = content.type,
-            business = content.business,
-            progressSeconds = 0L,
-            playDurationSeconds = 0L,
-            isInteracted = true,
-            startTsSec = session.startTsSec,
-            reportKind = REPORT_KIND_LIVE_ENTRY,
-            updatedAtMs = max(System.currentTimeMillis(), session.lastSnapshotAtMs + 1L),
-        )
+        val report =
+            PlaybackHistoryReport(
+                sessionId = session.id,
+                accountMid = session.accountMid,
+                aid = 0L,
+                cid = content.roomId,
+                sid = 0L,
+                epid = 0L,
+                serialId = 0L,
+                type = content.type,
+                business = content.business,
+                progressSeconds = 0L,
+                playDurationSeconds = 0L,
+                isInteracted = true,
+                startTsSec = session.startTsSec,
+                reportKind = REPORT_KIND_LIVE_ENTRY,
+                updatedAtMs = max(System.currentTimeMillis(), session.lastSnapshotAtMs + 1L),
+            )
         session.lastSnapshotAtMs = report.updatedAtMs
         outbox.upsert(report)
         session.lastReportedAtMs = SystemClock.elapsedRealtime()
-        LogHub.i(TAG, "live history entry queued room=${content.roomId} account=${session.accountMid}")
+        LogHub.i(
+            TAG,
+            "live history entry queued room=${content.roomId} account=${session.accountMid}",
+        )
         retryPendingForAccount(session.accountMid)
     }
 
@@ -370,9 +405,10 @@ class PlaybackHistoryCoordinator(
     }
 
     private fun playedDurationMs(session: Session): Long {
-        val currentSegment = session.segmentStartedAtMs?.let {
-            max(0L, SystemClock.elapsedRealtime() - it)
-        } ?: 0L
+        val currentSegment =
+            session.segmentStartedAtMs?.let {
+                max(0L, SystemClock.elapsedRealtime() - it)
+            } ?: 0L
         return session.playedDurationMs + currentSegment
     }
 
@@ -384,28 +420,34 @@ class PlaybackHistoryCoordinator(
                 val content = currentContent ?: session.content
                 val token = sessionStore.load()
                 if (token == null || token.mid != session.accountMid) {
-                    LogHub.w(TAG, "live heartbeat stopped: no matching login account=${session.accountMid}")
+                    LogHub.w(
+                        TAG,
+                        "live heartbeat stopped: no matching login account=${session.accountMid}",
+                    )
                     break
                 }
                 val sequence = session.heartbeatSequence
                 val now = System.currentTimeMillis()
-                val request = LiveHeartbeatRequest(
-                    build = buildNumber,
-                    buvid = token.cookie.extractCookie("buvid3"),
-                    roomId = content.roomId,
-                    playUrl = content.livePlayUrl,
-                    timestampMs = now,
-                    reye = session.heartbeatReye,
-                    urcs = session.heartbeatUrcs,
-                    edno = session.heartbeatEdno,
-                    sequence = sequence,
-                )
+                val request =
+                    LiveHeartbeatRequest(
+                        build = buildNumber,
+                        buvid = token.cookie.extractCookie("buvid3"),
+                        roomId = content.roomId,
+                        playUrl = content.livePlayUrl,
+                        timestampMs = now,
+                        reye = session.heartbeatReye,
+                        urcs = session.heartbeatUrcs,
+                        edno = session.heartbeatEdno,
+                        sequence = sequence,
+                    )
                 try {
-                    val response = withContext(Dispatchers.IO) {
-                        api.reportLiveHeartbeat(token.accessKey, request)
-                    }
+                    val response =
+                        withContext(Dispatchers.IO) {
+                            api.reportLiveHeartbeat(token.accessKey, request)
+                        }
                     applyHeartbeatResponse(session, response)
-                    val interval = max(response.intervalSeconds, MIN_LIVE_HEARTBEAT_INTERVAL_SECONDS)
+                    val interval =
+                        max(response.intervalSeconds, MIN_LIVE_HEARTBEAT_INTERVAL_SECONDS)
                     LogHub.d(
                         TAG,
                         "live heartbeat delivered room=${content.roomId} sequence=$sequence " +
@@ -417,8 +459,9 @@ class PlaybackHistoryCoordinator(
                 } catch (error: Throwable) {
                     val firstAttempt = sequence == 0
                     session.heartbeatSequence++
-                    val retrySeconds = if (firstAttempt) FIRST_HEARTBEAT_RETRY_SECONDS else
-                        MIN_LIVE_HEARTBEAT_INTERVAL_SECONDS
+                    val retrySeconds =
+                        if (firstAttempt) FIRST_HEARTBEAT_RETRY_SECONDS
+                        else MIN_LIVE_HEARTBEAT_INTERVAL_SECONDS
                     LogHub.e(
                         TAG,
                         "live heartbeat failed room=${content.roomId} sequence=$sequence " +
@@ -444,12 +487,13 @@ class PlaybackHistoryCoordinator(
         heartbeatJob = null
     }
 
-    private fun String.extractCookie(name: String): String = split(';')
-        .asSequence()
-        .map(String::trim)
-        .firstOrNull { it.startsWith("$name=") }
-        ?.substringAfter('=')
-        .orEmpty()
+    private fun String.extractCookie(name: String): String =
+        split(';')
+            .asSequence()
+            .map(String::trim)
+            .firstOrNull { it.startsWith("$name=") }
+            ?.substringAfter('=')
+            .orEmpty()
 
     private fun Token.toWebHistoryAuth(): WebHistoryAuth? {
         val sessData = cookie.extractCookie("SESSDATA")

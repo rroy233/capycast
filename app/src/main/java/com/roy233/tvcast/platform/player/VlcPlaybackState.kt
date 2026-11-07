@@ -7,23 +7,19 @@ import org.videolan.libvlc.interfaces.IMedia
 /**
  * 保存一次播放会话的可变状态。
  *
- * 状态由播放器事件线程、监控任务和远程控制线程共同访问；跨线程读取的字段使用
- * `@Volatile`，其余字段只在主线程读写。将状态从播放器门面中拆出，可以避免
+ * 状态由播放器事件线程、监控任务和远程控制线程共同访问；跨线程读取的字段使用 `@Volatile`，其余字段只在主线程读写。将状态从播放器门面中拆出，可以避免
  * 事件记录、监控和报告三个职责各自维护一份互相漂移的计时变量。
  */
 internal class VlcPlaybackState {
 
     /** 当前媒体，保留引用以便读取统计和轨道。 */
-    @Volatile
-    var currentMedia: Media? = null
+    @Volatile var currentMedia: Media? = null
 
     /** 当前是否存在活动的播放监控会话。 */
-    @Volatile
-    var active: Boolean = false
+    @Volatile var active: Boolean = false
 
     /** 当前媒体是否为直播；诊断日志仅对直播地址保留主机名。 */
-    @Volatile
-    var currentIsLive: Boolean = false
+    @Volatile var currentIsLive: Boolean = false
 
     /** 最近一次打开媒体的单调时刻。 */
     var mediaOpenedAt: Long = 0L
@@ -56,12 +52,10 @@ internal class VlcPlaybackState {
     var viewsAttached: Boolean = false
 
     /** 最近一次播放位置前进的时刻。 */
-    @Volatile
-    var lastProgressAt: Long = 0L
+    @Volatile var lastProgressAt: Long = 0L
 
     /** 最近一次已知的播放位置。 */
-    @Volatile
-    var lastPositionMs: Long = -1L
+    @Volatile var lastPositionMs: Long = -1L
 
     /** 最近一次统计采样的时刻。 */
     var lastStatsAt: Long = 0L
@@ -85,8 +79,7 @@ internal class VlcPlaybackState {
     var previousStats: IMedia.Stats? = null
 
     /** 最近一次统计采样 JSON。 */
-    @Volatile
-    var lastStats: JSONObject? = null
+    @Volatile var lastStats: JSONObject? = null
 
     /** 已经提示过一次的异常类型。 */
     val warnedOnce: MutableSet<String> = mutableSetOf()

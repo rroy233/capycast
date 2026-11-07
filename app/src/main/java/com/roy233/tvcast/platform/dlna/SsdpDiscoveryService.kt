@@ -34,11 +34,12 @@ internal class SsdpDiscoveryService(
 ) {
 
     /** SSDP 组播套接字。 */
-    private val socket = MulticastSocket(null as SocketAddress?).apply {
-        reuseAddress = true
-        bind(InetSocketAddress(SSDP_PORT))
-        timeToLive = 2
-    }
+    private val socket =
+        MulticastSocket(null as SocketAddress?).apply {
+            reuseAddress = true
+            bind(InetSocketAddress(SSDP_PORT))
+            timeToLive = 2
+        }
 
     /** 用于加入组播的网络接口。 */
     private val iface: NetworkInterface? = findInterface()
@@ -47,8 +48,7 @@ internal class SsdpDiscoveryService(
     private val multicastLock: WifiManager.MulticastLock? = acquireMulticastLock()
 
     /** SSDP 服务是否继续运行。 */
-    @Volatile
-    private var alive = true
+    @Volatile private var alive = true
 
     /** SSDP 接收线程。 */
     private var thread: Thread? = null
@@ -79,27 +79,29 @@ internal class SsdpDiscoveryService(
 
     /** 向 SSDP 组播地址发送设备状态通知。 */
     fun notify(nts: String) {
-        val targets = listOf(
-            "upnp:rootdevice" to "uuid:$udn::upnp:rootdevice",
-            "uuid:$udn" to "uuid:$udn",
-            MEDIA_RENDERER to "uuid:$udn::$MEDIA_RENDERER",
-            AVT to "uuid:$udn::$AVT",
-            RCS to "uuid:$udn::$RCS",
-            CMS to "uuid:$udn::$CMS",
-            DLNA_DEVICE to "uuid:$udn::$DLNA_DEVICE",
-        )
+        val targets =
+            listOf(
+                "upnp:rootdevice" to "uuid:$udn::upnp:rootdevice",
+                "uuid:$udn" to "uuid:$udn",
+                MEDIA_RENDERER to "uuid:$udn::$MEDIA_RENDERER",
+                AVT to "uuid:$udn::$AVT",
+                RCS to "uuid:$udn::$RCS",
+                CMS to "uuid:$udn::$CMS",
+                DLNA_DEVICE to "uuid:$udn::$DLNA_DEVICE",
+            )
         for ((nt, usn) in targets) {
-            val msg = "NOTIFY * HTTP/1.1\r\n" +
-                "HOST: $SSDP_ADDR:$SSDP_PORT\r\n" +
-                "CACHE-CONTROL: max-age=1800\r\n" +
-                "LOCATION: $descriptionUrl\r\n" +
-                "NT: $nt\r\n" +
-                "NTS: $nts\r\n" +
-                "SERVER: $SERVER\r\n" +
-                "USN: $usn\r\n" +
-                "BOOTID.UPNP.ORG: 1\r\n" +
-                "CONFIGID.UPNP.ORG: 1\r\n" +
-                "\r\n"
+            val msg =
+                "NOTIFY * HTTP/1.1\r\n" +
+                    "HOST: $SSDP_ADDR:$SSDP_PORT\r\n" +
+                    "CACHE-CONTROL: max-age=1800\r\n" +
+                    "LOCATION: $descriptionUrl\r\n" +
+                    "NT: $nt\r\n" +
+                    "NTS: $nts\r\n" +
+                    "SERVER: $SERVER\r\n" +
+                    "USN: $usn\r\n" +
+                    "BOOTID.UPNP.ORG: 1\r\n" +
+                    "CONFIGID.UPNP.ORG: 1\r\n" +
+                    "\r\n"
             val bytes = msg.toByteArray(Charsets.UTF_8)
             runCatching {
                 socket.send(DatagramPacket(bytes, bytes.size, SSDP_GROUP, SSDP_PORT))
@@ -133,34 +135,37 @@ internal class SsdpDiscoveryService(
         val headers = parseHeaders(text)
         val st = headers["st"] ?: "ssdp:all"
         LogHub.i(TAG, "M-SEARCH from ${packet.address?.hostAddress} ST=$st")
-        val targets = when {
-            st == "ssdp:all" -> listOf(
-                "upnp:rootdevice",
-                "uuid:$udn",
-                MEDIA_RENDERER,
-                AVT,
-                RCS,
-                CMS,
-                DLNA_DEVICE,
-            )
-            st == "upnp:rootdevice" -> listOf("upnp:rootdevice")
-            st == "uuid:$udn" -> listOf("uuid:$udn")
-            st.startsWith("uuid:", ignoreCase = true) -> emptyList()
-            else -> listOf(st)
-        }
+        val targets =
+            when {
+                st == "ssdp:all" ->
+                    listOf(
+                        "upnp:rootdevice",
+                        "uuid:$udn",
+                        MEDIA_RENDERER,
+                        AVT,
+                        RCS,
+                        CMS,
+                        DLNA_DEVICE,
+                    )
+                st == "upnp:rootdevice" -> listOf("upnp:rootdevice")
+                st == "uuid:$udn" -> listOf("uuid:$udn")
+                st.startsWith("uuid:", ignoreCase = true) -> emptyList()
+                else -> listOf(st)
+            }
         for (target in targets) {
             val usn = if (target == "uuid:$udn") target else "uuid:$udn::$target"
-            val resp = "HTTP/1.1 200 OK\r\n" +
-                "CACHE-CONTROL: max-age=1800\r\n" +
-                "DATE: ${httpDate()}\r\n" +
-                "EXT:\r\n" +
-                "LOCATION: $descriptionUrl\r\n" +
-                "SERVER: $SERVER\r\n" +
-                "ST: $target\r\n" +
-                "USN: $usn\r\n" +
-                "BOOTID.UPNP.ORG: 1\r\n" +
-                "CONFIGID.UPNP.ORG: 1\r\n" +
-                "\r\n"
+            val resp =
+                "HTTP/1.1 200 OK\r\n" +
+                    "CACHE-CONTROL: max-age=1800\r\n" +
+                    "DATE: ${httpDate()}\r\n" +
+                    "EXT:\r\n" +
+                    "LOCATION: $descriptionUrl\r\n" +
+                    "SERVER: $SERVER\r\n" +
+                    "ST: $target\r\n" +
+                    "USN: $usn\r\n" +
+                    "BOOTID.UPNP.ORG: 1\r\n" +
+                    "CONFIGID.UPNP.ORG: 1\r\n" +
+                    "\r\n"
             val bytes = resp.toByteArray(Charsets.UTF_8)
             runCatching {
                 socket.send(DatagramPacket(bytes, bytes.size, packet.address, packet.port))
@@ -174,7 +179,8 @@ internal class SsdpDiscoveryService(
         for (line in text.split("\r\n").drop(1)) {
             val idx = line.indexOf(':')
             if (idx > 0) {
-                map[line.substring(0, idx).trim().lowercase(Locale.US)] = line.substring(idx + 1).trim()
+                map[line.substring(0, idx).trim().lowercase(Locale.US)] =
+                    line.substring(idx + 1).trim()
             }
         }
         return map
@@ -188,38 +194,41 @@ internal class SsdpDiscoveryService(
     }
 
     /** 查找用于 SSDP 通信的网络接口。 */
-    private fun findInterface(): NetworkInterface? = try {
-        val addr = InetAddress.getByName(ip)
-        NetworkInterface.getByInetAddress(addr) ?: run {
-            var found: NetworkInterface? = null
-            for (n in Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                if (!n.isUp || n.isLoopback) continue
-                for (a in Collections.list(n.inetAddresses)) {
-                    if (a is Inet4Address && !a.isLoopbackAddress) {
-                        found = n
-                        break
+    private fun findInterface(): NetworkInterface? =
+        try {
+            val addr = InetAddress.getByName(ip)
+            NetworkInterface.getByInetAddress(addr)
+                ?: run {
+                    var found: NetworkInterface? = null
+                    for (n in Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                        if (!n.isUp || n.isLoopback) continue
+                        for (a in Collections.list(n.inetAddresses)) {
+                            if (a is Inet4Address && !a.isLoopbackAddress) {
+                                found = n
+                                break
+                            }
+                        }
+                        if (found != null) break
                     }
+                    found
                 }
-                if (found != null) break
-            }
-            found
+        } catch (_: Throwable) {
+            null
         }
-    } catch (_: Throwable) {
-        null
-    }
 
     /** 获取 Wi-Fi 组播锁。 */
-    private fun acquireMulticastLock(): WifiManager.MulticastLock? = try {
-        val wifi = context.applicationContext
-            .getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        wifi?.createMulticastLock("simplebilicast-dlna")?.apply {
-            setReferenceCounted(false)
-            acquire()
+    private fun acquireMulticastLock(): WifiManager.MulticastLock? =
+        try {
+            val wifi =
+                context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            wifi?.createMulticastLock("simplebilicast-dlna")?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (t: Throwable) {
+            LogHub.e(TAG, "multicast lock failed: ${t.message}", t)
+            null
         }
-    } catch (t: Throwable) {
-        LogHub.e(TAG, "multicast lock failed: ${t.message}", t)
-        null
-    }
 
     private companion object {
         /** 日志标签。 */

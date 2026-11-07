@@ -1,12 +1,12 @@
 package com.roy233.tvcast.data.bili.danmaku
 
+import java.io.ByteArrayOutputStream
+import java.util.zip.Deflater
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.ByteArrayOutputStream
-import java.util.zip.Deflater
 
 class LiveDanmakuProtocolTest {
 
@@ -25,10 +25,22 @@ class LiveDanmakuProtocolTest {
 
     @Test
     fun `encodes join with web identity brotli protocol and buvid`() {
-        val frame = LiveDanmakuProtocol.encodeJoin(roomId = 23459804L, token = "secret-token", uid = 0L, buvid = "buvid-abc")
+        val frame =
+            LiveDanmakuProtocol.encodeJoin(
+                roomId = 23459804L,
+                token = "secret-token",
+                uid = 0L,
+                buvid = "buvid-abc",
+            )
 
         assertEquals(LiveDanmakuProtocol.OP_JOIN, readInt32(frame, 8))
-        val body = String(frame, LiveDanmakuProtocol.HEADER_SIZE, frame.size - LiveDanmakuProtocol.HEADER_SIZE, Charsets.UTF_8)
+        val body =
+            String(
+                frame,
+                LiveDanmakuProtocol.HEADER_SIZE,
+                frame.size - LiveDanmakuProtocol.HEADER_SIZE,
+                Charsets.UTF_8,
+            )
         assertTrue(body.contains("\"roomid\":23459804"))
         assertTrue(body.contains("\"protover\":3"))
         assertTrue(body.contains("\"platform\":\"web\""))
@@ -38,7 +50,11 @@ class LiveDanmakuProtocolTest {
 
     @Test
     fun `decodes plain message packet`() {
-        val inner = LiveDanmakuProtocol.encode(5, """{"cmd":"DANMU_MSG","info":[[""],"hi"]}""".toByteArray())
+        val inner =
+            LiveDanmakuProtocol.encode(
+                5,
+                """{"cmd":"DANMU_MSG","info":[[""],"hi"]}""".toByteArray(),
+            )
 
         val packets = LiveDanmakuProtocol.decode(inner)
 
@@ -49,10 +65,23 @@ class LiveDanmakuProtocolTest {
 
     @Test
     fun `decodes zlib wrapped packet and concatenated frames`() {
-        val inner = LiveDanmakuProtocol.encode(5, """{"cmd":"DANMU_MSG","info":[[""],"hi"]}""".toByteArray())
+        val inner =
+            LiveDanmakuProtocol.encode(
+                5,
+                """{"cmd":"DANMU_MSG","info":[[""],"hi"]}""".toByteArray(),
+            )
         val compressed = deflate(inner)
-        val outer = wrap(protocol = LiveDanmakuProtocol.PROTOCOL_ZLIB, op = LiveDanmakuProtocol.OP_MESSAGE, body = compressed)
-        val second = LiveDanmakuProtocol.encode(LiveDanmakuProtocol.OP_HEARTBEAT_REPLY, byteArrayOf(0, 0, 0, 42))
+        val outer =
+            wrap(
+                protocol = LiveDanmakuProtocol.PROTOCOL_ZLIB,
+                op = LiveDanmakuProtocol.OP_MESSAGE,
+                body = compressed,
+            )
+        val second =
+            LiveDanmakuProtocol.encode(
+                LiveDanmakuProtocol.OP_HEARTBEAT_REPLY,
+                byteArrayOf(0, 0, 0, 42),
+            )
         val stream = outer + second
 
         val packets = LiveDanmakuProtocol.decode(stream)
@@ -65,13 +94,16 @@ class LiveDanmakuProtocolTest {
 
     @Test
     fun `parses danmu msg into item with text color and mode`() {
-        val body = """
+        val body =
+            """
             {"cmd":"DANMU_MSG","info":[
               [0,4,25,16711680,1720000000000,987654321,"","hash-123"],
               "前方高能",
               [123,"someone",0,0,0,10000,1,""]
             ]}
-        """.trimIndent().toByteArray()
+            """
+                .trimIndent()
+                .toByteArray()
 
         val item = LiveDanmakuProtocol.parseDanmaku(body)
 
@@ -91,7 +123,9 @@ class LiveDanmakuProtocolTest {
         assertNull(LiveDanmakuProtocol.parseDanmaku("""{"cmd":"SEND_GIFT"}""".toByteArray()))
         assertNull(LiveDanmakuProtocol.parseDanmaku("not-json".toByteArray()))
         assertNull(
-            LiveDanmakuProtocol.parseDanmaku("""{"cmd":"DANMU_MSG","info":["only-one"]}""".toByteArray()),
+            LiveDanmakuProtocol.parseDanmaku(
+                """{"cmd":"DANMU_MSG","info":["only-one"]}""".toByteArray(),
+            ),
         )
     }
 

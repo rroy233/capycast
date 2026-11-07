@@ -6,6 +6,7 @@ import com.roy233.tvcast.feature.playback.domain.VodRecoveryController
 /** 一次投屏请求解析后的内容类型与播放输入。 */
 sealed interface CastResolution {
     data class Vod(val playback: RankedVodPlayback) : CastResolution
+
     data class Live(
         val info: LivePlayInfo,
         val routes: List<RankedLiveSource>,

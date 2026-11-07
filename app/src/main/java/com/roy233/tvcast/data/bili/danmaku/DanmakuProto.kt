@@ -9,8 +9,7 @@ import com.roy233.tvcast.feature.danmaku.domain.DmViewInfo
 /**
  * 手写的 B 站弹幕 protobuf 解码器。
  *
- * 只依赖标准库，避免引入 protobuf 运行时。支持 `DmSegMobileReply` 与
- * `DmWebViewReply` 中本应用需要的字段；未知字段按 wire type 跳过。
+ * 只依赖标准库，避免引入 protobuf 运行时。支持 `DmSegMobileReply` 与 `DmWebViewReply` 中本应用需要的字段；未知字段按 wire type 跳过。
  */
 object DanmakuProto {
 
@@ -319,10 +318,11 @@ object DanmakuProto {
         fun readFloat(tag: Int, name: String): Float {
             if (tag and 7 != WIRE_FIXED32) throw MalformedException("$name wire")
             if (bytes.size - pos < 4) throw MalformedException("$name truncated")
-            val bits = (bytes[pos].toInt() and 0xFF) or
-                ((bytes[pos + 1].toInt() and 0xFF) shl 8) or
-                ((bytes[pos + 2].toInt() and 0xFF) shl 16) or
-                ((bytes[pos + 3].toInt() and 0xFF) shl 24)
+            val bits =
+                (bytes[pos].toInt() and 0xFF) or
+                    ((bytes[pos + 1].toInt() and 0xFF) shl 8) or
+                    ((bytes[pos + 2].toInt() and 0xFF) shl 16) or
+                    ((bytes[pos + 3].toInt() and 0xFF) shl 24)
             pos += 4
             return Float.fromBits(bits)
         }
@@ -339,7 +339,8 @@ object DanmakuProto {
 
         private fun readLength(): Int {
             val length = readVarint()
-            if (length < 0 || length > Int.MAX_VALUE) throw MalformedException("bad length: $length")
+            if (length < 0 || length > Int.MAX_VALUE)
+                throw MalformedException("bad length: $length")
             return length.toInt()
         }
 

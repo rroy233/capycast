@@ -29,19 +29,21 @@ class PgcPsshReader(private val client: OkHttpClient) {
     }
 
     private fun fetchPssh(track: BiliApi.Track): String {
-        val range = parseByteRange(track.initializationRange)
-            ?: throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine 初始化范围无效")
+        val range =
+            parseByteRange(track.initializationRange)
+                ?: throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine 初始化范围无效")
         if (range.second - range.first + 1L > MAX_INIT_RANGE_BYTES) {
             throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine 初始化数据范围过大")
         }
-        val request = Request.Builder()
-            .url(track.url)
-            .header("User-Agent", BiliApi.UA)
-            .header("Referer", WEB_REFERER)
-            .header("Origin", WEB_ORIGIN)
-            .header("Range", "bytes=${range.first}-${range.second}")
-            .get()
-            .build()
+        val request =
+            Request.Builder()
+                .url(track.url)
+                .header("User-Agent", BiliApi.UA)
+                .header("Referer", WEB_REFERER)
+                .header("Origin", WEB_ORIGIN)
+                .header("Range", "bytes=${range.first}-${range.second}")
+                .get()
+                .build()
         try {
             client.newCall(request).execute().use { response ->
                 if (response.code != 206 && !response.isSuccessful) {
@@ -52,14 +54,21 @@ class PgcPsshReader(private val client: OkHttpClient) {
                     )
                     throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "读取 Widevine 初始化数据失败")
                 }
-                val bytes = response.body?.source()?.readByteArray(MAX_INIT_RANGE_BYTES + 1L)
-                    ?: throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine 初始化数据为空")
+                val bytes =
+                    response.body?.source()?.readByteArray(MAX_INIT_RANGE_BYTES + 1L)
+                        ?: throw PgcPlaybackException(
+                            "PGC_DRM_METADATA_INVALID",
+                            "Widevine 初始化数据为空",
+                        )
                 if (bytes.size.toLong() > MAX_INIT_RANGE_BYTES) {
                     throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "Widevine 初始化数据超出限制")
                 }
                 val pssh = PsshBoxParser.findWidevinePssh(bytes)
                 if (pssh == null) {
-                    LogHub.e(TAG, "PGC DRM init data has no Widevine PSSH host=${LogRedaction.host(track.url)}")
+                    LogHub.e(
+                        TAG,
+                        "PGC DRM init data has no Widevine PSSH host=${LogRedaction.host(track.url)}",
+                    )
                     return ""
                 }
                 return Base64.encodeToString(pssh, Base64.NO_WRAP)
@@ -72,7 +81,11 @@ class PgcPsshReader(private val client: OkHttpClient) {
                 "PGC DRM initialization read error=${LogRedaction.reason(failure)} " +
                     "host=${LogRedaction.host(track.url)}",
             )
-            throw PgcPlaybackException("PGC_DRM_METADATA_INVALID", "读取 Widevine 初始化数据失败", cause = failure)
+            throw PgcPlaybackException(
+                "PGC_DRM_METADATA_INVALID",
+                "读取 Widevine 初始化数据失败",
+                cause = failure,
+            )
         }
     }
 

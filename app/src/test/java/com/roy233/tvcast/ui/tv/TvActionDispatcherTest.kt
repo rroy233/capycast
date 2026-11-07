@@ -1,9 +1,9 @@
 package com.roy233.tvcast.ui.tv
 
+import com.roy233.tvcast.ui.model.RecentCastFocus
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.model.UiFocusAnchor
-import com.roy233.tvcast.ui.model.RecentCastFocus
 import com.roy233.tvcast.ui.model.menuEntryFor
 import com.roy233.tvcast.ui.model.pageAnchorFor
 import java.lang.reflect.Proxy
@@ -27,9 +27,10 @@ class TvActionDispatcherTest {
 
     @Test
     fun navigatingHomeClosesTheSidebar() {
-        val stateHolder = TvStateHolder(
-            TvUiState(destination = TvDestination.SETTINGS, sidebarVisible = true),
-        )
+        val stateHolder =
+            TvStateHolder(
+                TvUiState(destination = TvDestination.SETTINGS, sidebarVisible = true),
+            )
 
         TvActionDispatcher(stateHolder, noOpHost()).actions.onNavigateHome()
 
@@ -75,9 +76,10 @@ class TvActionDispatcherTest {
 
     @Test
     fun closingTheMenuPutsFocusBackOnTheCurrentPage() {
-        val stateHolder = TvStateHolder(
-            TvUiState(destination = TvDestination.SETTINGS, sidebarVisible = true),
-        )
+        val stateHolder =
+            TvStateHolder(
+                TvUiState(destination = TvDestination.SETTINGS, sidebarVisible = true),
+            )
         val actions = TvActionDispatcher(stateHolder, noOpHost()).actions
         actions.onOpenSidebar()
         assertEquals(UiFocusAnchor.MENU_SETTINGS, stateHolder.read().focusRequest.anchor)
@@ -129,9 +131,10 @@ class TvActionDispatcherTest {
     @Test
     fun menuFocusMoveRepairsAStaleAnchor() {
         // 状态里菜单已可见但栈顶仍是页面锚点（旧路径遗留），上下键必须能自愈。
-        val stateHolder = TvStateHolder(
-            TvUiState(destination = TvDestination.HOME, sidebarVisible = true),
-        )
+        val stateHolder =
+            TvStateHolder(
+                TvUiState(destination = TvDestination.HOME, sidebarVisible = true),
+            )
 
         TvActionDispatcher(stateHolder, noOpHost()).actions.onMenuFocusMove(1)
 
@@ -140,10 +143,11 @@ class TvActionDispatcherTest {
 
     @Test
     fun featuredRecentFollowsTheFocusedCard() {
-        val recents = listOf(
-            recentCast(aid = 1L, title = "第一条"),
-            recentCast(aid = 2L, title = "第二条"),
-        )
+        val recents =
+            listOf(
+                recentCast(aid = 1L, title = "第一条"),
+                recentCast(aid = 2L, title = "第二条"),
+            )
         val stateHolder = TvStateHolder(TvUiState(recents = recents))
         val actions = TvActionDispatcher(stateHolder, noOpHost()).actions
 
@@ -159,14 +163,16 @@ class TvActionDispatcherTest {
 
     @Test
     fun featuredRecentDistinguishesDifferentPartsOfTheSameVideo() {
-        val stateHolder = TvStateHolder(
-            TvUiState(
-                recents = listOf(
-                    recentCast(aid = 9L, title = "第一集"),
-                    recentCast(aid = 9L, title = "第二集").copy(cid = 91L),
+        val stateHolder =
+            TvStateHolder(
+                TvUiState(
+                    recents =
+                        listOf(
+                            recentCast(aid = 9L, title = "第一集"),
+                            recentCast(aid = 9L, title = "第二集").copy(cid = 91L),
+                        ),
                 ),
-            ),
-        )
+            )
         val actions = TvActionDispatcher(stateHolder, noOpHost()).actions
 
         actions.onFocusRecent(9L, 91L)
@@ -176,23 +182,26 @@ class TvActionDispatcherTest {
 
     @Test
     fun featuredRecentFallsBackWhenTheFocusedItemDisappears() {
-        val stateHolder = TvStateHolder(
-            TvUiState(
-                recents = listOf(recentCast(aid = 7L, title = "仍在列表")),
-                focusedRecent = RecentCastFocus(aid = 404L, cid = 4040L),
-            ),
-        )
+        val stateHolder =
+            TvStateHolder(
+                TvUiState(
+                    recents = listOf(recentCast(aid = 7L, title = "仍在列表")),
+                    focusedRecent = RecentCastFocus(aid = 404L, cid = 4040L),
+                ),
+            )
 
         assertEquals(7L, stateHolder.read().featuredRecent?.aid)
     }
 
     @Test
     fun returningHomeAfterPlaybackAlwaysTargetsThePrimaryAction() {
-        val returned = TvUiState(
-            destination = TvDestination.SETTINGS,
-            sidebarVisible = true,
-            focusedRecent = RecentCastFocus(aid = 7L, cid = 70L),
-        ).returnToHomeAfterPlayback()
+        val returned =
+            TvUiState(
+                    destination = TvDestination.SETTINGS,
+                    sidebarVisible = true,
+                    focusedRecent = RecentCastFocus(aid = 7L, cid = 70L),
+                )
+                .returnToHomeAfterPlayback()
 
         assertEquals(TvDestination.HOME, returned.destination)
         assertFalse(returned.sidebarVisible)
@@ -200,14 +209,18 @@ class TvActionDispatcherTest {
         assertEquals(UiFocusAnchor.HOME_PRIMARY, returned.focusRequest.anchor)
     }
 
-    private fun recentCast(aid: Long, title: String) = com.roy233.tvcast.feature.cast.domain.RecentCast(
-        aid = aid,
-        cid = aid * 10,
-        title = title,
-    )
+    private fun recentCast(aid: Long, title: String) =
+        com.roy233.tvcast.feature.cast.domain.RecentCast(
+            aid = aid,
+            cid = aid * 10,
+            title = title,
+        )
 
-    private fun noOpHost(): TvActionHost = Proxy.newProxyInstance(
-        TvActionHost::class.java.classLoader,
-        arrayOf(TvActionHost::class.java),
-    ) { _, _, _ -> null } as TvActionHost
+    private fun noOpHost(): TvActionHost =
+        Proxy.newProxyInstance(
+            TvActionHost::class.java.classLoader,
+            arrayOf(TvActionHost::class.java),
+        ) { _, _, _ ->
+            null
+        } as TvActionHost
 }

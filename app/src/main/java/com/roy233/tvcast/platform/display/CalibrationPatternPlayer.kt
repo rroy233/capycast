@@ -12,29 +12,44 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 
 /** 循环硬解项目内的 4K H.264 静态视频；画面与角标经同一像素输出链显示。 */
-class CalibrationPatternPlayer(context: Context, surface: Surface, private val onFailure: () -> Unit) {
-    private val player = ExoPlayer.Builder(context.applicationContext).build().apply {
-        setVideoSurface(surface)
-        repeatMode = Player.REPEAT_MODE_ONE
-        addListener(object : Player.Listener {
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                if (videoSize.width == 0 && videoSize.height == 0) {
-                    LogHub.d(TAG, "calibration decoder cleared")
-                    return
-                }
-                LogHub.i(TAG, "calibration decoded=${videoSize.width}x${videoSize.height}")
-                if (started && isUnexpectedCalibrationVideoSize(videoSize.width, videoSize.height)) {
-                    LogHub.e(TAG, "calibration requires 3840x2160 decode")
-                    onFailure()
-                }
-            }
+class CalibrationPatternPlayer(
+    context: Context,
+    surface: Surface,
+    private val onFailure: () -> Unit,
+) {
+    private val player =
+        ExoPlayer.Builder(context.applicationContext).build().apply {
+            setVideoSurface(surface)
+            repeatMode = Player.REPEAT_MODE_ONE
+            addListener(
+                object : Player.Listener {
+                    override fun onVideoSizeChanged(videoSize: VideoSize) {
+                        if (videoSize.width == 0 && videoSize.height == 0) {
+                            LogHub.d(TAG, "calibration decoder cleared")
+                            return
+                        }
+                        LogHub.i(TAG, "calibration decoded=${videoSize.width}x${videoSize.height}")
+                        if (
+                            started &&
+                                isUnexpectedCalibrationVideoSize(videoSize.width, videoSize.height)
+                        ) {
+                            LogHub.e(TAG, "calibration requires 3840x2160 decode")
+                            onFailure()
+                        }
+                    }
 
-            override fun onPlayerError(error: PlaybackException) {
-                LogHub.e(TAG, "calibration decode failed: ${LogRedaction.reason(error)}", error, stack = true)
-                if (started) onFailure()
-            }
-        })
-    }
+                    override fun onPlayerError(error: PlaybackException) {
+                        LogHub.e(
+                            TAG,
+                            "calibration decode failed: ${LogRedaction.reason(error)}",
+                            error,
+                            stack = true,
+                        )
+                        if (started) onFailure()
+                    }
+                },
+            )
+        }
     private var started = false
 
     fun start() {
@@ -61,7 +76,9 @@ class CalibrationPatternPlayer(context: Context, surface: Surface, private val o
         player.release()
     }
 
-    private companion object { const val TAG = "CalibrationVideo" }
+    private companion object {
+        const val TAG = "CalibrationVideo"
+    }
 }
 
 /** Media3 在 stop/release 时回报 0×0；这不是解码失败。 */

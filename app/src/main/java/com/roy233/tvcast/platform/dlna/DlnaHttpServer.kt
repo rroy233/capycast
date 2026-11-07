@@ -27,24 +27,25 @@ internal class DlnaHttpServer(
     private val onGet: (String) -> DlnaHttpResponse,
     private val onPost: (String, Map<String, String>, ByteArray) -> DlnaHttpResponse,
 ) {
-    private val serverSocket = ServerSocket().apply {
-        reuseAddress = true
-        bind(InetSocketAddress(port))
-    }
+    private val serverSocket =
+        ServerSocket().apply {
+            reuseAddress = true
+            bind(InetSocketAddress(port))
+        }
     private val pool = Executors.newCachedThreadPool()
 
-    @Volatile
-    private var alive = true
+    @Volatile private var alive = true
 
     fun start() {
         thread(name = "dlna-http", isDaemon = true) {
             while (alive) {
-                val socket = try {
-                    serverSocket.accept()
-                } catch (failure: Throwable) {
-                    if (alive) LogHub.e(TAG, "accept failed: ${failure.message}", failure)
-                    break
-                }
+                val socket =
+                    try {
+                        serverSocket.accept()
+                    } catch (failure: Throwable) {
+                        if (alive) LogHub.e(TAG, "accept failed: ${failure.message}", failure)
+                        break
+                    }
                 pool.execute {
                     runCatching { handle(socket) }
                         .onFailure { LogHub.e(TAG, "http handler failed: ${it.message}", it) }
@@ -82,19 +83,22 @@ internal class DlnaHttpServer(
                 "HTTP $method $path from ${connection.inetAddress?.hostAddress} " +
                     "soap=${headers["soapaction"]?.take(80)} body=${body.size}B",
             )
-            val result = when (method) {
-                "GET", "HEAD" -> onGet(path)
-                "POST" -> onPost(path, headers, body)
-                "SUBSCRIBE" -> response(
-                    200,
-                    "OK",
-                    "text/xml; charset=\"utf-8\"",
-                    ByteArray(0),
-                    mapOf("SID" to "uuid:${UUID.randomUUID()}", "TIMEOUT" to "Second-1800"),
-                )
-                "UNSUBSCRIBE" -> response(200, "OK", "text/plain", ByteArray(0))
-                else -> response(405, "Method Not Allowed", "text/plain", "method not allowed")
-            }
+            val result =
+                when (method) {
+                    "GET",
+                    "HEAD" -> onGet(path)
+                    "POST" -> onPost(path, headers, body)
+                    "SUBSCRIBE" ->
+                        response(
+                            200,
+                            "OK",
+                            "text/xml; charset=\"utf-8\"",
+                            ByteArray(0),
+                            mapOf("SID" to "uuid:${UUID.randomUUID()}", "TIMEOUT" to "Second-1800"),
+                        )
+                    "UNSUBSCRIBE" -> response(200, "OK", "text/plain", ByteArray(0))
+                    else -> response(405, "Method Not Allowed", "text/plain", "method not allowed")
+                }
             write(connection, if (method == "HEAD") result.copy(body = ByteArray(0)) else result)
         }
     }
@@ -136,11 +140,12 @@ internal class DlnaHttpServer(
             if (byte < 0) return if (output.size() == 0) null else output.toString("UTF-8")
             if (byte == '\n'.code) {
                 val bytes = output.toByteArray()
-                val length = if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) {
-                    bytes.size - 1
-                } else {
-                    bytes.size
-                }
+                val length =
+                    if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) {
+                        bytes.size - 1
+                    } else {
+                        bytes.size
+                    }
                 return String(bytes, 0, length, Charsets.UTF_8)
             }
             output.write(byte)

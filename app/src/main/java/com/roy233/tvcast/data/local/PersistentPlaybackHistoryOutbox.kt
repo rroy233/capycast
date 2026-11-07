@@ -15,46 +15,52 @@ class PersistentPlaybackHistoryOutbox(context: Context) : PlaybackHistoryOutbox 
     private val lock = Any()
 
     /** 返回指定账号的待上报快照，按更新时间从旧到新排列。 */
-    override fun pendingForAccount(mid: Long): List<PlaybackHistoryReport> = synchronized(lock) {
-        loadLocked().filter { it.accountMid == mid }.sortedBy { it.updatedAtMs }
-    }
+    override fun pendingForAccount(mid: Long): List<PlaybackHistoryReport> =
+        synchronized(lock) {
+            loadLocked().filter { it.accountMid == mid }.sortedBy { it.updatedAtMs }
+        }
 
     /** 保存或更新同一播放会话的最新进度。 */
-    override fun upsert(report: PlaybackHistoryReport) = synchronized(lock) {
-        val existing = loadLocked().filterNot { it.sessionId == report.sessionId }
-        val updated = (existing + report)
-            .sortedByDescending { it.updatedAtMs }
-            .take(MAX_ITEMS)
-        if (updated.none { it.sessionId == report.sessionId }) {
-            LogHub.w(TAG, "history outbox full; oldest snapshot was evicted")
+    override fun upsert(report: PlaybackHistoryReport) =
+        synchronized(lock) {
+            val existing = loadLocked().filterNot { it.sessionId == report.sessionId }
+            val updated = (existing + report).sortedByDescending { it.updatedAtMs }.take(MAX_ITEMS)
+            if (updated.none { it.sessionId == report.sessionId }) {
+                LogHub.w(TAG, "history outbox full; oldest snapshot was evicted")
+            }
+            persistLocked(updated)
         }
-        persistLocked(updated)
-    }
 
     /** 仅在服务端确认的是当前快照时删除；更新中的新进度会继续保留。 */
-    override fun acknowledge(sessionId: String, updatedAtMs: Long) = synchronized(lock) {
-        val remaining = loadLocked().filterNot {
-            it.sessionId == sessionId && it.updatedAtMs == updatedAtMs
+    override fun acknowledge(sessionId: String, updatedAtMs: Long) =
+        synchronized(lock) {
+            val remaining =
+                loadLocked().filterNot {
+                    it.sessionId == sessionId && it.updatedAtMs == updatedAtMs
+                }
+            persistLocked(remaining)
         }
-        persistLocked(remaining)
-    }
 
     /** 关闭设备级同步开关时删除所有账号的待发送快照。 */
-    override fun clearAll() = synchronized(lock) {
-        persistLocked(emptyList())
-    }
+    override fun clearAll() =
+        synchronized(lock) {
+            persistLocked(emptyList())
+        }
 
     private fun loadLocked(): List<PlaybackHistoryReport> = runCatching {
         val raw = prefs.getString(KEY_ITEMS, null) ?: return emptyList()
         val type = object : TypeToken<List<PlaybackHistoryReport>>() {}.type
-        gson.fromJson<List<PlaybackHistoryReport>>(raw, type)
+        gson
+            .fromJson<List<PlaybackHistoryReport>>(raw, type)
             .orEmpty()
             .map(::normalizeLegacy)
             .take(MAX_ITEMS)
-    }.onFailure { error ->
-        LogHub.e(TAG, "history outbox read failed: ${error.javaClass.simpleName}", error)
-        prefs.edit().remove(KEY_ITEMS).apply()
-    }.getOrDefault(emptyList())
+    }
+        .onFailure { error ->
+            LogHub.e(TAG, "history outbox read failed: ${error.javaClass.simpleName}", error)
+            prefs.edit().remove(KEY_ITEMS).apply()
+        }
+        .getOrDefault(emptyList())
 
     private fun persistLocked(items: List<PlaybackHistoryReport>) {
         runCatching {
@@ -63,15 +69,13 @@ class PersistentPlaybackHistoryOutbox(context: Context) : PlaybackHistoryOutbox 
             } else {
                 prefs.edit().putString(KEY_ITEMS, gson.toJson(items)).apply()
             }
-        }.onFailure { error ->
-            LogHub.e(TAG, "history outbox write failed: ${error.javaClass.simpleName}", error)
         }
+            .onFailure { error ->
+                LogHub.e(TAG, "history outbox write failed: ${error.javaClass.simpleName}", error)
+            }
     }
 
-    /**
-     * Gson 绕过 Kotlin 默认参数。升级后读取旧队列时，新增的非空字符串字段会变为
-     * null；这里重建快照，使旧记录继续可发送，并避免重试线程被空指针阻塞。
-     */
+    /** Gson 绕过 Kotlin 默认参数。升级后读取旧队列时，新增的非空字符串字段会变为 null；这里重建快照，使旧记录继续可发送，并避免重试线程被空指针阻塞。 */
     private fun normalizeLegacy(report: PlaybackHistoryReport): PlaybackHistoryReport =
         PlaybackHistoryReport(
             sessionId = report.sessionId,

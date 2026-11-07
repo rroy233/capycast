@@ -15,4 +15,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "SimpleBiliCast"
+
 include(":app")

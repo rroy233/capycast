@@ -15,7 +15,8 @@ data class LiveStreamCandidate(
     val pcdn: Boolean,
     val responseIndex: Int,
 ) {
-    val cdnLabel: String get() = LogRedaction.host(url)
+    val cdnLabel: String
+        get() = LogRedaction.host(url)
 }
 
 data class LivePlayInfo(
@@ -26,8 +27,10 @@ data class LivePlayInfo(
     val candidates: List<LiveStreamCandidate>,
 ) {
     val qualityCandidates: List<LiveStreamCandidate>
-        get() = candidates.filter { it.quality == quality }
-            .ifEmpty { candidates.filter { it.quality == 0 } }
+        get() =
+            candidates
+                .filter { it.quality == quality }
+                .ifEmpty { candidates.filter { it.quality == 0 } }
 }
 
 data class LiveProbeResult(

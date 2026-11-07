@@ -5,7 +5,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.ui.model.FocusRequest
 import com.roy233.tvcast.ui.model.MenuEntry
-import com.roy233.tvcast.ui.model.SettingsRouteEntry
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.model.UiFocusAnchor
@@ -14,11 +13,9 @@ import com.roy233.tvcast.ui.model.menuEntryOf
 /**
  * 焦点与按键归属的诊断日志。
  *
- * 电视端常常无法接 adb，逻辑只能靠猜。这里在每个决策点写一条结构化日志，并且每次
- * 按键都会附上「当前界面栈 + 实际持有焦点的元素」，便于逐帧校验是否符合预期：
+ * 电视端常常无法接 adb，逻辑只能靠猜。这里在每个决策点写一条结构化日志，并且每次 按键都会附上「当前界面栈 + 实际持有焦点的元素」，便于逐帧校验是否符合预期：
  *
- *   curl http://<设备IP>:8098/log     按时间顺序的日志
- *   curl http://<设备IP>:8098/state   当前界面栈与焦点的快照（uiStack）
+ * curl http://<设备IP>:8098/log 按时间顺序的日志 curl http://<设备IP>:8098/state 当前界面栈与焦点的快照（uiStack）
  *
  * 日志只含界面标识，不含个人信息。
  */
@@ -37,8 +34,7 @@ internal object FocusDiagnostics {
     /**
      * 记录某个元素获得或失去焦点。
      *
-     * 由共享控件通过 [focusTrace] 调用，因此日志里的 focus 始终是真实持有焦点的
-     * 元素，而不是“我们请求过的”元素。
+     * 由共享控件通过 [focusTrace] 调用，因此日志里的 focus 始终是真实持有焦点的 元素，而不是“我们请求过的”元素。
      */
     fun trackFocus(label: String, isFocused: Boolean) {
         if (isFocused) {
@@ -102,22 +98,22 @@ internal object FocusDiagnostics {
     /**
      * 把 Android 键码翻译成可读名字。
      *
-     * Compose 的 `Key.toString()` 形如 `Key code: 85899345920`，无法直接读懂，
-     * 日志里统一使用这个映射。
+     * Compose 的 `Key.toString()` 形如 `Key code: 85899345920`，无法直接读懂， 日志里统一使用这个映射。
      */
-    fun keyName(keyCode: Int): String = when (keyCode) {
-        android.view.KeyEvent.KEYCODE_DPAD_UP -> "DPAD_UP"
-        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> "DPAD_DOWN"
-        android.view.KeyEvent.KEYCODE_DPAD_LEFT -> "DPAD_LEFT"
-        android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> "DPAD_RIGHT"
-        android.view.KeyEvent.KEYCODE_DPAD_CENTER -> "DPAD_CENTER"
-        android.view.KeyEvent.KEYCODE_ENTER -> "ENTER"
-        android.view.KeyEvent.KEYCODE_BACK -> "BACK"
-        android.view.KeyEvent.KEYCODE_ESCAPE -> "ESCAPE"
-        android.view.KeyEvent.KEYCODE_MENU -> "MENU"
-        android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "MEDIA_PLAY_PAUSE"
-        else -> "KEYCODE_$keyCode"
-    }
+    fun keyName(keyCode: Int): String =
+        when (keyCode) {
+            android.view.KeyEvent.KEYCODE_DPAD_UP -> "DPAD_UP"
+            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> "DPAD_DOWN"
+            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> "DPAD_LEFT"
+            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> "DPAD_RIGHT"
+            android.view.KeyEvent.KEYCODE_DPAD_CENTER -> "DPAD_CENTER"
+            android.view.KeyEvent.KEYCODE_ENTER -> "ENTER"
+            android.view.KeyEvent.KEYCODE_BACK -> "BACK"
+            android.view.KeyEvent.KEYCODE_ESCAPE -> "ESCAPE"
+            android.view.KeyEvent.KEYCODE_MENU -> "MENU"
+            android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "MEDIA_PLAY_PAUSE"
+            else -> "KEYCODE_$keyCode"
+        }
 
     /** 一次按键的归属、动作与实际焦点。 */
     fun keyRouted(state: TvUiState, surface: KeySurface, key: String, handled: Boolean) {
@@ -150,7 +146,8 @@ internal object FocusDiagnostics {
     fun leftEdge(movedInsidePage: Boolean) {
         LogHub.d(
             TAG,
-            if (movedInsidePage) "left edge: focus moved inside page" else "left edge: opening menu",
+            if (movedInsidePage) "left edge: focus moved inside page"
+            else "left edge: opening menu",
         )
     }
 
@@ -196,5 +193,6 @@ internal object FocusDiagnostics {
  *
  * @param label 元素的可读标识，例如 `button:投屏帮助`、`menu:设置`。
  */
-internal fun Modifier.focusTrace(label: String): Modifier =
-    onFocusChanged { FocusDiagnostics.trackFocus(label, it.isFocused) }
+internal fun Modifier.focusTrace(label: String): Modifier = onFocusChanged {
+    FocusDiagnostics.trackFocus(label, it.isFocused)
+}

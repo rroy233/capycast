@@ -2,15 +2,14 @@ package com.roy233.tvcast.core.diagnostics
 
 import android.os.Process
 import android.os.SystemClock
-import org.json.JSONObject
 import java.io.File
+import org.json.JSONObject
 
 /**
  * 读取当前进程自己的 libVLC 原生日志。
  *
- * 部分 libVLC 构建不支持 `--file-logging`，原生日志只会写入 logcat。这里通过
- * `logcat --pid` 读取当前进程的 `VLC` 标签日志；不同系统可能因为 SELinux 或
- * logcat 参数差异而拒绝访问，此时会记录一次原因并安静降级。
+ * 部分 libVLC 构建不支持 `--file-logging`，原生日志只会写入 logcat。这里通过 `logcat --pid` 读取当前进程的 `VLC` 标签日志；不同系统可能因为
+ * SELinux 或 logcat 参数差异而拒绝访问，此时会记录一次原因并安静降级。
  */
 object NativeLogcat {
 
@@ -28,14 +27,11 @@ object NativeLogcat {
     private val VLC_TAGS = listOf("VLC:V", "libvlc:V", "vlcjni:V")
 
     /** 不可用原因；为 null 表示尚未遇到命令级失败。 */
-    @Volatile
-    private var unavailableReason: String? = null
+    @Volatile private var unavailableReason: String? = null
     /** 最近一次成功读取的日志，失败后保留供报告使用。 */
-    @Volatile
-    private var lastTail: String = ""
+    @Volatile private var lastTail: String = ""
     /** 最近一次实际执行 logcat 的单调时刻。 */
-    @Volatile
-    private var lastReadAt: Long = -CACHE_MS
+    @Volatile private var lastReadAt: Long = -CACHE_MS
 
     /**
      * 读取当前进程的 libVLC 原生日志尾部。
@@ -52,10 +48,11 @@ object NativeLogcat {
         lastReadAt = now
         val pid = Process.myPid()
         val lineLimit = (maxLines.coerceAtLeast(1) * 2).toString()
-        val attempts = listOf(
-            listOf("-d", "-v", "threadtime", "-t", lineLimit, "--pid=$pid", "-s") + VLC_TAGS,
-            listOf("-d", "-v", "threadtime", "-t", lineLimit, "-s") + VLC_TAGS,
-        )
+        val attempts =
+            listOf(
+                listOf("-d", "-v", "threadtime", "-t", lineLimit, "--pid=$pid", "-s") + VLC_TAGS,
+                listOf("-d", "-v", "threadtime", "-t", lineLimit, "-s") + VLC_TAGS,
+            )
         var sawSuccessfulEmpty = false
         for (args in attempts) {
             val result = runCatching { runLogcat(args) }.getOrNull()
@@ -71,13 +68,14 @@ object NativeLogcat {
                 }
                 continue
             }
-            val lines = output.lineSequence()
-                .filter { it.isNotBlank() && !it.startsWith("--------- beginning") }
-                .filter { line -> linePid(line)?.let { it == pid } ?: false }
-                .toList()
+            val lines =
+                output
+                    .lineSequence()
+                    .filter { it.isNotBlank() && !it.startsWith("--------- beginning") }
+                    .filter { line -> linePid(line)?.let { it == pid } ?: false }
+                    .toList()
             if (lines.isNotEmpty()) {
-                lastTail = lines.takeLast(maxLines)
-                    .joinToString("\n") { LogRedaction.text(it) }
+                lastTail = lines.takeLast(maxLines).joinToString("\n") { LogRedaction.text(it) }
                 return lastTail
             }
             sawSuccessfulEmpty = true
@@ -92,19 +90,18 @@ object NativeLogcat {
      * @param maxLines 最多返回的行数。
      * @return 状态 JSON。
      */
-    fun report(maxLines: Int = MAX_LINES): JSONObject = JSONObject().apply {
-        val text = tail(maxLines)
-        put("available", text.isNotBlank())
-        put("tail", text)
-        put("status", unavailableReason ?: if (text.isBlank()) "empty" else "available")
-    }
+    fun report(maxLines: Int = MAX_LINES): JSONObject =
+        JSONObject().apply {
+            val text = tail(maxLines)
+            put("available", text.isNotBlank())
+            put("tail", text)
+            put("status", unavailableReason ?: if (text.isBlank()) "empty" else "available")
+        }
 
     /** 执行一次 logcat 并返回退出码与输出。 */
     private fun runLogcat(args: List<String>): Pair<Int, String> {
         val binary = if (File(LOGCAT_BINARY).canExecute()) LOGCAT_BINARY else "logcat"
-        val process = ProcessBuilder(listOf(binary) + args)
-            .redirectErrorStream(true)
-            .start()
+        val process = ProcessBuilder(listOf(binary) + args).redirectErrorStream(true).start()
         if (!waitFor(process, TIMEOUT_MS)) {
             runCatching { process.destroy() }
             return 1 to "logcat timeout"

@@ -13,8 +13,8 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.roy233.tvcast.feature.cast.domain.RecentCast
-import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.RecentCastFocus
+import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.tv.TvRoot
 import org.junit.Assert.assertEquals
@@ -27,8 +27,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class HomeFocusTest {
 
-    @get:Rule
-    val composeRule = createComposeRule()
+    @get:Rule val composeRule = createComposeRule()
 
     @Test
     fun homeWithoutRecentCastFocusesTheHelpButton() {
@@ -50,9 +49,12 @@ class HomeFocusTest {
             }
             HomeScreen(
                 state = state.value,
-                actions = TvActions(
-                    onDismissContinue = { state.value = state.value.copy(showContinue = false) },
-                ),
+                actions =
+                    TvActions(
+                        onDismissContinue = {
+                            state.value = state.value.copy(showContinue = false)
+                        },
+                    ),
             )
         }
 
@@ -75,33 +77,33 @@ class HomeFocusTest {
     fun homeFocusGraphMovesBetweenActionsAndRecentCards() {
         composeRule.setContent {
             HomeScreen(
-                state = TvUiState(
-                    loggedIn = true,
-                    recents = listOf(recentCast(1), recentCast(2)),
-                ),
+                state =
+                    TvUiState(
+                        loggedIn = true,
+                        recents = listOf(recentCast(1), recentCast(2)),
+                    ),
                 actions = TvActions(),
             )
         }
 
         composeRule.onNodeWithText("继续播放").assertIsFocused()
-        composeRule.onNodeWithText("继续播放")
-            .performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithText("继续播放").performKeyInput { pressKey(Key.DirectionDown) }
         composeRule.onNodeWithTag("recent-card-1-10").assertIsFocused()
 
-        composeRule.onNodeWithTag("recent-card-1-10")
-            .performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.onNodeWithTag("recent-card-1-10").performKeyInput {
+            pressKey(Key.DirectionRight)
+        }
         composeRule.onNodeWithTag("recent-card-2-20").assertIsFocused()
 
-        composeRule.onNodeWithTag("recent-card-2-20")
-            .performKeyInput { pressKey(Key.DirectionLeft) }
+        composeRule.onNodeWithTag("recent-card-2-20").performKeyInput {
+            pressKey(Key.DirectionLeft)
+        }
         composeRule.onNodeWithTag("recent-card-1-10").assertIsFocused()
 
-        composeRule.onNodeWithTag("recent-card-1-10")
-            .performKeyInput { pressKey(Key.DirectionUp) }
+        composeRule.onNodeWithTag("recent-card-1-10").performKeyInput { pressKey(Key.DirectionUp) }
         composeRule.onNodeWithText("继续播放").assertIsFocused()
 
-        composeRule.onNodeWithText("继续播放")
-            .performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.onNodeWithText("继续播放").performKeyInput { pressKey(Key.DirectionRight) }
         composeRule.onNodeWithText("返回").assertIsFocused()
     }
 
@@ -118,16 +120,16 @@ class HomeFocusTest {
             }
             TvRoot(
                 state = state.value,
-                actions = TvActions(
-                    onOpenSidebar = { state.value = state.value.withMenuOpen() },
-                    onCloseSidebar = { state.value = state.value.withMenuClosed() },
-                ),
+                actions =
+                    TvActions(
+                        onOpenSidebar = { state.value = state.value.withMenuOpen() },
+                        onCloseSidebar = { state.value = state.value.withMenuClosed() },
+                    ),
             )
         }
 
         composeRule.onNodeWithText("继续播放").assertIsFocused()
-        composeRule.onNodeWithText("继续播放")
-            .performKeyInput { pressKey(Key.DirectionLeft) }
+        composeRule.onNodeWithText("继续播放").performKeyInput { pressKey(Key.DirectionLeft) }
         composeRule.onNodeWithTag("sidebar-panel").assertExists()
         composeRule.onNodeWithText("Bilibili 投屏").assertIsFocused()
     }
@@ -139,30 +141,33 @@ class HomeFocusTest {
                 mutableStateOf(
                     TvUiState(
                         loggedIn = true,
-                        recents = listOf(
-                            recentCast(1).copy(cover = "https://example.com/one.jpg"),
-                            recentCast(2).copy(cover = "https://example.com/two.jpg"),
-                        ),
+                        recents =
+                            listOf(
+                                recentCast(1).copy(cover = "https://example.com/one.jpg"),
+                                recentCast(2).copy(cover = "https://example.com/two.jpg"),
+                            ),
                     ),
                 )
             }
             HomeScreen(
                 state = state.value,
-                actions = TvActions(
-                    onFocusRecent = { aid, cid ->
-                        state.value = state.value.copy(
-                            focusedRecent = RecentCastFocus(aid, cid),
-                        )
-                    },
-                ),
+                actions =
+                    TvActions(
+                        onFocusRecent = { aid, cid ->
+                            state.value =
+                                state.value.copy(
+                                    focusedRecent = RecentCastFocus(aid, cid),
+                                )
+                        },
+                    ),
             )
         }
 
         assertBackdropFillsScreen("home-backdrop-1-10")
-        composeRule.onNodeWithText("继续播放")
-            .performKeyInput { pressKey(Key.DirectionDown) }
-        composeRule.onNodeWithTag("recent-card-1-10")
-            .performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.onNodeWithText("继续播放").performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.onNodeWithTag("recent-card-1-10").performKeyInput {
+            pressKey(Key.DirectionRight)
+        }
         assertBackdropFillsScreen("home-backdrop-2-20")
     }
 
@@ -173,10 +178,11 @@ class HomeFocusTest {
         assertEquals(viewport.height, cover.height, 1f)
     }
 
-    private fun recentCast(aid: Long) = RecentCast(
-        aid = aid,
-        cid = aid * 10,
-        title = "最近投屏 $aid",
-        quality = "1080P",
-    )
+    private fun recentCast(aid: Long) =
+        RecentCast(
+            aid = aid,
+            cid = aid * 10,
+            title = "最近投屏 $aid",
+            quality = "1080P",
+        )
 }

@@ -1,8 +1,8 @@
 package com.roy233.tvcast.platform.dlna
 
-import org.w3c.dom.Element
 import java.io.ByteArrayInputStream
 import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Element
 
 /** 表示解析后的 UPnP SOAP 请求。 */
 data class SoapRequest(
@@ -43,13 +43,11 @@ object SoapRequestParser {
                 }
             }
         }
-        val action = actionEl?.localName
-            ?: soapAction?.substringAfter('#')?.trim('"')
-            ?: ""
-        val service = actionEl?.namespaceURI
-            ?.takeIf { it.isNotBlank() }
-            ?: soapAction?.substringBefore('#')?.trim('"')?.takeIf { it.isNotBlank() }
-            ?: serviceFor(action)
+        val action = actionEl?.localName ?: soapAction?.substringAfter('#')?.trim('"') ?: ""
+        val service =
+            actionEl?.namespaceURI?.takeIf { it.isNotBlank() }
+                ?: soapAction?.substringBefore('#')?.trim('"')?.takeIf { it.isNotBlank() }
+                ?: serviceFor(action)
         val args = mutableMapOf<String, String>()
         if (actionEl != null) {
             for (i in 0 until actionEl.childNodes.length) {

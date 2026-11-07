@@ -22,18 +22,19 @@ class DanmakuAiShieldTest {
         )
     }
 
-    private val items = listOf(
-        item(1, 8),
-        item(2, 8),
-        item(3, 9),
-        item(4, 9),
-        item(5, 9),
-        item(6, 10),
-        item(7, 10),
-        item(8, 10),
-        item(9, 11),
-        item(10, 11),
-    )
+    private val items =
+        listOf(
+            item(1, 8),
+            item(2, 8),
+            item(3, 9),
+            item(4, 9),
+            item(5, 9),
+            item(6, 10),
+            item(7, 10),
+            item(8, 10),
+            item(9, 11),
+            item(10, 11),
+        )
 
     @Test
     fun offReturnsOriginalList() {
@@ -71,6 +72,9 @@ class DanmakuAiShieldTest {
 
     @Test
     fun emptyStaysEmpty() {
-        assertEquals(emptyList<DanmakuItem>(), DanmakuAiShield.filter(emptyList(), AiShieldLevel.HIGH))
+        assertEquals(
+            emptyList<DanmakuItem>(),
+            DanmakuAiShield.filter(emptyList(), AiShieldLevel.HIGH),
+        )
     }
 }

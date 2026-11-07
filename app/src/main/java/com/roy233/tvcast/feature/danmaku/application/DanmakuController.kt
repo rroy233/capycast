@@ -6,19 +6,18 @@ import com.roy233.tvcast.feature.danmaku.domain.DanmakuRepository
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
 import com.roy233.tvcast.feature.danmaku.domain.MediaClock
 import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
+import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 
 /**
  * 弹幕会话控制器。
  *
- * 负责把播放器的播放/暂停/seek/时间采样接到 [MediaClock] 和 [DfmDanmakuEngine]，
- * 并按分段加载弹幕。所有公开方法都应在主线程调用。
+ * 负责把播放器的播放/暂停/seek/时间采样接到 [MediaClock] 和 [DfmDanmakuEngine]， 并按分段加载弹幕。所有公开方法都应在主线程调用。
  */
 class DanmakuController(
     private val scope: CoroutineScope,
@@ -143,8 +142,7 @@ class DanmakuController(
     /**
      * 播放器缓冲。
      *
-     * VLC 起播和网络抖动会短暂交替上报缓冲状态。只有缓冲持续一段时间才冻结
-     * 弹幕，避免每个瞬态事件都让 DFM pause/resume 一次。
+     * VLC 起播和网络抖动会短暂交替上报缓冲状态。只有缓冲持续一段时间才冻结 弹幕，避免每个瞬态事件都让 DFM pause/resume 一次。
      */
     fun onBuffering(buffering: Boolean, positionMs: Long) {
         if (closed || userPaused) return
@@ -171,9 +169,7 @@ class DanmakuController(
         }
     }
 
-    /**
-     * 播放器时间采样；由 ticker 或 TimeChanged 调用。
-     */
+    /** 播放器时间采样；由 ticker 或 TimeChanged 调用。 */
     fun onPlayerTime(positionMs: Long) {
         if (closed) return
         lastPlayerPositionMs = positionMs.coerceAtLeast(0L)
@@ -195,10 +191,11 @@ class DanmakuController(
             currentIndex < 0 -> loadSegment(index, replace = true)
             index == currentIndex + 1 -> loadSegment(index, replace = false)
             index == currentIndex -> Unit
-            else -> LogHub.d(
-                TAG,
-                "ignore unexpected segment jump current=$currentIndex next=$index; awaiting seek",
-            )
+            else ->
+                LogHub.d(
+                    TAG,
+                    "ignore unexpected segment jump current=$currentIndex next=$index; awaiting seek",
+                )
         }
     }
 
@@ -245,9 +242,10 @@ class DanmakuController(
     private fun loadView(positionMs: Long, requestSession: Long) {
         viewJob?.cancel()
         viewJob = scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { repository.view(cid) }
-            }
+            val result =
+                withContext(Dispatchers.IO) {
+                    runCatching { repository.view(cid) }
+                }
             val view = result.getOrElse { failure ->
                 LogHub.w(TAG, "danmaku view failed cid=$cid: ${failure.message}")
                 return@launch
@@ -277,9 +275,10 @@ class DanmakuController(
         segmentJob?.cancel()
         loadingIndex = requestedIndex
         segmentJob = scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { repository.segment(aid, cid, requestedIndex) }
-            }
+            val result =
+                withContext(Dispatchers.IO) {
+                    runCatching { repository.segment(aid, cid, requestedIndex) }
+                }
             val segment = result.getOrElse { failure ->
                 LogHub.w(
                     TAG,
@@ -287,7 +286,8 @@ class DanmakuController(
                 )
                 return@launch
             }
-            if (closed || requestSession != sessionId || requestedIndex != loadingIndex) return@launch
+            if (closed || requestSession != sessionId || requestedIndex != loadingIndex)
+                return@launch
             if (!force && requestedIndex == currentIndex) return@launch
             currentIndex = requestedIndex
             loadingIndex = -1

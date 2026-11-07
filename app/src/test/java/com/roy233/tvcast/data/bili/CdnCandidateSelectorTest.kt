@@ -10,15 +10,17 @@ class CdnCandidateSelectorTest {
 
     @Test
     fun `marks qn 125 HEVC representation as HDR`() {
-        val track = CdnCandidateSelector.parseTrack(
-            JsonParser.parseString(
-                """{
+        val track =
+            CdnCandidateSelector.parseTrack(
+                JsonParser.parseString(
+                        """{
                     "id":125,"codecid":12,"width":3840,"height":2160,
                     "mimeType":"video/mp4","codecs":"hev1.2.4.L153.B0",
                     "baseUrl":"https://upos.example.com/hdr.m4s"
                 }""",
-            ).asJsonObject,
-        )
+                    )
+                    .asJsonObject,
+            )
 
         assertTrue(track.isHdr)
         assertFalse(track.isDolbyVision)
@@ -27,15 +29,17 @@ class CdnCandidateSelectorTest {
 
     @Test
     fun `marks Dolby Vision representation for Media3 routing`() {
-        val track = CdnCandidateSelector.parseTrack(
-            JsonParser.parseString(
-                """{
+        val track =
+            CdnCandidateSelector.parseTrack(
+                JsonParser.parseString(
+                        """{
                     "id":126,"codecid":12,"width":3840,"height":2160,
                     "mime_type":"video/mp4","codecs":"dvhe.05.06",
                     "base_url":"https://upos.example.com/dv.m4s"
                 }""",
-            ).asJsonObject,
-        )
+                    )
+                    .asJsonObject,
+            )
 
         assertTrue(track.isHdr)
         assertTrue(track.isDolbyVision)
@@ -44,17 +48,21 @@ class CdnCandidateSelectorTest {
 
     @Test
     fun `prefers Dolby audio when the response explicitly provides it`() {
-        val aac = CdnCandidateSelector.parseTrack(
-            JsonParser.parseString(
-                """{"id":30280,"codecid":0,"baseUrl":"https://upos.example.com/aac.m4s"}""",
-            ).asJsonObject,
-        )
-        val dolby = CdnCandidateSelector.parseTrack(
-            JsonParser.parseString(
-                """{"id":30250,"codecid":0,"codecs":"ec-3","baseUrl":"https://upos.example.com/eac3.m4s"}""",
-            ).asJsonObject,
-            isDolbyAudio = true,
-        )
+        val aac =
+            CdnCandidateSelector.parseTrack(
+                JsonParser.parseString(
+                        """{"id":30280,"codecid":0,"baseUrl":"https://upos.example.com/aac.m4s"}""",
+                    )
+                    .asJsonObject,
+            )
+        val dolby =
+            CdnCandidateSelector.parseTrack(
+                JsonParser.parseString(
+                        """{"id":30250,"codecid":0,"codecs":"ec-3","baseUrl":"https://upos.example.com/eac3.m4s"}""",
+                    )
+                    .asJsonObject,
+                isDolbyAudio = true,
+            )
 
         assertEquals(dolby, CdnCandidateSelector.pickAudio(listOf(aac, dolby)))
         assertTrue(dolby.isDolbyAudio)
@@ -62,15 +70,17 @@ class CdnCandidateSelectorTest {
 
     @Test
     fun `keeps DASH initialization and index ranges for PGC and DRM source construction`() {
-        val track = CdnCandidateSelector.parseTrack(
-            JsonParser.parseString(
-                """{
+        val track =
+            CdnCandidateSelector.parseTrack(
+                JsonParser.parseString(
+                        """{
                     "id":120,"codecid":12,"mimeType":"video/mp4","codecs":"hev1.2.4.L153.B0",
                     "baseUrl":"https://upos.example.com/video.m4s?token=secret",
                     "segmentBase":{"initialization":"0-1023","indexRange":"1024-2047"}
                 }""",
-            ).asJsonObject,
-        )
+                    )
+                    .asJsonObject,
+            )
 
         assertEquals("0-1023", track.initializationRange)
         assertEquals("1024-2047", track.indexRange)
@@ -79,14 +89,16 @@ class CdnCandidateSelectorTest {
 
     @Test
     fun `uses server quality descriptions for newly named quality tiers`() {
-        val play = JsonParser.parseString(
-            """{
+        val play =
+            JsonParser.parseString(
+                    """{
                 "support_formats":[
                   {"quality":120,"new_description":"大视界4K","description":"4K 超清"},
                   {"quality":125,"display_desc":"大视界4K HDR10","description":"HDR 真彩"}
                 ]
             }""",
-        ).asJsonObject
+                )
+                .asJsonObject
 
         val labels = BiliApi.qualityLabelsFrom(play)
 

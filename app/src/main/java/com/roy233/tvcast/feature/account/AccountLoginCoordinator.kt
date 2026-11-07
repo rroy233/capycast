@@ -89,9 +89,10 @@ class AccountLoginCoordinator(
         }
         loginJob = scope.launch {
             while (isActive) {
-                val qr = withContext(Dispatchers.IO) {
-                    runCatching { authService.requestQr(context) }
-                }
+                val qr =
+                    withContext(Dispatchers.IO) {
+                        runCatching { authService.requestQr(context) }
+                    }
                 if (qr.isFailure) {
                     LogHub.e(TAG, "qr request failed: ${qr.exceptionOrNull()?.message}")
                     update { it.copy(loginStatus = "获取二维码失败，正在重试…") }
@@ -120,9 +121,13 @@ class AccountLoginCoordinator(
                 while (isActive && !expire && age < 170) {
                     delay(2000)
                     age += 2
-                    val poll = withContext(Dispatchers.IO) {
-                        runCatching { authService.poll(context, code.authCode, code.sessionId) }
-                    }.getOrNull()
+                    val poll =
+                        withContext(Dispatchers.IO) {
+                                runCatching {
+                                    authService.poll(context, code.authCode, code.sessionId)
+                                }
+                            }
+                            .getOrNull()
 
                     when (poll) {
                         is Poll.Success -> {
@@ -234,9 +239,10 @@ class AccountLoginCoordinator(
     /** 异步读取账号导航信息并更新界面状态。 */
     private fun fetchNav() {
         scope.launch {
-            val nav = withContext(Dispatchers.IO) {
-                runCatching { accountNavigator.currentProfile() }.getOrNull()
-            }
+            val nav =
+                withContext(Dispatchers.IO) {
+                    runCatching { accountNavigator.currentProfile() }.getOrNull()
+                }
             if (nav != null) {
                 update {
                     it.copy(

@@ -95,19 +95,22 @@ internal class SoapActionDispatcher(
                     .onFailure { LogHub.e(TAG, "onSeek failed", it, stack = true) }
                 soapOk(req.service, req.action)
             }
-            "GetTransportInfo" -> soapOk(
-                req.service, req.action,
-                listOf(
-                    "CurrentTransportState" to transportState(),
-                    "CurrentTransportStatus" to "OK",
-                    "CurrentSpeed" to "1",
+            "GetTransportInfo" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf(
+                        "CurrentTransportState" to transportState(),
+                        "CurrentTransportStatus" to "OK",
+                        "CurrentSpeed" to "1",
+                    ),
                 )
-            )
             "GetPositionInfo" -> {
                 val pos = positionMs()
                 val dur = durationMs()
                 soapOk(
-                    req.service, req.action,
+                    req.service,
+                    req.action,
                     listOf(
                         "Track" to "1",
                         "TrackDuration" to DlnaTime.format(dur),
@@ -117,51 +120,63 @@ internal class SoapActionDispatcher(
                         "AbsTime" to DlnaTime.format(pos),
                         "RelCount" to "2147483647",
                         "AbsCount" to "2147483647",
-                    )
+                    ),
                 )
             }
-            "GetMediaInfo" -> soapOk(
-                req.service, req.action,
-                listOf(
-                    "NrTracks" to if (s.uri.isEmpty()) "0" else "1",
-                    "MediaDuration" to DlnaTime.format(durationMs()),
-                    "CurrentURI" to s.uri,
-                    "CurrentURIMetaData" to s.metadata,
-                    "NextURI" to "",
-                    "NextURIMetaData" to "",
-                    "PlayMedium" to "NETWORK",
-                    "RecordMedium" to "NOT_IMPLEMENTED",
-                    "WriteStatus" to "NOT_IMPLEMENTED",
+            "GetMediaInfo" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf(
+                        "NrTracks" to if (s.uri.isEmpty()) "0" else "1",
+                        "MediaDuration" to DlnaTime.format(durationMs()),
+                        "CurrentURI" to s.uri,
+                        "CurrentURIMetaData" to s.metadata,
+                        "NextURI" to "",
+                        "NextURIMetaData" to "",
+                        "PlayMedium" to "NETWORK",
+                        "RecordMedium" to "NOT_IMPLEMENTED",
+                        "WriteStatus" to "NOT_IMPLEMENTED",
+                    ),
                 )
-            )
-            "GetTransportSettings" -> soapOk(
-                req.service, req.action,
-                listOf("PlayMode" to "NORMAL", "RecQualityMode" to "NOT_IMPLEMENTED")
-            )
-            "GetDeviceCapabilities" -> soapOk(
-                req.service, req.action,
-                listOf(
-                    "PlayMedia" to "NETWORK",
-                    "RecMedia" to "NOT_IMPLEMENTED",
-                    "RecQualityModes" to "NOT_IMPLEMENTED",
+            "GetTransportSettings" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf("PlayMode" to "NORMAL", "RecQualityMode" to "NOT_IMPLEMENTED"),
                 )
-            )
-            "GetCurrentTransportActions" -> soapOk(
-                req.service,
-                req.action,
-                listOf(
-                    "Actions" to if (runCatching { listener.isSeekable() }.getOrDefault(false)) {
-                        "Play,Pause,Stop,Seek"
-                    } else {
-                        "Play,Pause,Stop"
-                    },
-                ),
-            )
-            "SetPlayMode", "Next", "Previous" -> soapOk(req.service, req.action)
-            "GetVolume" -> soapOk(
-                req.service, req.action,
-                listOf("CurrentVolume" to volume().toString())
-            )
+            "GetDeviceCapabilities" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf(
+                        "PlayMedia" to "NETWORK",
+                        "RecMedia" to "NOT_IMPLEMENTED",
+                        "RecQualityModes" to "NOT_IMPLEMENTED",
+                    ),
+                )
+            "GetCurrentTransportActions" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf(
+                        "Actions" to
+                            if (runCatching { listener.isSeekable() }.getOrDefault(false)) {
+                                "Play,Pause,Stop,Seek"
+                            } else {
+                                "Play,Pause,Stop"
+                            },
+                    ),
+                )
+            "SetPlayMode",
+            "Next",
+            "Previous" -> soapOk(req.service, req.action)
+            "GetVolume" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf("CurrentVolume" to volume().toString()),
+                )
             "SetVolume" -> {
                 val v = req.args["DesiredVolume"]?.toIntOrNull()?.coerceIn(0, 100) ?: 50
                 s.volume = v
@@ -170,49 +185,63 @@ internal class SoapActionDispatcher(
                     .onFailure { LogHub.e(TAG, "onSetVolume failed", it, stack = true) }
                 soapOk(req.service, req.action)
             }
-            "GetMute" -> soapOk(
-                req.service, req.action,
-                listOf("CurrentMute" to if (s.mute) "1" else "0")
-            )
+            "GetMute" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf("CurrentMute" to if (s.mute) "1" else "0"),
+                )
             "SetMute" -> {
                 s.mute = req.args["DesiredMute"] in listOf("1", "true", "True")
                 soapOk(req.service, req.action)
             }
             "GetVolumeDB" -> soapOk(req.service, req.action, listOf("CurrentVolume" to "0"))
-            "GetVolumeDBRange" -> soapOk(
-                req.service, req.action,
-                listOf("MinValue" to "-32767", "MaxValue" to "32767")
-            )
-            "ListPresets" -> soapOk(
-                req.service, req.action,
-                listOf("CurrentPresetNameList" to "FactoryDefaults")
-            )
+            "GetVolumeDBRange" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf("MinValue" to "-32767", "MaxValue" to "32767"),
+                )
+            "ListPresets" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf("CurrentPresetNameList" to "FactoryDefaults"),
+                )
             "SelectPreset" -> soapOk(req.service, req.action)
-            "GetProtocolInfo" -> soapOk(
-                req.service, req.action,
-                listOf(
-                    "Source" to "",
-                    "Sink" to "http-get:*:video/mp4:*,http-get:*:video/x-matroska:*," +
-                        "http-get:*:application/vnd.apple.mpegurl:*," +
-                        "http-get:*:application/dash+xml:*," +
-                        "http-get:*:audio/mp4:*,http-get:*:audio/mpeg:*",
+            "GetProtocolInfo" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf(
+                        "Source" to "",
+                        "Sink" to
+                            "http-get:*:video/mp4:*,http-get:*:video/x-matroska:*," +
+                                "http-get:*:application/vnd.apple.mpegurl:*," +
+                                "http-get:*:application/dash+xml:*," +
+                                "http-get:*:audio/mp4:*,http-get:*:audio/mpeg:*",
+                    ),
                 )
-            )
-            "GetCurrentConnectionIDs" -> soapOk(
-                req.service, req.action, listOf("ConnectionIDs" to "0")
-            )
-            "GetCurrentConnectionInfo" -> soapOk(
-                req.service, req.action,
-                listOf(
-                    "RcsID" to "0",
-                    "AVTransportID" to "0",
-                    "ProtocolInfo" to "",
-                    "PeerConnectionManager" to "",
-                    "PeerConnectionID" to "-1",
-                    "Direction" to "Input",
-                    "Status" to "OK",
+            "GetCurrentConnectionIDs" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf("ConnectionIDs" to "0"),
                 )
-            )
+            "GetCurrentConnectionInfo" ->
+                soapOk(
+                    req.service,
+                    req.action,
+                    listOf(
+                        "RcsID" to "0",
+                        "AVTransportID" to "0",
+                        "ProtocolInfo" to "",
+                        "PeerConnectionManager" to "",
+                        "PeerConnectionID" to "-1",
+                        "Direction" to "Input",
+                        "Status" to "OK",
+                    ),
+                )
             else -> {
                 LogHub.i(TAG, "unhandled SOAP action=${req.action}; replying empty")
                 soapOk(req.service, req.action)
@@ -221,12 +250,21 @@ internal class SoapActionDispatcher(
     }
 
     /** 根据 SOAP 动作选择对应的 UPnP 服务。 */
-    fun serviceFor(action: String): String = when (action) {
-        "GetVolume", "SetVolume", "GetMute", "SetMute", "GetVolumeDB",
-        "GetVolumeDBRange", "ListPresets", "SelectPreset" -> RCS
-        "GetProtocolInfo", "GetCurrentConnectionIDs", "GetCurrentConnectionInfo" -> CMS
-        else -> AVT
-    }
+    fun serviceFor(action: String): String =
+        when (action) {
+            "GetVolume",
+            "SetVolume",
+            "GetMute",
+            "SetMute",
+            "GetVolumeDB",
+            "GetVolumeDBRange",
+            "ListPresets",
+            "SelectPreset" -> RCS
+            "GetProtocolInfo",
+            "GetCurrentConnectionIDs",
+            "GetCurrentConnectionInfo" -> CMS
+            else -> AVT
+        }
 
     /** 构造成功的 SOAP 动作响应。 */
     fun soapOk(
@@ -234,32 +272,37 @@ internal class SoapActionDispatcher(
         action: String,
         args: List<Pair<String, String>> = emptyList(),
     ): ByteArray {
-        val body = args.joinToString("") { (k, v) ->
-            "<$k>${DlnaXml.escape(v)}</$k>"
-        }
-        val inner = "<u:${action}Response xmlns:u=\"${DlnaXml.escape(service)}\">$body</u:${action}Response>"
+        val body =
+            args.joinToString("") { (k, v) ->
+                "<$k>${DlnaXml.escape(v)}</$k>"
+            }
+        val inner =
+            "<u:${action}Response xmlns:u=\"${DlnaXml.escape(service)}\">$body</u:${action}Response>"
         return soapEnvelope(inner)
     }
 
     /** 构造 SOAP 错误响应。 */
     fun fault(service: String, code: Int, description: String): ByteArray {
-        val inner = "<s:Fault><faultcode>s:Client</faultcode>" +
-            "<faultstring>UPnPError</faultstring><detail>" +
-            "<UPnPError xmlns=\"urn:schemas-upnp-org:control-1-0\">" +
-            "<errorCode>$code</errorCode>" +
-            "<errorDescription>${DlnaXml.escape(description)}</errorDescription>" +
-            "</UPnPError></detail></s:Fault>"
+        val inner =
+            "<s:Fault><faultcode>s:Client</faultcode>" +
+                "<faultstring>UPnPError</faultstring><detail>" +
+                "<UPnPError xmlns=\"urn:schemas-upnp-org:control-1-0\">" +
+                "<errorCode>$code</errorCode>" +
+                "<errorDescription>${DlnaXml.escape(description)}</errorDescription>" +
+                "</UPnPError></detail></s:Fault>"
         return soapEnvelope(inner)
     }
 
     /** 将 SOAP 内容包装为完整 SOAP 信封。 */
     fun soapEnvelope(inner: String): ByteArray {
-        val xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
-            "<s:Envelope xmlns:s=\"$SOAP_ENV\" " +
-            "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">" +
-            "<s:Body>$inner</s:Body></s:Envelope>"
+        val xml =
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
+                "<s:Envelope xmlns:s=\"$SOAP_ENV\" " +
+                "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">" +
+                "<s:Body>$inner</s:Body></s:Envelope>"
         return xml.toByteArray(Charsets.UTF_8)
     }
+
     private companion object {
         /** SOAP 1.1 命名空间。 */
         const val SOAP_ENV = "http://schemas.xmlsoap.org/soap/envelope/"

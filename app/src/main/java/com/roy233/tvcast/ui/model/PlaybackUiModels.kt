@@ -1,10 +1,22 @@
 package com.roy233.tvcast.ui.model
 
 /** 表示电视端播放器当前所处的显示与播放模式。 */
-enum class TvMode { IDLE, LOADING, PLAYING, ERROR }
+enum class TvMode {
+    IDLE,
+    LOADING,
+    PLAYING,
+    ERROR,
+}
 
 /** 表示播放控制面板的层级。 */
-enum class PanelKind { ROOT, QUALITY, AUDIO, SPEED, DANMAKU, LIVE_QUALITY }
+enum class PanelKind {
+    ROOT,
+    QUALITY,
+    AUDIO,
+    SPEED,
+    DANMAKU,
+    LIVE_QUALITY,
+}
 
 /**
  * 描述可展示给用户的错误信息及其恢复能力。
