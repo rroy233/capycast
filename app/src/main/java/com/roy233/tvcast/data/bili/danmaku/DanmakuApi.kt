@@ -6,6 +6,9 @@ import com.roy233.tvcast.data.bili.BiliHttpClient
 import com.roy233.tvcast.feature.danmaku.domain.DmSegment
 import com.roy233.tvcast.feature.danmaku.domain.DmViewInfo
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 /**
@@ -21,18 +24,21 @@ class DanmakuApi(
             .readTimeout(20, TimeUnit.SECONDS)
             .followRedirects(true)
             .build(),
-) {
+) : DanmakuRemote {
     private val http = BiliHttpClient(client, BiliApi.UA)
 
-    private fun getBytes(url: String, purpose: String): ByteArray =
-        http.getBytes(url, purpose, sessionReader.cookie())
+    /** 在 IO 线程发起可取消的二进制请求。 */
+    private suspend fun getBytes(url: String, purpose: String): ByteArray =
+        withContext(Dispatchers.IO) {
+            http.getBytesCancellable(url, purpose, sessionReader.cookie())
+        }
 
     /**
      * 拉取弹幕元数据。
      *
      * @param cid 视频 cid。
      */
-    fun fetchView(cid: Long): DmViewInfo {
+    override suspend fun fetchView(cid: Long): DmViewInfo {
         val url = "$BASE/x/v2/dm/web/view?type=1&oid=$cid"
         return DanmakuProto.decodeView(getBytes(url, "danmaku-view"))
     }
@@ -46,15 +52,19 @@ class DanmakuApi(
      * @param cid 视频 cid。
      * @param segmentIndex 1 开始的分段号。
      */
-    fun fetchSegment(aid: Long, cid: Long, segmentIndex: Int): DmSegment {
+    override suspend fun fetchSegment(aid: Long, cid: Long, segmentIndex: Int): DmSegment {
         val pid = if (aid > 0) "&pid=$aid" else ""
         val web = "$BASE/x/v2/dm/web/seg.so?type=1&oid=$cid$pid&segment_index=$segmentIndex"
         return try {
             DanmakuProto.decodeSegment(getBytes(web, "danmaku-seg"))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (webFailure: Exception) {
             val app = "$BASE/x/v2/dm/list/seg.so?type=1&oid=$cid$pid&segment_index=$segmentIndex"
             try {
                 DanmakuProto.decodeSegment(getBytes(app, "danmaku-seg-app"))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (appFailure: Exception) {
                 appFailure.addSuppressed(webFailure)
                 throw appFailure

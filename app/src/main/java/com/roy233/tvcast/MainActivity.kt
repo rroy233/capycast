@@ -47,6 +47,7 @@ import com.roy233.tvcast.feature.danmaku.application.LiveDanmakuController
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
 import com.roy233.tvcast.feature.danmaku.domain.MediaClock
+import com.roy233.tvcast.feature.danmaku.domain.VodDanmakuContent
 import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
 import com.roy233.tvcast.feature.display.CalibrationDirection
 import com.roy233.tvcast.feature.display.CalibrationPhase
@@ -850,7 +851,7 @@ class MainActivity :
     /** 打开点播弹幕会话。 */
     override fun onVodDanmakuOpen(aid: Long, cid: Long, durationMs: Long, seekToMs: Long) {
         if (::danmakuController.isInitialized) {
-            danmakuController.open(aid, cid, durationMs, seekToMs)
+            danmakuController.open(VodDanmakuContent(aid = aid, cid = cid), durationMs, seekToMs)
         }
     }
 

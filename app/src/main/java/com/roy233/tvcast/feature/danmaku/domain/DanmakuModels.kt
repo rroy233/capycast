@@ -32,6 +32,28 @@ data class DanmakuItem(
 )
 
 /**
+ * 点播弹幕的数据身份；分段号只在同一内容内唯一。
+ *
+ * @property aid 稿件 avid。
+ * @property cid 视频 cid。
+ */
+data class VodDanmakuContent(
+    val aid: Long,
+    val cid: Long,
+)
+
+/**
+ * 一份分段数据属于哪个内容的第几段。
+ *
+ * @property content 数据身份。
+ * @property index 1 开始的分段号。
+ */
+data class DanmakuSegmentKey(
+    val content: VodDanmakuContent,
+    val index: Int,
+)
+
+/**
  * 一个 6 分钟分段（`DmSegMobileReply`）的解码结果。
  *
  * @property items 弹幕条目。

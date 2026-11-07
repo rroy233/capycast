@@ -2,77 +2,80 @@ package com.roy233.tvcast.feature.danmaku.application
 
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuRenderer
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuRepository
+import com.roy233.tvcast.feature.danmaku.domain.DanmakuSegmentKey
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuSettings
 import com.roy233.tvcast.feature.danmaku.domain.MediaClock
-import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
+import com.roy233.tvcast.feature.danmaku.domain.VodDanmakuContent
 import kotlin.math.abs
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * 弹幕会话控制器。
  *
- * 负责把播放器的播放/暂停/seek/时间采样接到 [MediaClock] 和 [DfmDanmakuEngine]， 并按分段加载弹幕。所有公开方法都应在主线程调用。
+ * 负责把播放器的播放/暂停/seek/时间采样接到 [MediaClock] 和 [DanmakuRenderer]， 并按分段加载弹幕。所有公开方法都应在主线程调用。
  */
 class DanmakuController(
     private val scope: CoroutineScope,
-    private val engine: DfmDanmakuEngine,
+    private val renderer: DanmakuRenderer,
     private val clock: MediaClock = MediaClock(),
     private val repository: DanmakuRepository,
 ) {
 
-    private var aid = 0L
-    private var cid = 0L
+    /** 一次点播弹幕会话，持有其代次、内容身份与加载作业。 */
+    private data class VodDanmakuSession(
+        val generation: Long,
+        val content: VodDanmakuContent,
+        var viewJob: Job? = null,
+        var segmentJob: Job? = null,
+    )
+
+    private var activeSession: VodDanmakuSession? = null
+    private var lastGeneration = 0L
     private var segmentSizeMs = DEFAULT_SEGMENT_MS
     private var totalSegments = 0
     private var currentIndex = -1
     private var currentItems: List<DanmakuItem> = emptyList()
     private var settings = DanmakuSettings()
-    private var viewJob: Job? = null
-    private var segmentJob: Job? = null
     private var bufferingJob: Job? = null
     private var loadingIndex = -1
-    private var sessionId = 0L
     private var lastPlayerPositionMs = 0L
     private var userPaused = false
     private var buffering = false
     private var bufferingPaused = false
     private var seekInProgress = false
     private var seekTargetMs = 0L
-    private var closed = false
 
     /** 设置视频内容区高度，用于字号换算。 */
     fun setContentHeight(heightPx: Int) {
-        engine.setContentHeight(heightPx)
+        renderer.setContentHeight(heightPx)
     }
 
     /** 视图完成布局后调用，初始化 DFM。 */
     fun prepare() {
-        engine.prepare()
+        renderer.prepare()
     }
 
     /**
-     * 打开一个视频的弹幕会话。
+     * 替换为新的弹幕会话：取消旧会话的作业，并用新的代次与内容身份重新加载。
      *
-     * @param aid 稿件 avid。
-     * @param cid 视频 cid。
+     * @param content 数据身份。
      * @param durationMs 视频总时长。
      * @param positionMs 当前播放位置。
      */
-    fun open(aid: Long, cid: Long, durationMs: Long, positionMs: Long) {
-        this.aid = aid
-        this.cid = cid
-        closed = false
+    fun open(content: VodDanmakuContent, durationMs: Long, positionMs: Long) {
+        retireSession()
+        val session = VodDanmakuSession(generation = ++lastGeneration, content = content)
+        activeSession = session
         currentIndex = -1
         currentItems = emptyList()
         totalSegments = 0
         segmentSizeMs = DEFAULT_SEGMENT_MS
-        sessionId++
         loadingIndex = -1
         lastPlayerPositionMs = positionMs.coerceAtLeast(0L)
         userPaused = false
@@ -80,24 +83,26 @@ class DanmakuController(
         bufferingPaused = false
         seekInProgress = false
         cancelBuffering()
-        engine.clear()
+        renderer.clear()
         clock.reset()
         clock.durationMs = durationMs.coerceAtLeast(0L)
         // 播放器尚未确认 Playing 前，弹幕必须停在起播位置；否则网络起播
         // 期间弹幕会先于视频推进，随后看起来像从半屏提前消失。
         clock.pause(lastPlayerPositionMs)
+        LogHub.i(
+            TAG,
+            "session open ${sessionLabel(session)} position=${lastPlayerPositionMs}ms",
+        )
         // DFM 必须在视频实际内容区完成布局后才可 prepare。这里不能抢先初始化，
         // 否则它会按全屏宽度计算滚动距离，随后内容区收窄会造成弹幕中途出屏。
-        loadView(lastPlayerPositionMs, sessionId)
+        loadView(session, lastPlayerPositionMs)
     }
 
     /** 关闭会话并清空屏幕。 */
     fun close() {
-        closed = true
-        viewJob?.cancel()
-        viewJob = null
-        segmentJob?.cancel()
-        segmentJob = null
+        val session = activeSession
+        retireSession()
+        if (session != null) LogHub.i(TAG, "session close ${sessionLabel(session)}")
         cancelBuffering()
         loadingIndex = -1
         userPaused = false
@@ -106,14 +111,13 @@ class DanmakuController(
         seekInProgress = false
         currentIndex = -1
         currentItems = emptyList()
-        engine.clear()
-        repository.clear()
+        renderer.clear()
         clock.reset()
     }
 
     /** 播放器开始/恢复播放。 */
     fun onPlaying(positionMs: Long) {
-        if (closed) return
+        if (activeSession == null) return
         cancelBuffering()
         buffering = false
         bufferingPaused = false
@@ -123,12 +127,12 @@ class DanmakuController(
         if (seekInProgress && !isSeekPosition(position)) return
         seekInProgress = false
         clock.rebase(position)
-        engine.resume()
+        renderer.resume()
     }
 
     /** 播放器暂停。 */
     fun onPaused(positionMs: Long) {
-        if (closed) return
+        if (activeSession == null) return
         cancelBuffering()
         buffering = false
         bufferingPaused = false
@@ -136,7 +140,7 @@ class DanmakuController(
         seekInProgress = false
         lastPlayerPositionMs = positionMs.coerceAtLeast(0L)
         clock.pause(lastPlayerPositionMs)
-        engine.pause()
+        renderer.pause()
     }
 
     /**
@@ -145,18 +149,19 @@ class DanmakuController(
      * 起播和网络抖动会短暂交替上报缓冲状态。只有缓冲持续一段时间才冻结弹幕，避免每个瞬态事件都让 DFM pause/resume 一次。
      */
     fun onBuffering(buffering: Boolean, positionMs: Long) {
-        if (closed || userPaused) return
+        if (activeSession == null || userPaused) return
         lastPlayerPositionMs = positionMs.coerceAtLeast(0L)
         if (buffering) {
             if (this.buffering) return
             this.buffering = true
             bufferingJob = scope.launch {
                 delay(BUFFERING_PAUSE_DEBOUNCE_MS)
-                if (closed || userPaused || !this@DanmakuController.buffering) return@launch
+                if (activeSession == null || userPaused || !this@DanmakuController.buffering)
+                    return@launch
                 bufferingPaused = true
                 // 缓冲期间应以播放器最后确认的位置冻结，不能使用预测时钟位置。
                 clock.pause(lastPlayerPositionMs)
-                engine.pause()
+                renderer.pause()
             }
         } else {
             this.buffering = false
@@ -164,21 +169,21 @@ class DanmakuController(
             if (bufferingPaused) {
                 bufferingPaused = false
                 clock.rebase(lastPlayerPositionMs)
-                engine.resume()
+                renderer.resume()
             }
         }
     }
 
     /** 播放器时间采样；由 ticker 或 TimeChanged 调用。 */
     fun onPlayerTime(positionMs: Long) {
-        if (closed) return
+        if (activeSession == null) return
         lastPlayerPositionMs = positionMs.coerceAtLeast(0L)
         if (seekInProgress) {
             if (!isSeekPosition(lastPlayerPositionMs)) return
             seekInProgress = false
             if (!userPaused && !bufferingPaused) {
                 clock.rebase(lastPlayerPositionMs)
-                engine.resume()
+                renderer.resume()
             }
         } else if (!clock.isFrozen) {
             val hardResync = clock.onPlayerSample(lastPlayerPositionMs)
@@ -201,13 +206,13 @@ class DanmakuController(
 
     /** 将弹幕媒体时钟切换到与播放器一致的速度，保持当前时间连续。 */
     fun onPlaybackRateChanged(rate: Float) {
-        if (closed) return
+        if (activeSession == null) return
         clock.setRate(rate)
     }
 
     /** 用户 seek 到指定位置。 */
     fun onSeek(positionMs: Long) {
-        if (closed) return
+        if (activeSession == null) return
         val target = positionMs.coerceAtLeast(0L)
         lastPlayerPositionMs = target
         seekTargetMs = target
@@ -217,8 +222,8 @@ class DanmakuController(
         cancelBuffering()
         // 在收到目标位置的播放器采样前保持冻结，避免旧位置和目标位置交替绘制。
         clock.pause(target)
-        engine.pause()
-        engine.seekTo(target)
+        renderer.pause()
+        renderer.seekTo(target)
         loadSegment(indexOf(target), replace = true, force = true)
     }
 
@@ -227,32 +232,56 @@ class DanmakuController(
         val aiChanged = newSettings.aiShield != settings.aiShield
         val enabledChanged = newSettings.enabled != settings.enabled
         settings = newSettings
-        engine.applySettings(newSettings)
+        renderer.applySettings(newSettings)
         if (aiChanged || enabledChanged) {
-            engine.replaceSegment(currentItems, settings.aiShield)
+            renderer.replaceSegment(currentItems, settings.aiShield)
         }
     }
 
     /** 释放 DFM 资源；Activity 销毁时调用。 */
     fun release() {
         close()
-        engine.release()
+        renderer.release()
     }
 
-    private fun loadView(positionMs: Long, requestSession: Long) {
-        viewJob?.cancel()
-        viewJob = scope.launch {
-            val result =
-                withContext(Dispatchers.IO) {
-                    runCatching { repository.view(cid) }
+    /** 取消当前会话的作业并撤销会话归属。 */
+    private fun retireSession() {
+        val session = activeSession ?: return
+        activeSession = null
+        session.viewJob?.cancel()
+        session.segmentJob?.cancel()
+        session.viewJob = null
+        session.segmentJob = null
+        LogHub.i(TAG, "session retire ${sessionLabel(session)}")
+    }
+
+    private fun loadView(session: VodDanmakuSession, positionMs: Long) {
+        session.viewJob?.cancel()
+        val content = session.content
+        session.viewJob = scope.launch {
+            val view =
+                try {
+                    repository.view(content)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    LogHub.w(
+                        TAG,
+                        "view failed ${sessionLabel(session)} accepted=false: ${failure.message}",
+                    )
+                    return@launch
                 }
-            val view = result.getOrElse { failure ->
-                LogHub.w(TAG, "danmaku view failed cid=$cid: ${failure.message}")
+            if (activeSession !== session) {
+                LogHub.i(TAG, "view discarded ${sessionLabel(session)} accepted=false")
                 return@launch
             }
-            if (closed || requestSession != sessionId) return@launch
+            LogHub.d(
+                TAG,
+                "view accepted ${sessionLabel(session)} state=${view.state} " +
+                    "segments=${view.segConfig?.total ?: 0}",
+            )
             if (view.state == CLOSED_STATE) {
-                LogHub.i(TAG, "danmaku closed by uploader cid=$cid")
+                LogHub.i(TAG, "danmaku closed by uploader ${sessionLabel(session)}")
                 return@launch
             }
             view.segConfig?.let { config ->
@@ -264,38 +293,65 @@ class DanmakuController(
     }
 
     private fun loadSegment(index: Int, replace: Boolean, force: Boolean = false) {
-        if (closed) return
+        val session = activeSession ?: return
         if (index <= 0) return
         if (totalSegments > 0 && index > totalSegments) return
         if (!replace && index == currentIndex) return
-        if (!force && index == loadingIndex && segmentJob?.isActive == true) return
+        if (!force && index == loadingIndex && session.segmentJob?.isActive == true) return
 
-        val requestedIndex = index
-        val requestSession = sessionId
-        segmentJob?.cancel()
-        loadingIndex = requestedIndex
-        segmentJob = scope.launch {
-            val result =
-                withContext(Dispatchers.IO) {
-                    runCatching { repository.segment(aid, cid, requestedIndex) }
+        val key = DanmakuSegmentKey(session.content, index)
+        session.segmentJob?.cancel()
+        loadingIndex = index
+        session.segmentJob = scope.launch {
+            val segment =
+                try {
+                    repository.segment(key)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    LogHub.w(
+                        TAG,
+                        "segment failed ${sessionLabel(session)} index=$index " +
+                            "accepted=false: ${failure.message}",
+                    )
+                    return@launch
                 }
-            val segment = result.getOrElse { failure ->
-                LogHub.w(
+            if (activeSession !== session) {
+                LogHub.i(
                     TAG,
-                    "danmaku segment failed cid=$cid index=$requestedIndex: ${failure.message}",
+                    "segment discarded ${sessionLabel(session)} index=$index " +
+                        "accepted=false reason=stale-session",
                 )
                 return@launch
             }
-            if (closed || requestSession != sessionId || requestedIndex != loadingIndex)
+            if (index != loadingIndex) {
+                LogHub.i(
+                    TAG,
+                    "segment discarded ${sessionLabel(session)} index=$index " +
+                        "accepted=false reason=superseded",
+                )
                 return@launch
-            if (!force && requestedIndex == currentIndex) return@launch
-            currentIndex = requestedIndex
+            }
+            if (!force && index == currentIndex) {
+                LogHub.d(
+                    TAG,
+                    "segment discarded ${sessionLabel(session)} index=$index " +
+                        "accepted=false reason=duplicate",
+                )
+                return@launch
+            }
+            currentIndex = index
             loadingIndex = -1
             currentItems = segment.items
+            LogHub.d(
+                TAG,
+                "segment accepted ${sessionLabel(session)} index=$index " +
+                    "items=${segment.items.size} replace=$replace",
+            )
             if (replace) {
-                engine.replaceSegment(segment.items, settings.aiShield)
+                renderer.replaceSegment(segment.items, settings.aiShield)
             } else {
-                engine.addSegment(segment.items, settings.aiShield)
+                renderer.addSegment(segment.items, settings.aiShield)
             }
         }
     }
@@ -312,6 +368,10 @@ class DanmakuController(
         bufferingJob?.cancel()
         bufferingJob = null
     }
+
+    /** 诊断日志前缀：会话代次与内容身份。 */
+    private fun sessionLabel(session: VodDanmakuSession): String =
+        "generation=${session.generation} aid=${session.content.aid} cid=${session.content.cid}"
 
     private companion object {
         const val TAG = "DanmakuController"
