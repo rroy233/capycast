@@ -20,6 +20,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** 验证字幕会话归属、延迟结果丢弃与跳转后立即刷新。 */
@@ -74,6 +75,26 @@ class SubtitleControllerTest {
         assertNull(host.lastState?.selected)
         assertFalse(host.persisted.last().enabled)
     }
+
+    @Test
+    fun `toggling subtitles off clears the overlay and back on restores the default track`() =
+        runBlocking {
+            controller.open(VIDEO_B)
+            controller.onPlayerTime(1_000L)
+            assertEquals(listOf("b"), renderer.lastLines())
+
+            controller.setEnabled(false)
+
+            assertEquals(emptyList<String>(), renderer.lastLines())
+            assertNull(host.lastState?.selected)
+            assertFalse(controller.currentSettings().enabled)
+
+            controller.setEnabled(true)
+
+            assertTrue(controller.currentSettings().enabled)
+            assertEquals(listOf("b"), renderer.lastLines())
+            assertEquals(listOf(false, true), host.persisted.map { it.enabled })
+        }
 
     /** 模拟无法被取消的旧正文请求。 */
     private class GatedRepository : SubtitleRepository {

@@ -87,6 +87,8 @@ interface TvActionHost {
 
     fun selectSubtitleTrack(key: SubtitleTrackKey?)
 
+    fun toggleSubtitle()
+
     fun requestRetry()
 
     fun requestDismissError()
@@ -312,6 +314,7 @@ class TvActionDispatcher(
             onSelectQuality = { qn -> host.selectQuality(qn) },
             onSelectAudio = { id -> host.selectAudio(id) },
             onSelectSubtitleTrack = { key -> host.selectSubtitleTrack(key) },
+            onToggleSubtitle = { host.toggleSubtitle() },
             onRetry = { host.requestRetry() },
             onDismissError = { host.requestDismissError() },
             onRequestStopCast = {

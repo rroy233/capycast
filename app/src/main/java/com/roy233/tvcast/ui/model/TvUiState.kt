@@ -128,6 +128,8 @@ data class TvUiState(
     val audios: List<AudioOption> = emptyList(),
     val subtitleTracks: List<SubtitleTrackOption> = emptyList(),
     val selectedSubtitleKey: SubtitleTrackKey? = null,
+    val subtitleEnabled: Boolean = false,
+    val subtitleAvailable: Boolean = false,
     val subtitleSummary: String = "",
     val subtitleLines: List<String> = emptyList(),
     val subtitleFontScale: Float = 1f,

@@ -484,6 +484,12 @@ class MainActivity :
         if (::subtitleController.isInitialized) subtitleController.selectTrack(key)
     }
 
+    /** 开启或关闭字幕，具体轨道仍由字幕面板选择。 */
+    override fun toggleSubtitle() {
+        if (!::subtitleController.isInitialized) return
+        subtitleController.setEnabled(!subtitleController.currentSettings().enabled)
+    }
+
     override fun requestRetry() = retryLastAction()
 
     override fun requestDismissError() = dismissError()
@@ -1300,6 +1306,8 @@ class MainActivity :
             ui.copy(
                 subtitleTracks = SubtitleTrackMapper.options(state),
                 selectedSubtitleKey = state.selected?.key,
+                subtitleEnabled = state.selected != null,
+                subtitleAvailable = state.tracks.isNotEmpty(),
                 subtitleSummary = SubtitleTrackMapper.summary(state),
             )
     }

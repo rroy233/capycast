@@ -158,6 +158,18 @@ internal fun PlaybackHud(
                                 size = 64.dp,
                                 focusTarget = playFocus,
                             )
+                            if (!state.isLive) {
+                                Spacer(Modifier.width(12.dp))
+                                GlassIconButton(
+                                    icon = ImageVector.vectorResource(R.drawable.ic_speed),
+                                    contentDescription =
+                                        "播放速度 ${PlaybackSpeed.label(state.playbackSpeed)}",
+                                    onClick = { actions.onOpenPanel(PanelKind.SPEED) },
+                                    enabled = enabled,
+                                    selected = state.playbackSpeed != 1f,
+                                    size = 56.dp,
+                                )
+                            }
                             Spacer(Modifier.weight(1f))
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -179,12 +191,12 @@ internal fun PlaybackHud(
                                 )
                                 if (!state.isLive) {
                                     GlassIconButton(
-                                        icon = ImageVector.vectorResource(R.drawable.ic_speed),
+                                        icon = ImageVector.vectorResource(R.drawable.ic_subtitle),
                                         contentDescription =
-                                            "播放速度 ${PlaybackSpeed.label(state.playbackSpeed)}",
-                                        onClick = { actions.onOpenPanel(PanelKind.SPEED) },
-                                        enabled = enabled,
-                                        selected = state.playbackSpeed != 1f,
+                                            if (state.subtitleEnabled) "关闭字幕" else "开启字幕",
+                                        onClick = actions.onToggleSubtitle,
+                                        enabled = enabled && state.subtitleAvailable,
+                                        selected = state.subtitleEnabled,
                                         size = 56.dp,
                                     )
                                 }

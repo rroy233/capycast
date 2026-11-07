@@ -52,6 +52,17 @@ class SubtitleController(
     /** 当前生效的字幕设置。 */
     fun currentSettings(): SubtitleSettings = settings
 
+    /**
+     * 开启或关闭字幕；开启时沿用默认轨道选择规则。
+     *
+     * @param enabled 目标开关状态。
+     */
+    fun setEnabled(enabled: Boolean) {
+        if (settings.enabled == enabled) return
+        applySettings(settings.copy(enabled = enabled))
+        host.persistSubtitleSettings(settings)
+    }
+
     /** 应用设置；关闭字幕时立即清屏。 */
     fun applySettings(newSettings: SubtitleSettings) {
         val previous = settings
@@ -60,6 +71,10 @@ class SubtitleController(
             previous.enabled != settings.enabled || previous.autoAiEnabled != settings.autoAiEnabled
         ) {
             if (!settings.enabled) {
+                activeSession?.let { session ->
+                    session.cuesJob?.cancel()
+                    session.cuesJob = null
+                }
                 selected = null
                 cues = emptyList()
                 clearLines()
@@ -152,12 +167,6 @@ class SubtitleController(
     /** 释放会话资源；Activity 销毁时调用。 */
     fun release() {
         close()
-    }
-
-    private fun setEnabled(enabled: Boolean) {
-        if (settings.enabled == enabled) return
-        settings = settings.copy(enabled = enabled)
-        host.persistSubtitleSettings(settings)
     }
 
     /** 取消当前会话的作业并撤销会话归属。 */

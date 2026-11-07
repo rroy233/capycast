@@ -45,6 +45,7 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
  * @property onSelectQuality 选择视频清晰度。
  * @property onSelectAudio 选择音轨。
  * @property onSelectSubtitleTrack 选择字幕轨道；null 表示关闭字幕。
+ * @property onToggleSubtitle 开启或关闭字幕，具体轨道仍由字幕面板选择。
  * @property onRetry 重试当前失败操作。
  * @property onDismissError 关闭错误提示。
  * @property onRequestStopCast 请求停止当前投屏。
@@ -107,6 +108,7 @@ class TvActions(
     val onSelectQuality: (Int) -> Unit = {},
     val onSelectAudio: (Int) -> Unit = {},
     val onSelectSubtitleTrack: (SubtitleTrackKey?) -> Unit = {},
+    val onToggleSubtitle: () -> Unit = {},
     val onRetry: () -> Unit = {},
     val onDismissError: () -> Unit = {},
     val onRequestStopCast: () -> Unit = {},
