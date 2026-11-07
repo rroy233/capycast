@@ -142,7 +142,7 @@ class DanmakuController(
     /**
      * 播放器缓冲。
      *
-     * VLC 起播和网络抖动会短暂交替上报缓冲状态。只有缓冲持续一段时间才冻结 弹幕，避免每个瞬态事件都让 DFM pause/resume 一次。
+     * 起播和网络抖动会短暂交替上报缓冲状态。只有缓冲持续一段时间才冻结弹幕，避免每个瞬态事件都让 DFM pause/resume 一次。
      */
     fun onBuffering(buffering: Boolean, positionMs: Long) {
         if (closed || userPaused) return

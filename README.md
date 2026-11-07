@@ -89,13 +89,13 @@
 | 地址 | 内容 |
 | --- | --- |
 | `http://<电视 IP>:8098/log` | 最近的运行日志，包含投屏、取流、播放器事件和错误 |
-| `http://<电视 IP>:8098/playback` | 播放诊断报告：设备解码能力、轨道选择、播放时间线、统计和 libVLC 原生日志 |
+| `http://<电视 IP>:8098/playback` | 播放诊断报告：设备解码能力、Media3 轨道选择、播放时间线与统计 |
 | `http://<电视 IP>:8098/device` | 设备支持的视频/音频解码器、HDR 与显示能力 |
 | `http://<电视 IP>:8098/state` | 当前设备、登录状态和播放摘要 |
 
 诊断地址在应用启动后自动开启；电视 IP 可在「设置」页的网络信息中查看。播放地址中的签名参数、Cookie 和投屏载荷会自动脱敏，报告可以放心附在 Issue 中。提交问题时请说明电视品牌型号、Android 版本、复现步骤，并附上 `/playback` 的内容。
 
-`/playback` 会优先读取 libVLC 原生日志文件；若当前 libVLC 构建不支持文件日志，会自动读取本进程的 `VLC` logcat。具备 adb 的开发者也可以在电视上执行 `adb logcat -s VLC` 获取同样的原生解码与渲染日志。
+`/playback` 汇总 Media3 的轨道、解码器、网络加载与渲染事件。具备 adb 的开发者也可执行 `adb logcat -s Media3Player PlaybackDiag` 查看同一播放会话的详细日志。
 
 
 
@@ -112,6 +112,6 @@
 
 ## 开源协议
 
-CapyCast 自有代码采用 [MIT License](LICENSE)。项目使用的 libVLC 3.6.5 及其他第三方组件分别遵循其原始许可证，详见 [第三方软件声明](THIRD_PARTY_NOTICES.md)。
+CapyCast 自有代码采用 [MIT License](LICENSE)。第三方组件分别遵循其原始许可证，详见 [第三方软件声明](THIRD_PARTY_NOTICES.md)。
 
 > CapyCast 是独立的社区项目，与哔哩哔哩及 VideoLAN 无隶属或合作关系。请在遵守相关服务条款与当地法律的前提下使用。

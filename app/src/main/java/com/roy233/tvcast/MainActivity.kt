@@ -74,7 +74,7 @@ import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
 import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.platform.dlna.DlnaRenderer
-import com.roy233.tvcast.platform.player.VlcTrackFormat
+import com.roy233.tvcast.platform.player.MediaTrackFormat
 import com.roy233.tvcast.ui.model.CastPlaybackStateProjector
 import com.roy233.tvcast.ui.model.LiveQualityOption
 import com.roy233.tvcast.ui.model.PanelKind
@@ -95,12 +95,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import master.flame.danmaku.ui.widget.DanmakuView
-import org.videolan.libvlc.util.VLCVideoLayout
 
 /**
  * 应用主界面及投屏生命周期控制器。
  *
- * 负责连接 VLC 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
+ * 负责连接 Media3 播放器、DLNA 渲染器、账号登录协调器和 Compose 电视界面。
  */
 @UnstableApi
 class MainActivity :
@@ -121,9 +120,8 @@ class MainActivity :
     private val playbackEventRouter = PlaybackEventRouter(this)
 
     /** 视频渲染布局。 */
-    private lateinit var videoLayout: VLCVideoLayout
-    /** Media3 使用的 SurfaceView 容器，仅杜比视界会显示。 */
-    private lateinit var media3PlayerView: PlayerView
+    /** 唯一 Media3 使用的 SurfaceView 容器。 */
+    private lateinit var playerView: PlayerView
     /** 4K 解码帧补偿与真实视频校准输出。 */
     private lateinit var viewportHost: VideoViewportHost
     private var resumePlaybackAfterCalibration = false
@@ -158,7 +156,7 @@ class MainActivity :
             },
             onCalibration = { corners, completed ->
                 viewportHost.applySaved(corners, completed)
-                if (::danmakuView.isInitialized) videoLayout.post { layoutDanmaku() }
+                if (::danmakuView.isInitialized) playerView.post { layoutDanmaku() }
             },
         )
     }
@@ -613,7 +611,7 @@ class MainActivity :
     /** 播放器是否正在播放。 */
     override fun isPlaying(): Boolean = playerIsPlaying()
 
-    /** VLC 播放器的失败快照，用于直播故障诊断。 */
+    /** Media3 播放器的失败快照，用于直播故障诊断。 */
     override fun stateSnapshot(): String =
         if (::playbackEngineHost.isInitialized) playbackEngineHost.stateSnapshot() else ""
 
@@ -708,7 +706,7 @@ class MainActivity :
     /** 当前直播线路之外的备用源数量。 */
     override fun liveBackupCount(): Int = currentRequest?.liveBackupCount ?: 0
 
-    /** 返回 VLC 提供的直播进度与读取统计。 */
+    /** 返回 Media3 提供的直播进度与读取统计。 */
     override fun liveTelemetry(): LivePlaybackTelemetry? =
         if (::playbackEngineHost.isInitialized) playbackEngineHost.liveTelemetry() else null
 
@@ -826,7 +824,7 @@ class MainActivity :
     override fun describeContent(request: PlaybackRequest): String =
         "aid=${request.aid} cid=${request.cid} qn=${request.video.id} title=${request.title}"
 
-    /** 按内容能力选择播放后端并打开媒体。 */
+    /** 通过唯一的 Media3 后端打开媒体。 */
     override fun startPlaybackBackend(request: PlaybackRequest, seekToMs: Long): Boolean {
         return runCatching { playbackEngineHost.open(request, seekToMs) }
             .onFailure { error ->
@@ -986,8 +984,7 @@ class MainActivity :
             },
         )
 
-        videoLayout = findViewById(R.id.videoLayout)
-        media3PlayerView = findViewById(R.id.media3PlayerView)
+        playerView = findViewById(R.id.playerView)
         viewportHost =
             VideoViewportHost(
                 root = findViewById(R.id.rootLayout),
@@ -1035,8 +1032,7 @@ class MainActivity :
         runCatching {
             PlaybackEngineHost(
                 context = this,
-                vlcView = videoLayout,
-                media3View = media3PlayerView,
+                playerView = playerView,
                 viewportHost = viewportHost,
                 onEvent = playbackEventRouter::dispatch,
                 onHdrWindowChanged = ::setHdrWindowEnabled,
@@ -1063,10 +1059,10 @@ class MainActivity :
                 danmakuController.applySettings(danmakuSettings)
                 liveDanmakuController.applySettings(danmakuSettings)
                 danmakuView.visibility = if (danmakuSettings.enabled) View.VISIBLE else View.GONE
-                videoLayout.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                playerView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                     layoutDanmaku()
                 }
-                videoLayout.post { layoutDanmaku() }
+                playerView.post { layoutDanmaku() }
             }
             .onFailure { error ->
                 LogHub.e(
@@ -1175,7 +1171,7 @@ class MainActivity :
         }
     }
 
-    override fun updateMedia3Playing(seek: Long) {
+    override fun updatePlaying(seek: Long) {
         ui =
             ui.copy(
                 mode = TvMode.PLAYING,
@@ -1184,18 +1180,6 @@ class MainActivity :
                 positionMs = if (seek > 0L) seek else playerPositionMs(),
                 durationMs = playerDurationMs().takeIf { it > 0L } ?: ui.durationMs,
             )
-    }
-
-    override fun updateVlcPlaying(seek: Long) {
-        ui =
-            ui.copy(
-                mode = TvMode.PLAYING,
-                isPlaying = true,
-                isBuffering = false,
-                positionMs = if (seek > 0L) seek else ui.positionMs,
-            )
-        val duration = playerDurationMs()
-        if (duration > 0L) ui = ui.copy(durationMs = duration)
     }
 
     override fun updatePaused() {
@@ -1459,14 +1443,14 @@ class MainActivity :
     /**
      * 预览性地跳转到新位置。
      *
-     * 每次方向键输入都会立即驱动 VLC 跳转，以便画面加载目标位置；待确认状态只用于 控制进度条显示与自动提交，不会延后播放器的实际定位。
+     * 每次方向键输入都会立即驱动播放器跳转，以便画面加载目标位置；待确认状态只用于 控制进度条显示与自动提交，不会延后播放器的实际定位。
      */
     private fun previewSeekBy(ms: Long) = playbackCoordinator.previewSeekBy(ms)
 
     /** 结束当前预览会话；播放器已在预览期间定位到目标位置。 */
     private fun confirmPreviewSeek() = playbackCoordinator.confirmPreviewSeek()
 
-    /** 将 VLC 与弹幕时钟切换到相同的标准播放速度。 */
+    /** 将播放器与弹幕时钟切换到相同的标准播放速度。 */
     private fun setPlaybackSpeed(rate: Float) = playbackCoordinator.setPlaybackSpeed(rate)
 
     /** 更新弹幕设置并持久化。 */
@@ -1495,23 +1479,22 @@ class MainActivity :
         layoutDanmaku()
     }
 
-    /** 按实际视频渲染容器和显示区域摆放弹幕视图。 */
+    /** 按实际 Media3 视频渲染容器和显示区域摆放弹幕视图。 */
     private fun layoutDanmaku() {
-        if (!::videoLayout.isInitialized || !::danmakuView.isInitialized) return
-        val screenW = videoLayout.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
-        val screenH = videoLayout.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+        if (!::playerView.isInitialized || !::danmakuView.isInitialized) return
+        val screenW = playerView.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val screenH = playerView.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
         if (screenW <= 0 || screenH <= 0) return
 
-        // VLCVideoLayout 已经是视频的实际输出容器，可能包含旋转、像素宽高比与
-        // 缩放策略。轨道原始分辨率只用于信息展示，不能拿来反推弹幕视口。
+        // PlayerView 是未补偿时的实际输出容器；补偿模式下弹幕仍以同一显示区域布局。
         val areaH = (screenH * danmakuSettings.areaRatio).toInt().coerceIn(1, screenH)
         val params =
             danmakuView.layoutParams as? FrameLayout.LayoutParams
                 ?: FrameLayout.LayoutParams(screenW, areaH)
         params.width = screenW
         params.height = areaH
-        params.leftMargin = videoLayout.left
-        params.topMargin = videoLayout.top
+        params.leftMargin = playerView.left
+        params.topMargin = playerView.top
         params.gravity = Gravity.TOP or Gravity.START
         danmakuView.layoutParams = params
         if (::danmakuController.isInitialized) {
@@ -1532,8 +1515,7 @@ class MainActivity :
     }
 
     /** 从播放器读取视频尺寸，变化时重新摆放弹幕视图。 */
-    override fun refreshVideoSize() {
-        if (playbackEngineHost.backend == PlaybackBackend.MEDIA3) return
+    private fun refreshVideoSize() {
         if (!::playbackEngineHost.isInitialized) return
         val size = playbackEngineHost.videoSize() ?: return
         val liveCodec = currentRequest?.takeIf { it.isLive }?.video?.codecs
@@ -1788,7 +1770,7 @@ class MainActivity :
         setHdrWindowEnabled(false)
     }
 
-    /** HDR 视频进入专用显示模式，结束或切回 VLC 时立即恢复系统默认色彩模式。 */
+    /** HDR 视频进入专用显示模式，结束播放时立即恢复系统默认色彩模式。 */
     private fun setHdrWindowEnabled(enabled: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         // 播放器切换可能发生在 DLNA 后台线程；窗口属性必须在主线程设置。
@@ -1918,7 +1900,7 @@ class MainActivity :
         val v = info.video
         val width = if (info.isLive && ui.videoWidth > 0) ui.videoWidth else v.width
         val height = if (info.isLive && ui.videoHeight > 0) ui.videoHeight else v.height
-        val codec = v.codecs.ifBlank { VlcTrackFormat.codecName(v.codecId) }
+        val codec = v.codecs.ifBlank { MediaTrackFormat.codecName(v.codecId) }
         val audio = if (info.isLive) "自动音轨" else info.audioLabel
         return "${info.title}\n${info.qualityLabel}  ${width}x$height  " +
             "codec=$codec  $audio\n" +

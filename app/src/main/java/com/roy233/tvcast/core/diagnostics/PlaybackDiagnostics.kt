@@ -13,7 +13,7 @@ import org.json.JSONObject
  * 记录一次播放会话的完整诊断信息。
  *
  * 与只保存在内存中的 [LogHub] 不同，这里会把会话开始、失败和崩溃写入应用私有 目录，便于在电视被系统回收或应用崩溃后继续排查。`/playback` 端点会输出会话
- * 时间线、媒体轨道、播放统计、失败快照和 libVLC 原生日志尾部。
+ * 时间线、媒体轨道、播放统计与失败快照。
  *
  * 会话内存状态与 JSON 序列化由 [DiagnosticsSessionRecorder] 负责；文件读写由 [DiagnosticsFileStore]
  * 负责；本对象只承担生命周期入口与两者之间的编排。
@@ -24,10 +24,6 @@ object PlaybackDiagnostics {
     private const val TAG = "PlaybackDiag"
     /** 诊断文件所在目录名。 */
     private const val DIRECTORY_NAME = "diagnostics"
-    /** 本次运行使用的 libVLC 原生日志文件名。 */
-    private const val VLC_LOG_FILE = "vlc.log"
-    /** 上一次运行保留的 libVLC 原生日志文件名。 */
-    private const val VLC_PREVIOUS_LOG_FILE = "vlc-previous.log"
     /** 持久化播放历史文件名。 */
     private const val HISTORY_FILE = "playback-history.log"
     /** 会话开始标记。 */
@@ -40,10 +36,6 @@ object PlaybackDiagnostics {
     private const val MAX_HISTORY_BYTES = 256L * 1024L
     /** 轮转后保留的播放历史字节数。 */
     private const val MAX_HISTORY_TAIL_BYTES = 96L * 1024L
-    /** 单次读取的 libVLC 原生日志最大字节数。 */
-    private const val MAX_VLC_TAIL_BYTES = 96L * 1024L
-    /** 上一次运行保留的 libVLC 原生日志最大字节数。 */
-    private const val MAX_VLC_PREVIOUS_BYTES = 256L * 1024L
 
     /** 会话内存状态与 JSON 序列化。 */
     private val session = DiagnosticsSessionRecorder()
@@ -58,10 +50,6 @@ object PlaybackDiagnostics {
     @Volatile private var appContext: Context? = null
     /** 诊断文件目录。 */
     @Volatile private var diagnosticsDir: File? = null
-    /** 当前运行使用的 libVLC 原生日志文件。 */
-    @Volatile private var vlcLog: File? = null
-    /** 上一次运行保留的 libVLC 原生日志文件。 */
-    @Volatile private var previousVlcLog: File? = null
     /** 持久化播放历史文件。 */
     @Volatile private var historyFile: File? = null
 
@@ -73,7 +61,6 @@ object PlaybackDiagnostics {
     fun install(context: Context) {
         if (installed) return
         var unclean = false
-        var previousVlcBytes = 0L
         synchronized(fileLock) {
             if (installed) return
             val application = context.applicationContext
@@ -82,12 +69,8 @@ object PlaybackDiagnostics {
             directory.mkdirs()
             diagnosticsDir = directory
             historyFile = File(directory, HISTORY_FILE)
-            val currentLog = File(directory, VLC_LOG_FILE)
-            vlcLog = currentLog
-            previousVlcLog = File(directory, VLC_PREVIOUS_LOG_FILE)
             unclean = detectUncleanHistory()
             rotateHistoryIfNeeded()
-            previousVlcBytes = rotateVlcLog(currentLog)
             installed = true
         }
         appendHistory(
@@ -104,7 +87,7 @@ object PlaybackDiagnostics {
         LogHub.i(
             TAG,
             "diagnostics installed dir=${diagnosticsDir?.absolutePath} " +
-                "previousSessionOpen=$unclean previousVlcBytes=$previousVlcBytes",
+                "previousSessionOpen=$unclean",
         )
         if (unclean) {
             LogHub.w(TAG, "previous playback session was not closed; history retained")
@@ -124,7 +107,7 @@ object PlaybackDiagnostics {
         )
         LogHub.i(
             TAG,
-            "session begin id=${begin.id} source=${begin.source} vlcLogFrom=${session.vlcLogStartOffset()}",
+            "session begin id=${begin.id} source=${begin.source}",
         )
         LogHub.d(TAG, begin.line)
     }
@@ -222,8 +205,6 @@ object PlaybackDiagnostics {
             "[FAIL] id=${failure.id} code=${failure.code.take(80)} message=${failure.message}",
         )
         if (failure.detail.isNotBlank()) appendHistory("    detail=${failure.detail}")
-        val nativeTail = vlcLogTail(40)
-        if (nativeTail.isNotBlank()) appendHistory("[VLC] id=${failure.id}\n$nativeTail")
         appendHistory("$CLOSE_MARKER id=${failure.id} reason=failed:${failure.code.take(60)}")
         LogHub.e(
             TAG,
@@ -253,18 +234,6 @@ object PlaybackDiagnostics {
     }
 
     /**
-     * 持久化一次 libVLC 原生日志尾部。
-     *
-     * @param source 触发来源。
-     * @param text 需要脱敏后写入的日志文本。
-     */
-    fun recordNativeLog(source: String, text: String) {
-        val safe = LogRedaction.text(text).take(MAX_HISTORY_LINE)
-        if (safe.isBlank()) return
-        appendHistory("[NATIVE] source=${source.take(80)}\n$safe")
-    }
-
-    /**
      * 返回当前会话的单行摘要，用于状态接口。
      *
      * @return 单行会话摘要。
@@ -287,11 +256,6 @@ object PlaybackDiagnostics {
             appContext?.let { context -> root.put("device", DeviceDiagnostics.snapshot(context)) }
             root.put("session", session.sessionJson())
             root.put("runtime", session.runtimeJson())
-            val fileLog = buildVlcLogJson()
-            root.put("vlcLog", fileLog)
-            if (!fileLog.optBoolean("available")) {
-                root.put("nativeLogcat", NativeLogcat.report(160))
-            }
             root.put("history", JSONObject().put("tail", historyTail(120)))
         }
             .onFailure { error ->
@@ -300,24 +264,6 @@ object PlaybackDiagnostics {
                 }
             }
         return root.toString(2)
-    }
-
-    /**
-     * 返回当前 libVLC 原生日志文件的字节数。
-     *
-     * @return 文件大小；不可用时为 0。
-     */
-    fun vlcLogBytes(): Long = vlcLog?.takeIf { it.isFile }?.length() ?: 0L
-
-    /**
-     * 读取当前会话开始后的 libVLC 原生日志尾部。
-     *
-     * @param maxLines 最多返回的行数。
-     * @return 脱敏后的原生日志文本。
-     */
-    fun vlcLogTail(maxLines: Int): String {
-        val file = vlcLog ?: return ""
-        return readVlcTail(file, session.vlcLogStartOffset(), maxLines)
     }
 
     /**
@@ -341,37 +287,6 @@ object PlaybackDiagnostics {
                 .getOrDefault("(unreadable)")
         }
     }
-
-    /**
-     * 返回指定上下文对应的 libVLC 原生日志文件。
-     *
-     * @param context 用于定位应用私有目录的上下文。
-     * @return 原生日志文件。
-     */
-    fun vlcLogFile(context: Context): File {
-        val directory = File(context.applicationContext.filesDir, DIRECTORY_NAME)
-        directory.mkdirs()
-        return File(directory, VLC_LOG_FILE)
-    }
-
-    /** 构造 libVLC 原生日志 JSON。 */
-    private fun buildVlcLogJson(): JSONObject =
-        JSONObject().apply {
-            val current = vlcLog
-            put("file", current?.absolutePath.orEmpty())
-            put("bytes", current?.takeIf { it.isFile }?.length() ?: 0L)
-            put("available", (current?.takeIf { it.isFile }?.length() ?: 0L) > 0L)
-            put("tail", vlcLogTail(180))
-            val previous = previousVlcLog
-            if (previous != null && previous.isFile) {
-                put("previousBytes", previous.length())
-                put("previousTail", readVlcTail(previous, 0L, 80))
-            }
-        }
-
-    /** 读取文件尾部并生成脱敏的日志行。 */
-    private fun readVlcTail(file: File, startOffset: Long, maxLines: Int): String =
-        DiagnosticsFileStore.readVlcTail(file, startOffset, maxLines, MAX_VLC_TAIL_BYTES)
 
     /**
      * 读取文件尾部文本。
@@ -426,30 +341,4 @@ object PlaybackDiagnostics {
         if (tail.isBlank()) return false
         return tail.lastIndexOf(OPEN_MARKER) > tail.lastIndexOf(CLOSE_MARKER)
     }
-
-    /** 将上一次运行的 libVLC 原生日志轮转为备份，返回备份字节数。 */
-    private fun rotateVlcLog(current: File): Long = runCatching {
-        val previous = previousVlcLog
-        val size = if (current.isFile) current.length() else 0L
-        when {
-            !current.isFile -> 0L
-            size <= 0L || previous == null -> {
-                current.delete()
-                0L
-            }
-            else -> {
-                previous.delete()
-                if (size <= MAX_VLC_PREVIOUS_BYTES && current.renameTo(previous)) {
-                    size
-                } else {
-                    // 文件过大或跨文件系统时只保留尾部，避免备份无限增长。
-                    val tail = readTailText(current, MAX_VLC_PREVIOUS_BYTES)
-                    previous.writeText(tail)
-                    current.delete()
-                    tail.toByteArray(Charsets.UTF_8).size.toLong()
-                }
-            }
-        }
-    }
-        .getOrDefault(0L)
 }

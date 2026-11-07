@@ -8,40 +8,38 @@ import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
 import com.roy233.tvcast.core.playback.PlaybackBackend
-import com.roy233.tvcast.core.playback.PlaybackBackendSelector
 import com.roy233.tvcast.core.playback.PlaybackEngine
 import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.core.playback.PlaybackSnapshot
 import com.roy233.tvcast.platform.player.Media3PlaybackEngineAdapter
 import com.roy233.tvcast.platform.player.Media3PlayerEngine
-import com.roy233.tvcast.platform.player.VlcPlaybackEngineAdapter
-import com.roy233.tvcast.platform.player.VlcPlayerEngine
-import org.videolan.libvlc.util.VLCVideoLayout
 
-/** 管理播放器后端的创建、选择、切换和释放。 */
+/** 管理唯一 Media3 播放器的生命周期、输出 Surface 与 HDR 窗口状态。 */
 @UnstableApi
 class PlaybackEngineHost(
     context: Context,
-    private val vlcView: VLCVideoLayout,
-    private val media3View: PlayerView,
+    private val playerView: PlayerView,
     private val viewportHost: VideoViewportHost,
     private val onEvent: (PlaybackBackend, PlaybackEvent) -> Unit,
     private val onHdrWindowChanged: (Boolean) -> Unit,
 ) {
-    private val vlc =
-        VlcPlayerEngine(context, vlcView) { event ->
-            onEvent(PlaybackBackend.VLC, event)
-        }
-    private val vlcEngine = VlcPlaybackEngineAdapter(vlc)
-    private var media3: Media3PlayerEngine? = null
-    private val media3Engine = Media3PlaybackEngineAdapter { media3 }
+    private val media3 =
+        Media3PlayerEngine(
+            context = context,
+            playerView = playerView,
+            onEvent = { event ->
+                if (event is PlaybackEvent.VideoSizeChanged) {
+                    viewportHost.setMedia3ContentAspect(event.width, event.height)
+                }
+                onEvent(PlaybackBackend.MEDIA3, event)
+            },
+        )
+    private val engine: PlaybackEngine = Media3PlaybackEngineAdapter { media3 }
 
-    var backend: PlaybackBackend = PlaybackBackend.VLC
-        private set
+    val backend: PlaybackBackend = PlaybackBackend.MEDIA3
 
     fun open(request: PlaybackRequest, seekToMs: Long): Boolean {
-        backend = PlaybackBackendSelector.select(request)
         val output: Surface? =
             if (request.isDrm || request.video.isHdr || request.video.isDolbyVision) {
                 if (viewportHost.hasCompensation()) {
@@ -56,11 +54,9 @@ class PlaybackEngineHost(
             }
         val compensated = output != null
         if (compensated) {
-            if (backend == PlaybackBackend.MEDIA3) {
-                viewportHost.setMedia3ContentAspect(request.video.width, request.video.height)
-            } else {
-                viewportHost.setMedia3ContentAspect(0, 0)
-            }
+            viewportHost.setMedia3ContentAspect(request.video.width, request.video.height)
+        } else {
+            viewportHost.setMedia3ContentAspect(0, 0)
         }
         if (
             viewportHost.hasCompensation() &&
@@ -71,88 +67,38 @@ class PlaybackEngineHost(
         ) {
             LogHub.e("VideoViewport", "pixel compensation unavailable; using direct output")
         }
-        return when (backend) {
-            PlaybackBackend.MEDIA3 -> {
-                onHdrWindowChanged(request.video.isHdr || request.video.isDolbyVision)
-                vlc.stopPlayback(PlaybackBackendSelector.switchReason(request))
-                vlcView.visibility = View.GONE
-                media3View.visibility = View.VISIBLE
-                media3Engine().setVideoOutput(output)
-                viewportHost.showPlaybackCompensation(compensated)
-                media3Engine.open(request, seekToMs)
-            }
-            PlaybackBackend.VLC -> {
-                media3?.stop()
-                onHdrWindowChanged(false)
-                media3View.visibility = View.GONE
-                vlcView.visibility = View.VISIBLE
-                vlc.setVideoOutput(output)
-                viewportHost.showPlaybackCompensation(compensated)
-                vlcEngine.open(request, seekToMs)
-            }
-        }
+        onHdrWindowChanged(request.video.isHdr || request.video.isDolbyVision)
+        playerView.visibility = View.VISIBLE
+        media3.setVideoOutput(output)
+        viewportHost.showPlaybackCompensation(compensated)
+        return engine.open(request, seekToMs)
     }
 
-    fun snapshot(fallbackVolume: Int): PlaybackSnapshot = activeEngine().snapshot(fallbackVolume)
+    fun snapshot(fallbackVolume: Int): PlaybackSnapshot = engine.snapshot(fallbackVolume)
 
-    fun seekTo(positionMs: Long, reason: String): Long = activeEngine().seekTo(positionMs, reason)
+    fun seekTo(positionMs: Long, reason: String): Long = engine.seekTo(positionMs, reason)
 
-    fun setPaused(paused: Boolean, reason: String) = activeEngine().setPaused(paused, reason)
+    fun setPaused(paused: Boolean, reason: String) = engine.setPaused(paused, reason)
 
-    fun setPlaybackRate(rate: Float, reason: String): Float =
-        activeEngine().setPlaybackRate(rate, reason)
+    fun setPlaybackRate(rate: Float, reason: String): Float = engine.setPlaybackRate(rate, reason)
 
-    fun setVolume(volume: Int, reason: String) = activeEngine().setVolume(volume, reason)
+    fun setVolume(volume: Int, reason: String) = engine.setVolume(volume, reason)
 
     fun stop(reason: String) {
-        activeEngine().stop(reason)
+        engine.stop(reason)
         viewportHost.showPlaybackCompensation(false)
     }
 
-    fun isSeekable(): Boolean = activeEngine().isSeekable()
+    fun isSeekable(): Boolean = engine.isSeekable()
 
-    fun stateSnapshot(): String = runCatching { vlc.stateSnapshot() }.getOrDefault("")
+    fun stateSnapshot(): String = media3.stateSnapshot()
 
-    fun videoSize(): Pair<Int, Int>? = vlc.videoSize()
+    fun videoSize(): Pair<Int, Int>? = media3.videoSize()
 
-    fun liveTelemetry(): LivePlaybackTelemetry? {
-        if (backend != PlaybackBackend.VLC) return null
-        return vlc.liveProgressSnapshot().let {
-            LivePlaybackTelemetry(
-                positionMs = it.positionMs,
-                readBytes = it.readBytes,
-                demuxReadBytes = it.demuxReadBytes,
-                decodedVideoFrames = it.decodedVideoFrames,
-                displayedPictures = it.displayedPictures,
-            )
-        }
-    }
+    fun liveTelemetry(): LivePlaybackTelemetry = media3.liveTelemetry()
 
     fun release() {
-        media3Engine.release()
-        vlcEngine.release()
+        engine.release()
+        viewportHost.showPlaybackCompensation(false)
     }
-
-    private fun activeEngine(): PlaybackEngine =
-        when (backend) {
-            PlaybackBackend.VLC -> vlcEngine
-            PlaybackBackend.MEDIA3 -> media3Engine
-        }
-
-    private fun media3Engine(): Media3PlayerEngine =
-        media3
-            ?: Media3PlayerEngine(
-                    context = vlcView.context,
-                    playerView = media3View,
-                    onEvent = { event ->
-                        if (
-                            backend == PlaybackBackend.MEDIA3 &&
-                                event is PlaybackEvent.VideoSizeChanged
-                        ) {
-                            viewportHost.setMedia3ContentAspect(event.width, event.height)
-                        }
-                        onEvent(PlaybackBackend.MEDIA3, event)
-                    },
-                )
-                .also { media3 = it }
 }

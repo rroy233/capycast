@@ -108,7 +108,6 @@ class LayerDependencyTest {
                     "android.",
                     "androidx.compose",
                     "com.google.android.exoplayer",
-                    "org.videolan.libvlc",
                     "com.roy233.tvcast.platform.player",
                     "com.roy233.tvcast.data.bili",
                 ),

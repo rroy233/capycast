@@ -3,7 +3,7 @@ package com.roy233.tvcast.feature.playback.domain
 /**
  * Judges whether a VOD playback interruption represents normal startup work or a route failure.
  *
- * libVLC reports buffering while opening media and while applying an initial seek. Those events are
+ * Media3 reports buffering while opening media and while applying an initial seek. Those events are
  * expected and must not consume CDN candidates. Only buffering that begins after verified forward
  * playback participates in automatic recovery.
  */
@@ -122,8 +122,8 @@ class VodRecoveryController {
     }
 
     /**
-     * Accepts libVLC's coarse buffering state. Opening and seeking buffering is retained for
-     * diagnostics but cannot cause a route change.
+     * Accepts Media3's buffering state. Opening and seeking buffering is retained for diagnostics
+     * but cannot cause a route change.
      */
     fun onBufferingChanged(buffering: Boolean, nowMs: Long): BufferingUpdate {
         if (buffering) {

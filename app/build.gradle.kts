@@ -100,8 +100,6 @@ android {
 }
 
 dependencies {
-    // Local copy of the official libVLC 3.6.5 AAR (includes DASH demuxer).
-    implementation(files("libs/libvlc-all-3.6.5.aar"))
     // DanmakuFlameMaster 0.9.25 AAR (Apache-2.0), the engine used by 云视听.
     implementation(files("libs/DanmakuFlameMaster-0.9.25.aar"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -113,6 +111,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.8.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
     implementation("androidx.media3:media3-ui:1.8.0")
 
     val composeBom = platform("androidx.compose:compose-bom:2025.10.01")

@@ -38,7 +38,7 @@ The repository enforces the essential rules in `app/src/test/java/com/roy233/tvc
 ## State and resource ownership
 
 - `TvStateHolder` owns the Compose root projection. `TvActionDispatcher` handles UI-only transitions; `TvActionHost` sends domain commands to the Android host.
-- `PlaybackEngineHost` owns VLC/Media3 creation, backend selection, visible surface switching and engine release.
+- `PlaybackEngineHost` owns Media3 creation, output-surface switching and engine release.
 - `PlaybackEventRouter` owns the mapping from backend-neutral events to playback, history, danmaku and UI effects.
 - `CastSessionCoordinator`, `LivePlaybackCoordinator`, `VodPlaybackCoordinator`, `PlaybackHistoryCoordinator`, account/update coordinators and danmaku controllers own their session Jobs and transition state.
 - `DlnaRenderer` owns HTTP, SSDP and protocol threads. `DfmDanmakuEngine` owns DFM view integration; application controllers own their danmaku data/session lifecycle.
