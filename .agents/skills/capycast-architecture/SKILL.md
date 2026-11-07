@@ -30,7 +30,7 @@ Read a second reference only when the real call path crosses that boundary. For 
 ## Non-negotiable placement rules
 
 - Do not put Bilibili DTOs, HTTP, persistence or Android player calls into `ui`, `feature/*/domain`, or `platform/player`.
-- Do not add business behaviour to `MainActivity`, `DlnaRenderer`, VLC/Media3 SDK callbacks, or Compose functions when an existing coordinator owns that behaviour.
-- Do not bypass `PlaybackEventRouter` for playback side effects, or bypass `PlaybackEngineHost` for backend selection and switching.
+- Do not add business behaviour to `MainActivity`, `DlnaRenderer`, Media3 SDK callbacks, or Compose functions when an existing coordinator owns that behaviour.
+- Do not bypass `PlaybackEventRouter` for playback side effects, or bypass `PlaybackEngineHost` for player lifecycle and output-surface changes.
 - Do not make a global UI state field the source of truth for a feature session. Maintain business state in its coordinator/session model, then project it to UI.
 - Do not create another generic coordinator, manager, utility, or oversized Host as a shortcut. Extend the named feature owner or introduce a narrow port with one purpose.

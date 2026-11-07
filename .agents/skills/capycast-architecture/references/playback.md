@@ -6,8 +6,7 @@
 CastSessionCoordinator / PlaybackSelectionCoordinator
   → PlaybackRequest
   → PlaybackEngineHost
-  → PlaybackBackendSelector
-  → VLC or Media3 adapter
+  → Media3 adapter
   → PlaybackEvent
   → PlaybackEventRouter
   → VOD/live coordinator, history, danmaku and UI projection
@@ -15,14 +14,13 @@ CastSessionCoordinator / PlaybackSelectionCoordinator
 
 `PlaybackRequest` and `MediaTrack` in `core/playback/PlaybackContracts.kt` are the stable boundary between resolution and playback. Data mappers populate them; UI and platform player code consume them. Add a field there only when it represents playback-wide information. Keep provider-specific response shapes in `data/bili`.
 
-## Backend selection and player events
+## Media3 lifecycle and player events
 
-- `PlaybackBackendSelector` is the sole backend-selection policy. DASH VOD uses Media3 so its split audio/video tracks share a seek and buffering timeline; progressive VOD and live use VLC unless HDR, Dolby Vision or DRM require Media3.
-- `PlaybackEngineHost` owns VLC/Media3 lifecycle, surface visibility and HDR window callback. It exposes backend-neutral commands and snapshots.
-- VLC/Media3 adapters translate SDK callbacks into `PlaybackEvent`. They do not decide recovery, history reporting, danmaku or UI state.
-- `PlaybackEventRouter` is the single owner of playback-event side effects. Preserve its backend-specific event ordering: it carries different VOD/live and cleanup semantics.
+- `PlaybackEngineHost` owns the Media3 lifecycle, output-surface switching and HDR window callback. DASH VOD merges its split audio/video representations into one Media3 timeline; progressive VOD, HLS and live all use their corresponding Media3 media sources.
+- The Media3 adapter translates SDK callbacks into `PlaybackEvent`. It does not decide recovery, history reporting, danmaku or UI state.
+- `PlaybackEventRouter` is the single owner of playback-event side effects. Preserve its VOD/live event ordering and cleanup semantics.
 
-When a bug appears only on HDR, DASH or DRM, trace `PlaybackBackendSelector` → `PlaybackEngineHost` → Media3 adapter → router before changing a generic remote-control or UI path.
+When a bug appears only on HDR, DASH or DRM, trace `PlaybackEngineHost` → Media3 adapter → router before changing a generic remote-control or UI path.
 
 ## VOD and live sessions
 
@@ -35,6 +33,6 @@ Changing recovery requires a deterministic test that covers candidate order, att
 
 ## Lifecycle rules
 
-Opening a new cast replaces the prior VOD/live session before a new backend starts. A player event is ignored when it belongs to a backend that is no longer active. Keep this protection when introducing an asynchronous callback.
+Opening a new cast replaces the prior VOD/live session before Media3 opens the new request. Keep the playback-session ownership checks when introducing an asynchronous callback.
 
 For new behavior, decide which of these paths owns cleanup: replacement by a new cast, user stop, DLNA Stop, natural end, terminal player failure, or Activity destruction. These paths intentionally differ in history reporting, DLNA state, retry availability and UI feedback.

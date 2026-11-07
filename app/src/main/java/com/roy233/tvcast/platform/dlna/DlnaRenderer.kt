@@ -14,7 +14,7 @@ import kotlin.concurrent.thread
  *
  * The phone sends `SetAVTransportURI` with a DIDL-Lite document. The real video identity is inside
  * `<upnp:longDescription>` as an encrypted `_nva_ext_` payload; [NvaExtDecoder] turns it into
- * aid/cid, and the [Listener] resolves the account's max quality with libVLC.
+ * aid/cid, and the [Listener] resolves the account's maximum playable quality.
  *
  * The device description deliberately advertises a generic DLNA renderer without Bilibili vendor
  * fields: when it claims to be an official "云视听小电视" TV, the Android app switches to the proprietary

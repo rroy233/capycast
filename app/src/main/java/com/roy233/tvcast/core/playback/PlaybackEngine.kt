@@ -1,15 +1,14 @@
 package com.roy233.tvcast.core.playback
 
-/** 播放后端标识，用于诊断与能力区分。 */
+/** 唯一的硬件直出播放后端标识，用于诊断与事件归属。 */
 enum class PlaybackBackend {
-    VLC,
     MEDIA3,
 }
 
 /**
  * 播放器后端统一契约。
  *
- * VLC 与 Media3 各自实现该接口，界面与业务层通过它执行播放传输操作， 不直接引用具体播放器 SDK。
+ * Media3 实现此接口，界面与业务层通过它执行播放传输操作， 不直接引用播放器 SDK。
  */
 interface PlaybackEngine {
 

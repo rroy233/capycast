@@ -199,7 +199,6 @@ object LogHub {
         j.put("playback", PlaybackDiagnostics.summary())
         j.put("playbackUrl", "http://${localIp()}:$PORT/playback")
         j.put("deviceUrl", "http://${localIp()}:$PORT/device")
-        j.put("vlcLogBytes", PlaybackDiagnostics.vlcLogBytes())
         appContext?.let { ctx ->
             val dm = ctx.resources.displayMetrics
             j.put("widthPx", dm.widthPixels)

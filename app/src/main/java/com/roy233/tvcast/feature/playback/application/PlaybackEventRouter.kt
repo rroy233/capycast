@@ -48,9 +48,7 @@ interface PlaybackEventHost {
 
     fun setRetryFor(request: PlaybackRequest)
 
-    fun updateMedia3Playing(seek: Long)
-
-    fun updateVlcPlaying(seek: Long)
+    fun updatePlaying(seek: Long)
 
     fun updatePaused()
 
@@ -61,8 +59,6 @@ interface PlaybackEventHost {
     fun updateEnded()
 
     fun updateVideoSize(width: Int, height: Int)
-
-    fun refreshVideoSize()
 
     fun vodDanmakuPlaying(seek: Long)
 
@@ -83,43 +79,94 @@ interface PlaybackEventHost {
     )
 }
 
-/** 统一处理 VLC 与 Media3 事件，保持各后端原有主线程与清理时序。 */
+/** 将唯一 Media3 后端的事件映射到既有 VOD、直播、历史与弹幕会话。 */
 class PlaybackEventRouter(private val host: PlaybackEventHost) {
     fun dispatch(backend: PlaybackBackend, event: PlaybackEvent) {
-        if (host.activeBackend() != backend) return
-        when (backend) {
-            PlaybackBackend.MEDIA3 -> media3(event)
-            PlaybackBackend.VLC -> vlc(event)
+        if (backend != PlaybackBackend.MEDIA3 || host.activeBackend() != backend) return
+        when (event) {
+            PlaybackEvent.Playing -> playing()
+            PlaybackEvent.Paused -> paused()
+            PlaybackEvent.Stopped -> stopped()
+            PlaybackEvent.Ended -> end()
+            is PlaybackEvent.Buffering -> buffering(event.isBuffering)
+            is PlaybackEvent.Failed -> failed(event)
+            is PlaybackEvent.VideoSizeChanged ->
+                host.runOnMain {
+                    host.updateVideoSize(event.width, event.height)
+                }
         }
     }
 
-    private fun media3(event: PlaybackEvent) {
-        when (event) {
-            PlaybackEvent.Playing -> {
+    private fun playing() {
+        val seek = host.consumePendingSeekMs()
+        host.runOnMain {
+            val live = host.currentPlaybackRequest()?.isLive == true
+            host.updatePlaying(seek)
+            if (live) host.onLivePlaying()
+            else {
                 host.vodOnPlaying()
-                val seek = host.consumePendingSeekMs()
-                host.updateMedia3Playing(seek)
-                host.historyOnPlaying()
                 host.vodDanmakuPlaying(seek)
             }
-            PlaybackEvent.Paused -> {
-                host.updatePaused()
-                host.historyOnPaused()
-                host.vodDanmakuPaused()
-            }
-            PlaybackEvent.Stopped -> Unit
-            PlaybackEvent.Ended -> end("media3-ended", "media3-ended")
-            is PlaybackEvent.Buffering -> {
-                host.updateBuffering(event.isBuffering)
-                host.observeVodBuffering(event.isBuffering)
-                host.vodDanmakuBuffering(event.isBuffering)
-            }
-            is PlaybackEvent.Failed -> media3Failure(event)
-            is PlaybackEvent.VideoSizeChanged -> host.updateVideoSize(event.width, event.height)
+            host.historyOnPlaying()
         }
     }
 
-    private fun media3Failure(error: PlaybackEvent.Failed) {
+    private fun paused() {
+        host.runOnMain {
+            val live = host.currentPlaybackRequest()?.isLive == true
+            host.updatePaused()
+            host.historyOnPaused()
+            if (live) host.onLivePaused() else host.vodDanmakuPaused()
+        }
+    }
+
+    private fun stopped() {
+        host.runOnMain {
+            host.updateStopped()
+            host.vodDanmakuClose()
+            host.liveDanmakuClose()
+        }
+    }
+
+    private fun buffering(buffering: Boolean) {
+        host.runOnMain {
+            val live = host.currentPlaybackRequest()?.isLive == true
+            host.updateBuffering(buffering)
+            if (live) {
+                if (host.onLiveBuffering(buffering)) {
+                    host.handleLiveFailure("two-consecutive-rebuffers")
+                }
+            } else {
+                host.observeVodBuffering(buffering)
+                host.vodDanmakuBuffering(buffering)
+            }
+        }
+    }
+
+    private fun end() {
+        host.finishHistory("media3-ended", ended = true)
+        host.clearLiveSession("media3-end-reached")
+        host.setCastEnded()
+        host.runOnMain {
+            host.vodDanmakuClose()
+            host.liveDanmakuClose()
+            host.updateEnded()
+        }
+    }
+
+    private fun failed(error: PlaybackEvent.Failed) {
+        val info = host.currentPlaybackRequest()
+        val snapshot = host.playerStateSnapshot()
+        LogHub.e(
+            TAG,
+            "Media3 playback failed live=${info?.isLive == true} code=${error.code} " +
+                "message=${error.message} snapshot=$snapshot",
+        )
+        if (info?.isLive == true) {
+            host.finishHistory("media3-live-error")
+            host.handleLiveFailure("player-error")
+            return
+        }
         val decoderFailure =
             error.code.contains("DECODING", ignoreCase = true) ||
                 error.code.contains("RENDERER", ignoreCase = true) ||
@@ -127,22 +174,21 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
         if (host.handleVodFailure("media3-player-error", preferCodecFallback = decoderFailure))
             return
         host.finishHistory("media3-error")
-        val info = host.currentPlaybackRequest()
         if (info != null) host.setRetryFor(info)
-        val licenseFailure =
-            error.code.contains("DRM", ignoreCase = true) ||
-                error.code.contains("LICENSE", ignoreCase = true)
+        val title =
+            when {
+                info?.isDrm == true -> "受保护内容播放失败"
+                info?.video?.isDolbyVision == true -> "杜比视界播放失败"
+                info?.video?.isHdr == true -> "HDR 播放失败"
+                else -> "播放失败"
+            }
         val code =
             when {
-                info?.isDrm != true -> "DOLBY_VISION_PLAYBACK_FAILED"
-                licenseFailure -> "WIDEVINE_LICENSE_FAILED"
-                else -> "WIDEVINE_PLAYBACK_FAILED"
+                info?.isDrm == true -> "WIDEVINE_PLAYBACK_FAILED"
+                info?.video?.isDolbyVision == true -> "DOLBY_VISION_PLAYBACK_FAILED"
+                info?.video?.isHdr == true -> "HDR_PLAYBACK_FAILED"
+                else -> "PLAYBACK_FAILED"
             }
-        val title = if (info?.isDrm == true) "受保护内容播放失败" else "杜比视界播放失败"
-        LogHub.e(
-            TAG,
-            "Media3 playback failed drm=${info?.isDrm == true} code=${error.code} message=${error.message}",
-        )
         PlaybackDiagnostics.fail(
             code = code,
             message = title,
@@ -150,109 +196,12 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
         )
         host.reportPlaybackError(
             title = title,
-            message =
-                if (info?.isDrm == true) "Widevine 授权或设备安全解码器不可用，请查看诊断日志。"
-                else "当前设备、系统或 HDMI 链路无法播放此杜比视界码流。",
+            message = "设备解码能力不足或网络异常，请查看诊断日志。",
             code = code,
             canRetry = info != null,
             keepVideo = true,
         )
         host.vodDanmakuClose()
-    }
-
-    private fun vlc(event: PlaybackEvent) {
-        when (event) {
-            PlaybackEvent.Playing -> {
-                val seek = host.consumePendingSeekMs()
-                LogHub.i(TAG, "ui playing initialPosition=${seek}ms")
-                host.runOnMain {
-                    host.vodOnPlaying()
-                    host.updateVlcPlaying(seek)
-                    host.refreshVideoSize()
-                    if (host.currentPlaybackRequest()?.isLive == true) host.onLivePlaying()
-                    else host.vodDanmakuPlaying(seek)
-                    host.historyOnPlaying()
-                }
-            }
-            PlaybackEvent.Paused -> {
-                LogHub.d(TAG, "ui paused")
-                host.runOnMain {
-                    host.updatePaused()
-                    host.historyOnPaused()
-                    if (host.currentPlaybackRequest()?.isLive == true) host.onLivePaused()
-                    else host.vodDanmakuPaused()
-                }
-            }
-            PlaybackEvent.Stopped -> {
-                LogHub.d(TAG, "ui stopped")
-                host.runOnMain {
-                    host.updateStopped()
-                    host.vodDanmakuClose()
-                    host.liveDanmakuClose()
-                }
-            }
-            PlaybackEvent.Ended -> {
-                LogHub.i(TAG, "ui end reached")
-                host.finishHistory("vlc-ended", ended = true)
-                host.clearLiveSession("vlc-end-reached")
-                host.setCastEnded()
-                host.runOnMain {
-                    host.vodDanmakuClose()
-                    host.liveDanmakuClose()
-                    host.updateEnded()
-                }
-            }
-            is PlaybackEvent.Failed -> vlcFailure()
-            is PlaybackEvent.Buffering ->
-                host.runOnMain {
-                    val buffering = event.isBuffering
-                    host.updateBuffering(buffering)
-                    if (
-                        host.currentPlaybackRequest()?.isLive == true &&
-                            host.onLiveBuffering(buffering)
-                    ) {
-                        host.handleLiveFailure("two-consecutive-rebuffers")
-                    }
-                    if (host.currentPlaybackRequest()?.isLive != true)
-                        host.observeVodBuffering(buffering)
-                    if (host.currentPlaybackRequest()?.isLive != true)
-                        host.vodDanmakuBuffering(buffering)
-                }
-            is PlaybackEvent.VideoSizeChanged -> Unit
-        }
-    }
-
-    private fun vlcFailure() {
-        val snapshot = runCatching {
-            host.playerStateSnapshot()
-        }
-            .getOrDefault("(snapshot unavailable)")
-        LogHub.e(TAG, "ui playback failed code=PLAYBACK_FAILED snapshot=$snapshot")
-        host.finishHistory("vlc-error")
-        val info = host.currentPlaybackRequest()
-        if (info?.isLive == true) {
-            host.handleLiveFailure("player-error")
-            return
-        }
-        if (info != null && host.handleVodFailure("player-error")) return
-        if (info != null) host.setRetryFor(info)
-        host.reportPlaybackError(
-            title = "播放失败",
-            message = "设备解码能力不足或网络异常。",
-            code = "PLAYBACK_FAILED",
-            canRetry = info != null,
-            keepVideo = true,
-        )
-        host.vodDanmakuClose()
-        host.liveDanmakuClose()
-    }
-
-    private fun end(historyReason: String, liveReason: String) {
-        host.finishHistory(historyReason, ended = true)
-        host.clearLiveSession(liveReason)
-        host.setCastEnded()
-        host.vodDanmakuClose()
-        host.updateEnded()
     }
 
     private companion object {

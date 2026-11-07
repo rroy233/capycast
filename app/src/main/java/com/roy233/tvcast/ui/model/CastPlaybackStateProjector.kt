@@ -3,7 +3,7 @@ package com.roy233.tvcast.ui.model
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.feature.playback.presentation.LiveQualityMapper
 import com.roy233.tvcast.feature.playback.presentation.TrackOptionMapper
-import com.roy233.tvcast.platform.player.VlcTrackFormat
+import com.roy233.tvcast.platform.player.MediaTrackFormat
 
 /** 投屏会话命令到电视界面状态的唯一映射，保留未涉及的界面字段。 */
 object CastPlaybackStateProjector {
@@ -68,7 +68,9 @@ object CastPlaybackStateProjector {
                 else request.qualityLabel,
             qualityDetail =
                 if (request.isLive) {
-                    request.video.codecs.ifBlank { VlcTrackFormat.codecName(request.video.codecId) }
+                    request.video.codecs.ifBlank {
+                        MediaTrackFormat.codecName(request.video.codecId)
+                    }
                 } else request.video.codecs,
             qualitySource = if (request.isLive) "直播" else if (request.video.id >= 80) "已提升" else "",
             audioLabel = if (request.isLive) "自动音轨" else request.audioLabel,

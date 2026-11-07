@@ -73,8 +73,8 @@ Android host + app composition → platform adapters ← data adapters
 | UI rendering and UI-only transitions | `ui/tv/*`, `TvStateHolder`, `TvActionDispatcher` | SDK/API calls from composables |
 | UI command boundary | `ui/model/TvActions.kt` and `ui/tv/TvActionHost` | direct coordinator or data access from UI |
 | Stable playback input and events | `core/playback/PlaybackContracts.kt`, `PlaybackEngine.kt` | Bili DTOs in platform/player or UI |
-| Player selection and SDK lifecycle | `core/playback/PlaybackBackendSelector.kt`, `app/PlaybackEngineHost.kt`, `platform/player/*` | backend branches scattered through coordinators |
-| Player event side effects | `feature/playback/application/PlaybackEventRouter.kt` | event-specific business effects inside VLC/Media3 adapters |
+| Media3 SDK lifecycle and output Surface | `app/PlaybackEngineHost.kt`, `platform/player/*` | player setup branches scattered through coordinators |
+| Player event side effects | `feature/playback/application/PlaybackEventRouter.kt` | event-specific business effects inside Media3 adapters |
 | Generic controls | `PlaybackCoordinator` | live/VOD route recovery or DLNA protocol handling |
 | VOD route recovery and representation fallback | `VodPlaybackCoordinator`, `feature/playback/routing/*` | UI, Activity, or player adapter |
 | Live route recovery, quality and watchdog | `LivePlaybackCoordinator`, `feature/playback/routing/*` | UI, Activity, or player adapter |
@@ -90,7 +90,7 @@ Android host + app composition → platform adapters ← data adapters
 ### Mandatory routing rules
 
 1. Add a user action by extending `TvActions`/`TvActionHost`, then route it to the owning feature coordinator. A composable only renders state and emits actions.
-2. Add or modify a playback backend by extending the stable playback contracts and `PlaybackEngineHost`; convert SDK callbacks to `PlaybackEvent`, then let `PlaybackEventRouter` apply business side effects.
+2. Add or modify Media3 playback behaviour through the stable playback contracts and `PlaybackEngineHost`; convert SDK callbacks to `PlaybackEvent`, then let `PlaybackEventRouter` apply business side effects.
 3. Add VOD/live recovery, quality, CDN or retry policy in the corresponding playback coordinator or routing/domain policy. Preserve existing candidate order, timing, error classification and cleanup semantics unless the task explicitly changes them.
 4. Add a Bilibili API, local preference, socket or HTTP implementation in `data`; expose a feature-owned model or port instead of letting Bili DTOs escape to UI or platform code.
 5. Add DLNA SOAP/SSDP/HTTP compatibility in `platform/dlna`; add the resulting application behaviour through `DlnaCastListenerAdapter` and cast/playback coordinators.

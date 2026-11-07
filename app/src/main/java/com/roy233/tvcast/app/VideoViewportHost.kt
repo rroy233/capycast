@@ -47,7 +47,7 @@ class VideoViewportHost(
 
     fun hasCompensation(): Boolean = completed
 
-    /** Media3 自管 Surface 时需要显式保持原视频纵横比；VLC 仍由其 vout 处理。 */
+    /** Media3 自管 Surface 时显式保持原视频纵横比。 */
     fun setMedia3ContentAspect(width: Int, height: Int) {
         if (playbackCompositor.isInitialized()) {
             playbackCompositor.value.setContentAspect(

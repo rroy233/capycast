@@ -9,28 +9,7 @@ import org.junit.Test
 /** 验证结束事件的历史、会话与弹幕清理时序。 */
 class PlaybackEventRouterTest {
     @Test
-    fun `VLC ended clears the session before scheduling UI cleanup`() {
-        val calls = mutableListOf<String>()
-        val router = PlaybackEventRouter(host(PlaybackBackend.VLC, calls))
-
-        router.dispatch(PlaybackBackend.VLC, PlaybackEvent.Ended)
-
-        assertEquals(
-            listOf(
-                "finishHistory",
-                "clearLiveSession",
-                "setCastEnded",
-                "runOnMain",
-                "vodDanmakuClose",
-                "liveDanmakuClose",
-                "updateEnded",
-            ),
-            calls,
-        )
-    }
-
-    @Test
-    fun `Media3 ended closes VOD danmaku and UI in the event callback`() {
+    fun `Media3 ended clears the session before scheduling UI cleanup`() {
         val calls = mutableListOf<String>()
         val router = PlaybackEventRouter(host(PlaybackBackend.MEDIA3, calls))
 
@@ -41,7 +20,9 @@ class PlaybackEventRouterTest {
                 "finishHistory",
                 "clearLiveSession",
                 "setCastEnded",
+                "runOnMain",
                 "vodDanmakuClose",
+                "liveDanmakuClose",
                 "updateEnded",
             ),
             calls,

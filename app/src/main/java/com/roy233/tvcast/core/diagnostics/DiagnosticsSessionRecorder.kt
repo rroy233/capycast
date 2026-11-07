@@ -32,7 +32,6 @@ internal class DiagnosticsSessionRecorder {
     private var sessionStartedElapsed = 0L
     private var sessionState = "none"
     private var sessionOpen = false
-    private var vlcLogStartOffset = 0L
     private var sessionCounter = 0
 
     /** 一次 [begin] 的结果，供调用方写入持久化标记。 */
@@ -87,7 +86,6 @@ internal class DiagnosticsSessionRecorder {
             statsFirst = null
             statsLast = null
             failure = null
-            vlcLogStartOffset = 0L
             attributes["session.source"] = safeSource
             line = formatEventLocked("Session", "begin id=$id source=$safeSource")
         }
@@ -231,9 +229,6 @@ internal class DiagnosticsSessionRecorder {
                 runtimeInfo.forEach { (key, value) -> put(key, value) }
             }
         }
-
-    /** 读取本次运行保留的 libVLC 原生日志起始偏移。 */
-    fun vlcLogStartOffset(): Long = synchronized(lock) { vlcLogStartOffset }
 
     /** 在会话内存中追加一条带相对时间的事件。 */
     private fun formatEventLocked(name: String, detail: String): String {

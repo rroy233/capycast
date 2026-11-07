@@ -20,15 +20,12 @@ import java.util.Locale
 import kotlin.concurrent.thread
 import org.json.JSONArray
 import org.json.JSONObject
-import org.videolan.libvlc.LibVLC
-import org.videolan.libvlc.util.HWDecoderUtil
-import org.videolan.libvlc.util.VLCUtil
 
 /**
  * 采集并缓存电视设备的播放能力。
  *
- * 品牌设备无法播放时，最常见的原因是缺少对应编码的硬件解码器、显示能力不足或 libVLC 运行时选择策略不合适。这里一次性采集设备、显示、音频、libVLC 和 MediaCodec
- * 解码器信息，供 `/playback` 诊断报告和日志使用。
+ * 品牌设备无法播放时，最常见的原因是缺少对应编码的硬件解码器、显示能力或音频输出能力不足。这里一次性采集设备、显示、音频和 MediaCodec 解码器信息，供 `/playback`
+ * 诊断报告和日志使用。
  */
 object DeviceDiagnostics {
 
@@ -132,7 +129,6 @@ object DeviceDiagnostics {
             put("device", safeSection("device") { deviceInfo(context) })
             put("display", safeSection("display") { displayInfo(context) })
             put("audio", safeSection("audio") { audioInfo(context) })
-            put("vlc", safeSection("vlc") { vlcInfo(context) })
             put("codecs", safeSection("codecs") { codecInfo() })
         }
 
@@ -282,48 +278,6 @@ object DeviceDiagnostics {
                     ),
                 )
             }
-        }
-
-    /** 读取 libVLC 运行时版本和硬件解码策略。 */
-    private fun vlcInfo(context: Context): JSONObject =
-        JSONObject().apply {
-            runCatching { LibVLC.loadLibraries() }
-            put("version", runCatching { LibVLC.version() }.getOrNull() ?: "(unavailable)")
-            put("changeset", runCatching { LibVLC.changeset() }.getOrNull() ?: "(unavailable)")
-            put("compiler", runCatching { LibVLC.compiler() }.getOrNull() ?: "(unavailable)")
-            put(
-                "hardwareDecoder",
-                runCatching { HWDecoderUtil.getDecoderFromDevice()?.name }.getOrNull()
-                    ?: "(unavailable)",
-            )
-            put(
-                "audioOutput",
-                runCatching { HWDecoderUtil.getAudioOutputFromDevice()?.name }.getOrNull()
-                    ?: "(unavailable)",
-            )
-            put(
-                "compatibleCpu",
-                runCatching { VLCUtil.hasCompatibleCPU(context) }.getOrNull()?.toString()
-                    ?: "(unavailable)",
-            )
-            val vlcError = runCatching { VLCUtil.getErrorMsg() }.getOrNull().orEmpty()
-            if (vlcError.isNotBlank()) put("error", vlcError)
-            runCatching { VLCUtil.getMachineSpecs() }
-                .getOrNull()
-                ?.let { specs ->
-                    put(
-                        "machine",
-                        JSONObject().apply {
-                            put("processors", specs.processors)
-                            put("frequency", specs.frequency)
-                            put("is64bits", specs.is64bits)
-                            put("hasNeon", specs.hasNeon)
-                            put("hasArmV7", specs.hasArmV7)
-                            put("hasX86", specs.hasX86)
-                            put("bogoMips", specs.bogoMIPS)
-                        },
-                    )
-                }
         }
 
     /** 枚举系统提供的硬件和软件解码器。 */
@@ -490,7 +444,6 @@ object DeviceDiagnostics {
             val size = first?.optString("sizeRange").orEmpty()
             parts += "$mime=$count/$hardware" + if (size.isBlank()) "" else "($size)"
         }
-        val decoder = data.optJSONObject("vlc")?.optString("hardwareDecoder").orEmpty()
         val display = data.optJSONObject("display")
         val resolution =
             if (display != null) {
@@ -511,7 +464,6 @@ object DeviceDiagnostics {
                 .append(display?.optInt("appHeightPx"))
             append(" reportedMode=").append(display?.optString("mode"))
             append(" reportedModes=").append(display?.optJSONArray("supportedModes"))
-            append(" vlcDecoder=").append(decoder)
             append(" codecs=").append(parts.joinToString(" "))
         }
     }

@@ -11,17 +11,22 @@ import android.view.TextureView
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -36,6 +41,7 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
+import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
 import com.roy233.tvcast.core.playback.MediaTrack
 import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackFailure
@@ -43,9 +49,10 @@ import com.roy233.tvcast.core.playback.PlaybackRequest
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.util.Collections
+import java.util.concurrent.atomic.AtomicLong
 
 /**
- * DASH、HDR、Dolby Vision 与 Widevine 内容使用的 Media3 播放器。
+ * 使用 Media3 播放 DASH、HLS、FLV/MP4、HDR、Dolby Vision 与 Widevine 内容。
  *
  * Media3 将 DASH/fMP4 的编码、色彩与 DRM 信息交给 Android MediaCodec/CDM， 并通过 SurfaceView 输出视频。
  */
@@ -62,7 +69,42 @@ class Media3PlayerEngine(
     private val hardwareVideoCodecSelector = HardwareVideoCodecSelector()
 
     @Volatile private var activeDrm = false
+    @Volatile private var activeRequest: PlaybackRequest? = null
     private var videoOutput: Surface? = null
+    private val transferredBytes = AtomicLong()
+
+    /** 为直播看门狗记录 Media3 HTTP 传输字节；FLV 长连接同样会持续触发该回调。 */
+    private val transferListener =
+        object : TransferListener {
+            override fun onTransferInitializing(
+                source: DataSource,
+                dataSpec: DataSpec,
+                isNetwork: Boolean,
+            ) = Unit
+
+            override fun onTransferStart(
+                source: DataSource,
+                dataSpec: DataSpec,
+                isNetwork: Boolean,
+            ) = Unit
+
+            override fun onBytesTransferred(
+                source: DataSource,
+                dataSpec: DataSpec,
+                isNetwork: Boolean,
+                bytesTransferred: Int,
+            ) {
+                if (isNetwork && bytesTransferred > 0) {
+                    transferredBytes.addAndGet(bytesTransferred.toLong())
+                }
+            }
+
+            override fun onTransferEnd(
+                source: DataSource,
+                dataSpec: DataSpec,
+                isNetwork: Boolean,
+            ) = Unit
+        }
 
     private val drmHttpFactory =
         DefaultHttpDataSource.Factory()
@@ -78,6 +120,7 @@ class Media3PlayerEngine(
     private val mediaHttpFactory =
         DefaultHttpDataSource.Factory()
             .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
+            .setTransferListener(transferListener)
             .setDefaultRequestProperties(
                 mapOf("Referer" to WEB_REFERER, "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT),
             )
@@ -170,18 +213,12 @@ class Media3PlayerEngine(
     /**
      * 打开当前轨道。
      *
-     * DASH 点播的音视频表示层由 [MergingMediaSource] 合并为同一条播放时间线，避免 VLC input-slave 在独立 fMP4 流定位后出现音视频时钟分离。
+     * DASH 点播的音视频表示层由 [MergingMediaSource] 合并为同一条播放时间线，保持独立 fMP4 流的定位和缓冲时钟一致。
      */
     fun open(info: PlaybackRequest, seekToMs: Long) {
-        require(
-            !info.isLive && info.progressiveUrl == null ||
-                info.video.isHdr ||
-                info.video.isDolbyVision ||
-                info.isDrm,
-        ) {
-            "Media3 engine requires DASH, HDR, Dolby Vision, or DRM media"
-        }
         activeDrm = info.isDrm
+        activeRequest = info
+        transferredBytes.set(0L)
         var dashItem: MediaItem? = null
         val mediaSource =
             if (info.isDrm) {
@@ -204,6 +241,8 @@ class Media3PlayerEngine(
                         .setDrmConfiguration(drm)
                         .build()
                 null
+            } else if (info.progressiveUrl != null) {
+                progressiveOrHlsSource(info)
             } else {
                 // DASH 表示层是独立的 fMP4 文件。Media3 统一维护两个 Progressive source
                 // 的 seek 和缓冲时钟；HDR 与杜比视界也由同一条路径保留色彩元数据。
@@ -217,6 +256,8 @@ class Media3PlayerEngine(
                 info.isDrm -> "widevine-open"
                 info.video.isDolbyVision -> "dolby-vision-open"
                 info.video.isHdr -> "hdr-open"
+                info.isLive -> "live-open"
+                info.progressiveUrl != null -> "progressive-open"
                 else -> "dash-open"
             },
         )
@@ -230,11 +271,12 @@ class Media3PlayerEngine(
         PlaybackDiagnostics.attribute("stream.codecString", info.video.codecs)
         PlaybackDiagnostics.attribute("stream.mimeType", info.video.mimeType)
         PlaybackDiagnostics.attribute("stream.audioCodecString", info.audio?.codecs.orEmpty())
+        PlaybackDiagnostics.attribute("stream.delivery", deliveryType(info))
         PlaybackDiagnostics.attribute("decoder.video.policy", "hardware-only")
         PlaybackDiagnostics.attribute("renderer.video.surface", outputType())
         LogHub.i(
             TAG,
-            "open media3 qn=${info.video.id} drm=${info.isDrm} hdr=${info.video.isHdr} dv=${info.video.isDolbyVision} mime=${info.video.mimeType} " +
+            "open media3 delivery=${deliveryType(info)} live=${info.isLive} qn=${info.video.id} drm=${info.isDrm} hdr=${info.video.isHdr} dv=${info.video.isDolbyVision} mime=${info.video.mimeType} " +
                 "codecs=${info.video.codecs} ${info.video.width}x${info.video.height} " +
                 "video=${LogRedaction.url(info.video.url)} audio=${LogRedaction.url(info.audio?.url)} " +
                 "audioMime=${info.audio?.mimeType.orEmpty()} audioCodecs=${info.audio?.codecs.orEmpty()} " +
@@ -256,14 +298,16 @@ class Media3PlayerEngine(
                         info.isDrm -> "WIDEVINE_OPEN_FAILED"
                         info.video.isDolbyVision -> "DOLBY_VISION_OPEN_FAILED"
                         info.video.isHdr -> "HDR_OPEN_FAILED"
-                        else -> "DASH_OPEN_FAILED"
+                        info.isLive -> "LIVE_OPEN_FAILED"
+                        else -> "MEDIA3_OPEN_FAILED"
                     },
                 message =
                     when {
                         info.isDrm -> "受保护媒体播放器打开失败"
                         info.video.isDolbyVision -> "杜比视界播放器打开失败"
                         info.video.isHdr -> "HDR 播放器打开失败"
-                        else -> "DASH 播放器打开失败"
+                        info.isLive -> "直播播放器打开失败"
+                        else -> "播放器打开失败"
                     },
                 detail = reason,
             )
@@ -329,6 +373,25 @@ class Media3PlayerEngine(
 
     fun volume(): Int = (player.volume * 100).toInt().coerceIn(0, 100)
 
+    fun videoSize(): Pair<Int, Int>? =
+        player.videoSize.let { size ->
+            if (size.width > 0 && size.height > 0) size.width to size.height else null
+        }
+
+    fun stateSnapshot(): String =
+        "state=${stateName(player.playbackState)} playing=${player.isPlaying} loading=${player.isLoading} " +
+            "position=${player.currentPosition}ms buffered=${player.bufferedPosition}ms " +
+            "duration=${player.duration} bytes=${transferredBytes.get()}"
+
+    fun liveTelemetry(): LivePlaybackTelemetry =
+        LivePlaybackTelemetry(
+            positionMs = positionMs(),
+            readBytes = transferredBytes.get(),
+            demuxReadBytes = -1L,
+            decodedVideoFrames = -1L,
+            displayedPictures = -1L,
+        )
+
     /** 对照视频帧、Surface 缓冲区、视图和 Android 报告的屏幕尺寸。 */
     private fun logOutputGeometry(stage: String) {
         val surface = playerView.videoSurfaceView
@@ -387,23 +450,44 @@ class Media3PlayerEngine(
                 else -> "unknown"
             }
 
+    private fun progressiveOrHlsSource(info: PlaybackRequest): MediaSource {
+        val url = info.progressiveUrl ?: info.video.url
+        val hls = isHls(info, url)
+        val item =
+            MediaItem.Builder()
+                .setUri(url)
+                .setMimeType(
+                    if (hls) MimeTypes.APPLICATION_M3U8 else info.video.mimeType.ifBlank { null },
+                )
+                .build()
+        return if (hls) {
+            HlsMediaSource.Factory(mediaHttpFactory).createMediaSource(item)
+        } else {
+            ProgressiveMediaSource.Factory(mediaHttpFactory).createMediaSource(item)
+        }
+    }
+
     private fun progressiveSource(track: MediaTrack): MediaSource {
-        val headers =
-            mapOf(
-                "Referer" to "https://www.bilibili.com/",
-                "User-Agent" to DEFAULT_PLAYBACK_USER_AGENT,
-            )
-        val factory =
-            DefaultHttpDataSource.Factory()
-                .setUserAgent(DEFAULT_PLAYBACK_USER_AGENT)
-                .setDefaultRequestProperties(headers)
         val item =
             MediaItem.Builder()
                 .setUri(track.url)
                 .setMimeType(track.mimeType.ifBlank { null })
                 .build()
-        return ProgressiveMediaSource.Factory(factory).createMediaSource(item)
+        return ProgressiveMediaSource.Factory(mediaHttpFactory).createMediaSource(item)
     }
+
+    private fun isHls(info: PlaybackRequest, url: String): Boolean =
+        info.liveFormat.equals("hls", ignoreCase = true) ||
+            Uri.parse(url).path.orEmpty().substringBefore('?').endsWith(".m3u8", ignoreCase = true)
+
+    private fun deliveryType(info: PlaybackRequest): String =
+        when {
+            info.isDrm -> "dash-widevine"
+            info.progressiveUrl == null -> "dash-fmp4"
+            isHls(info, info.progressiveUrl.orEmpty()) -> "hls"
+            info.isLive -> "live-progressive"
+            else -> "progressive"
+        }
 
     /** 由服务器返回的 SegmentBase 范围构建仅含当前表示层的内存 DASH 清单。 */
     private object PgcDashManifest {
@@ -648,8 +732,8 @@ class Media3PlayerEngine(
                     "reason=${safeErrorReason(error)}"
             LogHub.e(TAG, message)
             PlaybackDiagnostics.fail(
-                code = if (activeDrm) "WIDEVINE_MEDIA_LOAD_FAILED" else "DOLBY_VISION_LOAD_FAILED",
-                message = if (activeDrm) "受保护媒体加载失败" else "杜比视界媒体加载失败",
+                code = failureCode("MEDIA_LOAD_FAILED"),
+                message = failureMessage("加载失败"),
                 detail = message,
             )
         }
@@ -718,11 +802,8 @@ class Media3PlayerEngine(
                 } else {
                     LogHub.e(TAG, message)
                     PlaybackDiagnostics.fail(
-                        code =
-                            if (activeDrm) "WIDEVINE_SECURE_DECODER_UNAVAILABLE"
-                            else "DOLBY_VISION_HARDWARE_DECODER_UNAVAILABLE",
-                        message =
-                            if (activeDrm) "设备没有可用的 Widevine 安全硬件解码器" else "设备没有可用的杜比视界硬件视频解码器",
+                        code = failureCode("HARDWARE_DECODER_UNAVAILABLE"),
+                        message = failureMessage("硬件视频解码器不可用"),
                         detail = message,
                     )
                 }
@@ -743,21 +824,40 @@ class Media3PlayerEngine(
             "Media3 $stage failed code=${error.errorCodeName}(${error.errorCode}) " +
                 "timestamp=${error.timestampMs} reason=${safeErrorReason(error)}"
         LogHub.e(TAG, message)
-        val isLicenseFailure =
-            error.errorCodeName.contains("DRM", ignoreCase = true) ||
-                error.errorCodeName.contains("LICENSE", ignoreCase = true)
         val code =
-            when {
-                !activeDrm -> "DOLBY_VISION_${error.errorCodeName}"
-                isLicenseFailure -> "WIDEVINE_LICENSE_FAILED"
-                else -> "WIDEVINE_${error.errorCodeName}"
+            if (
+                activeDrm &&
+                    (error.errorCodeName.contains("DRM", ignoreCase = true) ||
+                        error.errorCodeName.contains("LICENSE", ignoreCase = true))
+            ) {
+                "WIDEVINE_LICENSE_FAILED"
+            } else {
+                failureCode(error.errorCodeName)
             }
         PlaybackDiagnostics.fail(
             code = code,
-            message = if (activeDrm) "Widevine 受保护播放失败" else "杜比视界播放失败",
+            message = failureMessage("播放失败"),
             detail = message,
         )
     }
+
+    private fun failureCode(suffix: String): String =
+        when {
+            activeDrm -> "WIDEVINE_$suffix"
+            activeRequest?.video?.isDolbyVision == true -> "DOLBY_VISION_$suffix"
+            activeRequest?.video?.isHdr == true -> "HDR_$suffix"
+            activeRequest?.isLive == true -> "LIVE_$suffix"
+            else -> "MEDIA3_$suffix"
+        }
+
+    private fun failureMessage(action: String): String =
+        when {
+            activeDrm -> "Widevine 受保护内容$action"
+            activeRequest?.video?.isDolbyVision == true -> "杜比视界内容$action"
+            activeRequest?.video?.isHdr == true -> "HDR 内容$action"
+            activeRequest?.isLive == true -> "直播$action"
+            else -> "媒体$action"
+        }
 
     private fun formatSummary(format: Format): String {
         val color =
