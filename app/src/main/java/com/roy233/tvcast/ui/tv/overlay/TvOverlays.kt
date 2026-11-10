@@ -1,7 +1,11 @@
 package com.roy233.tvcast.ui.tv.overlay
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,12 +28,16 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,10 +51,127 @@ import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.FocusDiagnostics
 import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
+import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import kotlin.math.roundToInt
+
+internal const val PRIVACY_NOTICE_TEXT =
+    "本应用集成了 Google Firebase 服务用于质量维护：崩溃报告（Firebase Crashlytics，崩溃堆栈、设备型号与系统版本等）与匿名化的用量统计（Firebase Analytics，如每日活跃、页面浏览与基础功能使用事件、应用版本与语言区域），不含您的账号 ID、手机号等个人身份信息。上述数据会发送至 Google 的 Firebase 服务器；您可以在应用设置的“崩溃跟踪”与“使用情况统计”开关中分别关闭对应收集。"
+
+private const val WELCOME_MESSAGE =
+    "CapyCast是一款为 Android TV 打造的极简 Bilibili 投屏播放器，使用过程遇到任何问题请向我们反馈。如果喜欢，麻烦点点Star (≧▽≦)"
+
+/** 首次安装时显示的欢迎提示。 */
+@Composable
+internal fun PrivacyNoticeDialog(state: TvUiState, actions: TvActions) {
+    val focus = rememberFocusTarget()
+    RequestFocusWhenReady(activation = state.privacyNoticeVisible, target = focus)
+    Box(
+        modifier =
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).tvModalFocusRegion(),
+        contentAlignment = Alignment.Center,
+    ) {
+        GlassSurface(
+            modifier = Modifier.widthIn(max = 820.dp).fillMaxWidth(0.84f),
+            material = GlassMaterial.Panel,
+            size = GlassSize.Large,
+        ) {
+            Column(
+                Modifier.padding(horizontal = 30.dp, vertical = 26.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                BasicText("欢迎", style = TvType.section.copy(fontSize = 30.sp))
+                BasicText(
+                    text = WELCOME_MESSAGE,
+                    style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 19.sp),
+                )
+                PrivacyAgreementLink(onClick = actions.onOpenPrivacySettings)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    WhiteButton(
+                        text = "开始使用",
+                        onClick = actions.onAcknowledgePrivacyNotice,
+                        focusTarget = focus,
+                        compact = true,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 欢迎弹窗中的协议入口；焦点状态需要在电视端清晰可辨。 */
+@Composable
+private fun PrivacyAgreementLink(onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val shape = RoundedCornerShape(8.dp)
+    BasicText(
+        text = "《隐私协议》",
+        style =
+            TvType.caption.copy(
+                color = if (focused) Color.White else TvColors.accent,
+                fontSize = 16.sp,
+            ),
+        modifier =
+            Modifier.clip(shape)
+                .background(
+                    if (focused) TvColors.accent.copy(alpha = 0.36f) else Color.Transparent,
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (focused) TvColors.accent else Color.Transparent,
+                    shape = shape,
+                )
+                .focusProperties { canFocus = true }
+                .focusTrace("link:隐私协议")
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    role = Role.Button,
+                    onClick = onClick,
+                )
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+    )
+}
+
+/** 由欢迎弹窗或设置页进入的隐私协议模态层。 */
+@Composable
+internal fun PrivacyAgreementDialog(state: TvUiState, actions: TvActions) {
+    val focus = rememberFocusTarget()
+    RequestFocusWhenReady(activation = state.privacyAgreementVisible, target = focus)
+    Box(
+        modifier =
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).tvModalFocusRegion(),
+        contentAlignment = Alignment.Center,
+    ) {
+        GlassSurface(
+            modifier = Modifier.widthIn(max = 820.dp).fillMaxWidth(0.84f),
+            material = GlassMaterial.Panel,
+            size = GlassSize.Large,
+        ) {
+            Column(
+                Modifier.padding(horizontal = 30.dp, vertical = 26.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                BasicText("隐私协议", style = TvType.section.copy(fontSize = 30.sp))
+                BasicText(
+                    text = PRIVACY_NOTICE_TEXT,
+                    style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 19.sp),
+                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    WhiteButton(
+                        text = "返回",
+                        onClick = actions.onClosePrivacyAgreement,
+                        focusTarget = focus,
+                        compact = true,
+                    )
+                }
+            }
+        }
+    }
+}
 
 /**
  * 显示投屏帮助模态层。

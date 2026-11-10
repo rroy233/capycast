@@ -67,6 +67,9 @@ class TvActions(
     val onFocusRecent: (Long, Long) -> Unit = { _, _ -> },
     val onNavigateHome: () -> Unit = {},
     val onNavigateSettings: () -> Unit = {},
+    val onOpenPrivacySettings: () -> Unit = {},
+    val onClosePrivacyAgreement: () -> Unit = {},
+    val onAcknowledgePrivacyNotice: () -> Unit = {},
     val onStartCalibration: () -> Unit = {},
     val onCancelCalibration: () -> Unit = {},
     val onAdjustCalibration: (CalibrationDirection) -> Unit = {},
@@ -114,5 +117,7 @@ class TvActions(
     val onDismissContinue: () -> Unit = {},
     val onSetRememberPlaybackContent: (Boolean) -> Unit = {},
     val onSetSyncPlaybackHistory: (Boolean) -> Unit = {},
+    val onSetCrashTracking: (Boolean) -> Unit = {},
+    val onSetUsageStatistics: (Boolean) -> Unit = {},
     val onHomeBack: () -> Unit = {},
 )

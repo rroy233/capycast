@@ -161,6 +161,28 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     )
                 }
             }
+
+            item {
+                SettingsSection("隐私与数据") {
+                    SettingsToggleRow(
+                        title = "崩溃跟踪",
+                        checked = state.crashTrackingEnabled,
+                        onCheckedChange = actions.onSetCrashTracking,
+                    )
+                    SettingsRowDivider()
+                    SettingsToggleRow(
+                        title = "使用情况统计",
+                        checked = state.usageStatisticsEnabled,
+                        onCheckedChange = actions.onSetUsageStatistics,
+                    )
+                    SettingsRowDivider()
+                    FocusableRow(
+                        title = "隐私协议",
+                        onClick = actions.onOpenPrivacySettings,
+                        rowHeight = if (compact) 56.dp else 64.dp,
+                    )
+                }
+            }
         }
     }
 }

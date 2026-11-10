@@ -5,6 +5,8 @@ plugins {
     id("com.diffplug.spotless") version "8.11.0"
     id("org.jetbrains.kotlin.android") version "2.2.21" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.2.21" apply false
+    id("com.google.gms.google-services") version "4.5.0" apply false
+    id("com.google.firebase.crashlytics") version "3.0.8" apply false
 }
 
 // 统一格式化应用源码与项目自己的构建脚本；format 与 format-check 使用完全相同的范围。

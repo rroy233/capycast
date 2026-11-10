@@ -18,6 +18,8 @@ import com.roy233.tvcast.ui.tv.player.handlePlaybackSeekKey
 
 /** 当前页面按一次返回键应执行的层级动作。 */
 internal enum class TvBackAction {
+    SWALLOW,
+    CLOSE_PRIVACY_AGREEMENT,
     CANCEL_CALIBRATION,
     CANCEL_STOP_CAST_CONFIRM,
     DISMISS_ERROR,
@@ -80,6 +82,8 @@ object TvKeyHandler {
     /** 解析当前应当接收按键的表面：浮层栈顶 > 导航菜单 > 目的页。 */
     internal fun resolveKeySurface(state: TvUiState): KeySurface {
         when (state.topOverlay) {
+            UiOverlay.PRIVACY_AGREEMENT -> return KeySurface.HELP
+            UiOverlay.PRIVACY_NOTICE -> return KeySurface.HELP
             UiOverlay.CALIBRATION -> return KeySurface.CALIBRATION
             UiOverlay.STOP_CAST_CONFIRM -> return KeySurface.STOP_CAST_CONFIRM
             UiOverlay.ERROR -> return KeySurface.ERROR
@@ -118,6 +122,8 @@ object TvKeyHandler {
     /** 按照由上到下的界面层级，解析返回键的唯一目标。 */
     internal fun resolveBackAction(state: TvUiState): TvBackAction =
         when {
+            state.privacyAgreementVisible -> TvBackAction.CLOSE_PRIVACY_AGREEMENT
+            state.privacyNoticeVisible -> TvBackAction.SWALLOW
             state.calibration.phase != CalibrationPhase.HIDDEN -> TvBackAction.CANCEL_CALIBRATION
             state.stopCastConfirm -> TvBackAction.CANCEL_STOP_CAST_CONFIRM
             state.error != null -> TvBackAction.DISMISS_ERROR
@@ -137,6 +143,8 @@ object TvKeyHandler {
     /** 将解析后的返回层级分发到宿主操作。 */
     internal fun dispatchBack(state: TvUiState, actions: TvActions) {
         when (resolveBackAction(state)) {
+            TvBackAction.SWALLOW -> Unit
+            TvBackAction.CLOSE_PRIVACY_AGREEMENT -> actions.onClosePrivacyAgreement()
             TvBackAction.CANCEL_CALIBRATION -> actions.onCancelCalibration()
             TvBackAction.CANCEL_STOP_CAST_CONFIRM -> actions.onCancelStopCast()
             TvBackAction.DISMISS_ERROR -> actions.onDismissError()

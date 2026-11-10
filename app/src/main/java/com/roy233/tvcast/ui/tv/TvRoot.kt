@@ -60,6 +60,8 @@ import com.roy233.tvcast.ui.tv.account.LoginDialog
 import com.roy233.tvcast.ui.tv.home.HomeScreen
 import com.roy233.tvcast.ui.tv.navigation.Sidebar
 import com.roy233.tvcast.ui.tv.overlay.HelpSheet
+import com.roy233.tvcast.ui.tv.overlay.PrivacyAgreementDialog
+import com.roy233.tvcast.ui.tv.overlay.PrivacyNoticeDialog
 import com.roy233.tvcast.ui.tv.overlay.QuickPanel
 import com.roy233.tvcast.ui.tv.player.LoadingScreen
 import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
@@ -313,6 +315,9 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
             }
 
             if (state.helpVisible) HelpSheet(state, actions)
+
+            if (state.privacyAgreementVisible) PrivacyAgreementDialog(state, actions)
+            if (state.privacyNoticeVisible) PrivacyNoticeDialog(state, actions)
 
             if (state.panel != null) QuickPanel(state, actions)
             if (state.error != null) {

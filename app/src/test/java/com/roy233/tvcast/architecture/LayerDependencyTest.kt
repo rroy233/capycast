@@ -100,6 +100,26 @@ class LayerDependencyTest {
     }
 
     @Test
+    fun `Firebase SDK imports stay inside the platform telemetry adapter`() {
+        val offenders =
+            root
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { file ->
+                    file.readLines().any { line ->
+                        line.startsWith("import ") && line.contains("com.google.firebase")
+                    }
+                }
+                .filterNot { it.relativeTo(root).path.startsWith("platform/telemetry/") }
+                .map { it.relativeTo(root).path }
+                .toList()
+        assertTrue(
+            "Firebase imports must stay in platform telemetry: $offenders",
+            offenders.isEmpty(),
+        )
+    }
+
+    @Test
     fun `playback domain does not depend on Android UI or player SDKs`() {
         assertNoImports(
             packageDir = "feature/playback/domain",
