@@ -1,6 +1,7 @@
 package com.roy233.tvcast.feature.danmaku.application
 
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuItem
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuRenderer
 import com.roy233.tvcast.feature.danmaku.domain.DanmakuRepository
@@ -50,6 +51,8 @@ class DanmakuController(
     private var bufferingPaused = false
     private var seekInProgress = false
     private var seekTargetMs = 0L
+    /** 播放器采样计数，用于低频输出渲染自检。 */
+    private var tickCount = 0L
 
     /** 设置视频内容区高度，用于字号换算。 */
     fun setContentHeight(heightPx: Int) {
@@ -89,10 +92,15 @@ class DanmakuController(
         // 播放器尚未确认 Playing 前，弹幕必须停在起播位置；否则网络起播
         // 期间弹幕会先于视频推进，随后看起来像从半屏提前消失。
         clock.pause(lastPlayerPositionMs)
+        // DFM 的时间轴自 prepare 起按墙钟推进；换会话不重置就会领先媒体时钟数秒，
+        // 之后提交的弹幕会按错误时间轴判过期，表现为整段不显示。
+        renderer.seekTo(lastPlayerPositionMs)
         LogHub.i(
             TAG,
-            "session open ${sessionLabel(session)} position=${lastPlayerPositionMs}ms",
+            "session open ${sessionLabel(session)} position=${lastPlayerPositionMs}ms " +
+                describe(),
         )
+        publishDiagnostics()
         // DFM 必须在视频实际内容区完成布局后才可 prepare。这里不能抢先初始化，
         // 否则它会按全屏宽度计算滚动距离，随后内容区收窄会造成弹幕中途出屏。
         loadView(session, lastPlayerPositionMs)
@@ -128,6 +136,8 @@ class DanmakuController(
         seekInProgress = false
         clock.rebase(position)
         renderer.resume()
+        LogHub.d(TAG, "playing position=$position " + describe())
+        publishDiagnostics()
     }
 
     /** 播放器暂停。 */
@@ -141,6 +151,8 @@ class DanmakuController(
         lastPlayerPositionMs = positionMs.coerceAtLeast(0L)
         clock.pause(lastPlayerPositionMs)
         renderer.pause()
+        LogHub.d(TAG, "paused position=$lastPlayerPositionMs " + describe())
+        publishDiagnostics()
     }
 
     /**
@@ -154,11 +166,14 @@ class DanmakuController(
         if (buffering) {
             if (this.buffering) return
             this.buffering = true
+            LogHub.d(TAG, "buffering start position=$lastPlayerPositionMs " + describe())
             bufferingJob = scope.launch {
                 delay(BUFFERING_PAUSE_DEBOUNCE_MS)
                 if (activeSession == null || userPaused || !this@DanmakuController.buffering)
                     return@launch
                 bufferingPaused = true
+                LogHub.d(TAG, "buffering freeze position=$lastPlayerPositionMs " + describe())
+                publishDiagnostics()
                 // 缓冲期间应以播放器最后确认的位置冻结，不能使用预测时钟位置。
                 clock.pause(lastPlayerPositionMs)
                 renderer.pause()
@@ -166,6 +181,11 @@ class DanmakuController(
         } else {
             this.buffering = false
             cancelBuffering()
+            LogHub.d(
+                TAG,
+                "buffering end position=$lastPlayerPositionMs resumed=$bufferingPaused " +
+                    describe(),
+            )
             if (bufferingPaused) {
                 bufferingPaused = false
                 clock.rebase(lastPlayerPositionMs)
@@ -178,6 +198,11 @@ class DanmakuController(
     fun onPlayerTime(positionMs: Long) {
         if (activeSession == null) return
         lastPlayerPositionMs = positionMs.coerceAtLeast(0L)
+        tickCount++
+        if (tickCount % SAMPLE_EVERY_TICKS == 0L) {
+            LogHub.d(TAG, "sample tick=${lastPlayerPositionMs}ms " + describe())
+            publishDiagnostics()
+        }
         if (seekInProgress) {
             if (!isSeekPosition(lastPlayerPositionMs)) return
             seekInProgress = false
@@ -208,6 +233,7 @@ class DanmakuController(
     fun onPlaybackRateChanged(rate: Float) {
         if (activeSession == null) return
         clock.setRate(rate)
+        LogHub.d(TAG, "rate=$rate " + describe())
     }
 
     /** 用户 seek 到指定位置。 */
@@ -224,6 +250,8 @@ class DanmakuController(
         clock.pause(target)
         renderer.pause()
         renderer.seekTo(target)
+        LogHub.d(TAG, "seek target=$target " + describe())
+        publishDiagnostics()
         loadSegment(indexOf(target), replace = true, force = true)
     }
 
@@ -346,7 +374,8 @@ class DanmakuController(
             LogHub.d(
                 TAG,
                 "segment accepted ${sessionLabel(session)} index=$index " +
-                    "items=${segment.items.size} replace=$replace",
+                    "items=${segment.items.size} replace=$replace " +
+                    describe(),
             )
             if (replace) {
                 renderer.replaceSegment(segment.items, settings.aiShield)
@@ -369,6 +398,25 @@ class DanmakuController(
         bufferingJob = null
     }
 
+    /** 弹幕会话自检：时钟、播放器位置、分段状态与渲染器快照。 */
+    private fun describe(): String =
+        "generation=${activeSession?.generation ?: 0} clock=${clock.nowMs()} " +
+            "frozen=${clock.isFrozen} player=${lastPlayerPositionMs}ms " +
+            "index=$currentIndex loading=$loadingIndex items=${currentItems.size} " +
+            "bufferingPaused=$bufferingPaused userPaused=$userPaused " +
+            "seekInProgress=$seekInProgress renderer=[${renderer.renderDiagnostics()}]"
+
+    /** 把弹幕自检写入 /playback，用于判断是数据、时钟还是渲染停滞。 */
+    private fun publishDiagnostics() {
+        PlaybackDiagnostics.attribute("danmaku.clock", clock.nowMs().toString())
+        PlaybackDiagnostics.attribute("danmaku.player", lastPlayerPositionMs.toString())
+        PlaybackDiagnostics.attribute("danmaku.frozen", clock.isFrozen.toString())
+        PlaybackDiagnostics.attribute("danmaku.index", currentIndex.toString())
+        PlaybackDiagnostics.attribute("danmaku.items", currentItems.size.toString())
+        PlaybackDiagnostics.attribute("danmaku.bufferingPaused", bufferingPaused.toString())
+        PlaybackDiagnostics.attribute("danmaku.renderer", renderer.renderDiagnostics())
+    }
+
     /** 诊断日志前缀：会话代次与内容身份。 */
     private fun sessionLabel(session: VodDanmakuSession): String =
         "generation=${session.generation} aid=${session.content.aid} cid=${session.content.cid}"
@@ -379,5 +427,7 @@ class DanmakuController(
         const val CLOSED_STATE = 1
         const val BUFFERING_PAUSE_DEBOUNCE_MS = 750L
         const val SEEK_CONFIRM_TOLERANCE_MS = 750L
+        /** 每 4 次播放器采样（约 2 秒）输出一次渲染自检。 */
+        const val SAMPLE_EVERY_TICKS = 4L
     }
 }

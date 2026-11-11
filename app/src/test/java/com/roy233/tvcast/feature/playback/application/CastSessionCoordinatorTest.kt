@@ -38,7 +38,6 @@ class CastSessionCoordinatorTest {
         assertEquals(
             listOf(
                 "cancel-resolve",
-                "end-live:new-cast",
                 "clear-current",
                 "stop-playback:new-cast",
                 "new-history",
@@ -144,10 +143,6 @@ class CastSessionCoordinatorTest {
             events += "new-history"
         }
 
-        override fun endLiveSession(reason: String) {
-            events += "end-live:$reason"
-        }
-
         override fun stopPlaybackForCast(reason: String) {
             events += "stop-playback:$reason"
         }
@@ -177,20 +172,6 @@ class CastSessionCoordinatorTest {
         override fun describeContent(request: PlaybackRequest): String = ""
 
         override fun startPlaybackBackend(request: PlaybackRequest, seekToMs: Long): Boolean = false
-
-        override fun onDanmakuClose() = Unit
-
-        override fun onLiveDanmakuClose() = Unit
-
-        override fun onLivePlaybackOpened(roomId: Long) = Unit
-
-        override fun onVodDanmakuOpen(aid: Long, cid: Long, durationMs: Long, seekToMs: Long) = Unit
-
-        override fun onDanmakuPlaybackRate(rate: Float) = Unit
-
-        override fun onDanmakuSettings() = Unit
-
-        override fun onDanmakuLayout() = Unit
 
         override fun applyPlaybackRate(request: PlaybackRequest) = Unit
 

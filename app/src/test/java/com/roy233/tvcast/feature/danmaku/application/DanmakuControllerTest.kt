@@ -37,6 +37,13 @@ class DanmakuControllerTest {
     }
 
     @Test
+    fun `open aligns the renderer timeline to the start position`() = runBlocking {
+        controller.open(VIDEO_A, DURATION_MS, 12_000L)
+
+        assertEquals(listOf(12_000L), renderer.seeks)
+    }
+
+    @Test
     fun `segment arriving after another video opened is discarded`() = runBlocking {
         controller.open(VIDEO_A, DURATION_MS, 0L)
         controller.open(VIDEO_B, DURATION_MS, 0L)
@@ -74,6 +81,9 @@ class DanmakuControllerTest {
     private class RecordingRenderer : DanmakuRenderer {
         private val segments = mutableListOf<List<String>>()
 
+        /** 渲染器收到的时间轴定位请求。 */
+        val seeks = mutableListOf<Long>()
+
         /** 按提交顺序返回每个分段的文本内容。 */
         fun rendered(): List<String> = segments.map { items -> items.single() }
 
@@ -95,7 +105,9 @@ class DanmakuControllerTest {
 
         override fun resume() = Unit
 
-        override fun seekTo(mediaMs: Long) = Unit
+        override fun seekTo(mediaMs: Long) {
+            seeks += mediaMs
+        }
 
         override fun clear() = Unit
 

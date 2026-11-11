@@ -96,6 +96,14 @@ data class PlaybackSnapshot(
     val backend: PlaybackBackend,
 )
 
+/**
+ * 播放器事件的业务归属。
+ *
+ * [sessionId] 在内容身份变化时递增；[attemptId] 在同一内容重新打开线路、画质或解码表示时递增。 平台回调只有携带当前 token
+ * 才能推进业务会话，避免旧媒体的迟到事件污染新内容。
+ */
+data class PlaybackSessionToken(val sessionId: Long, val attemptId: Long)
+
 /** 播放器平台事件的稳定表示。 */
 sealed interface PlaybackEvent {
     data object Playing : PlaybackEvent

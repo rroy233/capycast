@@ -57,8 +57,6 @@ interface CastSessionHost : RecentCastHost {
 
     fun setPendingPause(paused: Boolean)
 
-    fun endLiveSession(reason: String)
-
     fun stopPlaybackForCast(reason: String)
 
     fun markCastFailed(code: String)
@@ -80,20 +78,6 @@ interface CastSessionHost : RecentCastHost {
     fun describeContent(request: PlaybackRequest): String
 
     fun startPlaybackBackend(request: PlaybackRequest, seekToMs: Long): Boolean
-
-    fun onDanmakuClose()
-
-    fun onLiveDanmakuClose()
-
-    fun onLivePlaybackOpened(roomId: Long)
-
-    fun onVodDanmakuOpen(aid: Long, cid: Long, durationMs: Long, seekToMs: Long)
-
-    fun onDanmakuPlaybackRate(rate: Float)
-
-    fun onDanmakuSettings()
-
-    fun onDanmakuLayout()
 
     fun applyPlaybackRate(request: PlaybackRequest)
 
@@ -136,7 +120,6 @@ class CastSessionCoordinator(
     fun handleCast(uri: String, title: String, longDescription: String) {
         // 新的 SetAVTransportURI 具有更高优先级，旧播放器事件不应污染新会话。
         playback.cancelResolve()
-        playback.endLiveSession("new-cast")
         playback.setCurrentForCast(null)
         playback.stopPlaybackForCast("new-cast")
         playback.newHistorySession()
@@ -208,7 +191,6 @@ class CastSessionCoordinator(
     /** 根据 nva 内容解析播放地址并开始播放。 */
     fun resolve(nva: CastContent, title: String) {
         playback.cancelResolve()
-        playback.endLiveSession("resolve-new-cast")
         playback.setResolving(true)
         playback.setLastNva(nva)
         playback.setLastTitle(title)
@@ -407,20 +389,6 @@ class CastSessionCoordinator(
             return false
         }
 
-        if (request.isLive) {
-            playback.onLivePlaybackOpened(request.cid)
-        } else {
-            playback.onLiveDanmakuClose()
-            playback.onVodDanmakuOpen(
-                request.aid,
-                request.cid,
-                request.durationSec * 1000,
-                seekToMs,
-            )
-            playback.onDanmakuPlaybackRate(playback.playbackSpeed())
-            playback.onDanmakuSettings()
-            playback.onDanmakuLayout()
-        }
         playback.applyPlaybackRate(request)
 
         playback.applyPendingPause()

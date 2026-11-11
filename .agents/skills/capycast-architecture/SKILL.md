@@ -13,6 +13,7 @@ Use this skill before changing application behaviour, adding a feature, or fixin
 | Player state, seek, speed, audio/quality, VOD/Live recovery, HDR, DASH or DRM | [playback.md](references/playback.md) |
 | Phone cast, DLNA, NVA, recent casts, renderer protocol or session closing | [cast-and-dlna.md](references/cast-and-dlna.md) |
 | Danmaku, timing, socket, DFM rendering or overlay layout | [danmaku.md](references/danmaku.md) |
+| VOD subtitles, AI track distinction, cue sync or subtitle overlay | [subtitle.md](references/subtitle.md) |
 | Login, update, history reporting, preferences, data API, storage or diagnostics | [services-and-data.md](references/services-and-data.md) |
 | Compose screen, focus, HUD, panel, navigation or UI state | [ui-and-host.md](references/ui-and-host.md) |
 

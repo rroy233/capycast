@@ -1,22 +1,96 @@
 package com.roy233.tvcast.feature.playback.application
 
+import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
+import com.roy233.tvcast.core.playback.MediaTrack
+import com.roy233.tvcast.core.playback.PlaybackEvent
+import com.roy233.tvcast.core.playback.PlaybackRequest
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** 会话终止原因对应的历史、播放器和界面顺序。 */
 class PlaybackSessionLifecycleTest {
     @Test
+    fun `every terminal path closes active components exactly once`() {
+        val terminalPaths =
+            listOf<Pair<String, (PlaybackSessionLifecycle) -> Unit>>(
+                "dismiss-error" to { it.dismissError() },
+                "user-stop" to { it.stopCasting() },
+                "dlna-stop" to { it.stopFromDlna() },
+                "non-retained-error" to
+                    {
+                        it.showError("播放失败", "网络异常", "PLAYBACK_FAILED", true, false)
+                    },
+                "activity-destroy" to { it.destroy() },
+            )
+
+        terminalPaths.forEach { (name, terminate) ->
+            val calls = mutableListOf<String>()
+            val lifecycle = PlaybackSessionLifecycle(host(calls))
+            val context = requireNotNull(lifecycle.beginOpen(request(), 0L))
+            lifecycle.completeOpen(context, true)
+            calls.clear()
+
+            terminate(lifecycle)
+
+            assertEquals(name, 1, calls.count { it == "closePlaybackComponents" })
+        }
+    }
+
+    @Test
+    fun `same content retry advances attempt without rebuilding components`() {
+        val calls = mutableListOf<String>()
+        val lifecycle = PlaybackSessionLifecycle(host(calls))
+        val first = requireNotNull(lifecycle.beginOpen(request(cid = 10L, url = "first"), 0L))
+        lifecycle.completeOpen(first, true)
+        val second = requireNotNull(lifecycle.beginOpen(request(cid = 10L, url = "backup"), 5_000L))
+        lifecycle.completeOpen(second, true)
+
+        assertEquals(first.token.sessionId, second.token.sessionId)
+        assertEquals(first.token.attemptId + 1L, second.token.attemptId)
+        assertEquals(listOf("openPlaybackComponents"), calls.filter { "PlaybackComponents" in it })
+        assertFalse(lifecycle.acceptEvent(first.token, PlaybackEvent.Ended))
+        assertTrue(lifecycle.acceptEvent(second.token, PlaybackEvent.Playing))
+    }
+
+    @Test
+    fun `new content closes old components before opening new components`() {
+        val calls = mutableListOf<String>()
+        val lifecycle = PlaybackSessionLifecycle(host(calls))
+        val first = requireNotNull(lifecycle.beginOpen(request(cid = 10L), 0L))
+        lifecycle.completeOpen(first, true)
+        val second = requireNotNull(lifecycle.beginOpen(request(cid = 20L), 0L))
+        lifecycle.completeOpen(second, true)
+
+        assertEquals(first.token.sessionId + 1L, second.token.sessionId)
+        assertEquals(
+            listOf(
+                "openPlaybackComponents",
+                "closePlaybackComponents",
+                "openPlaybackComponents",
+            ),
+            calls.filter { "PlaybackComponents" in it },
+        )
+        assertFalse(lifecycle.acceptEvent(first.token, PlaybackEvent.Playing))
+    }
+
+    @Test
     fun `user stop cancels resolve and clears media before UI reset`() {
         val calls = mutableListOf<String>()
-        PlaybackSessionLifecycle(host(calls)).stopCasting()
+        val lifecycle = PlaybackSessionLifecycle(host(calls))
+        val context = requireNotNull(lifecycle.beginOpen(request(), 0L))
+        lifecycle.completeOpen(context, true)
+        calls.clear()
+        lifecycle.stopCasting()
 
         assertEquals(
             listOf(
                 "cancelResolveJob",
                 "finishSessionHistory",
-                "clearLiveSession",
                 "resetPendingPlayback",
+                "closePlaybackComponents",
                 "stopPlaybackForSession",
                 "clearSessionIdentity",
                 "markCastFailed",
@@ -35,7 +109,7 @@ class PlaybackSessionLifecycleTest {
         assertEquals(
             listOf(
                 "finishSessionHistory",
-                "clearLiveSession",
+                "closePlaybackComponents",
                 "stopPlaybackForSession",
                 "clearSessionIdentity",
                 "runOnMain",
@@ -54,7 +128,7 @@ class PlaybackSessionLifecycleTest {
             listOf(
                 "clearPendingPause",
                 "finishSessionHistory",
-                "clearLiveSession",
+                "closePlaybackComponents",
                 "stopPlaybackForSession",
                 "clearSessionIdentity",
                 "runOnMain",
@@ -65,12 +139,16 @@ class PlaybackSessionLifecycleTest {
     }
 
     @Test
-    fun `Activity destruction closes history before clearing live session`() {
+    fun `Activity destruction closes history before playback components`() {
         val calls = mutableListOf<String>()
-        PlaybackSessionLifecycle(host(calls)).destroy()
+        val lifecycle = PlaybackSessionLifecycle(host(calls))
+        val context = requireNotNull(lifecycle.beginOpen(request(), 0L))
+        lifecycle.completeOpen(context, true)
+        calls.clear()
+        lifecycle.destroy()
 
         assertEquals(
-            listOf("closeHistory", "clearLiveSession"),
+            listOf("closeHistory", "closePlaybackComponents"),
             calls.filter { it in DESTROY_CALLS },
         )
     }
@@ -101,8 +179,8 @@ class PlaybackSessionLifecycleTest {
             setOf(
                 "cancelResolveJob",
                 "finishSessionHistory",
-                "clearLiveSession",
                 "resetPendingPlayback",
+                "closePlaybackComponents",
                 "stopPlaybackForSession",
                 "clearSessionIdentity",
                 "markCastFailed",
@@ -111,7 +189,7 @@ class PlaybackSessionLifecycleTest {
         val ERROR_CALLS =
             setOf(
                 "finishSessionHistory",
-                "clearLiveSession",
+                "closePlaybackComponents",
                 "stopPlaybackForSession",
                 "clearSessionIdentity",
                 "runOnMain",
@@ -121,12 +199,55 @@ class PlaybackSessionLifecycleTest {
             setOf(
                 "clearPendingPause",
                 "finishSessionHistory",
-                "clearLiveSession",
+                "closePlaybackComponents",
                 "stopPlaybackForSession",
                 "clearSessionIdentity",
                 "runOnMain",
                 "showDlnaStoppedState",
             )
-        val DESTROY_CALLS = setOf("closeHistory", "clearLiveSession")
+        val DESTROY_CALLS = setOf("closeHistory", "closePlaybackComponents")
+    }
+
+    private fun request(
+        cid: Long = 10L,
+        url: String = "https://example.test/video",
+    ): PlaybackRequest {
+        val video =
+            MediaTrack(
+                id = 80,
+                codecId = 7,
+                width = 1920,
+                height = 1080,
+                bandwidth = 1_000_000L,
+                url = url,
+                backupUrls = emptyList(),
+            )
+        return PlaybackRequest(
+            title = "video-$cid",
+            bvid = "BV$cid",
+            aid = 1L,
+            cid = cid,
+            durationSec = 60L,
+            video = video,
+            audio = null,
+            progressiveUrl = null,
+            videos = listOf(video),
+            audios = emptyList(),
+            cover = "",
+            isLive = false,
+            liveFormat = "",
+            liveCdn = "",
+            liveBackupCount = 0,
+            isPgc = false,
+            epId = 0L,
+            seasonId = 0L,
+            hasPaid = false,
+            isDrm = false,
+            isPreview = false,
+            actualQuality = 80,
+            acceptedQualities = listOf(80),
+            qualityLabels = mapOf(80 to "1080P"),
+            userAgent = DEFAULT_PLAYBACK_USER_AGENT,
+        )
     }
 }

@@ -6,9 +6,16 @@ import com.roy233.tvcast.core.diagnostics.PlaybackEndReason
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.PlaybackSessionToken
 
 /** 播放器事件所需的会话、历史、弹幕与展示命令。 */
 interface PlaybackEventHost {
+    /** 只有当前内容会话的当前打开尝试可以推进业务状态。 */
+    fun acceptPlaybackEvent(token: PlaybackSessionToken, event: PlaybackEvent): Boolean
+
+    /** 统一结束播放器关联的路由任务、弹幕和字幕组件。 */
+    fun finishPlaybackSession(reason: String)
+
     fun activeBackend(): PlaybackBackend
 
     fun currentPlaybackRequest(): PlaybackRequest?
@@ -36,8 +43,6 @@ interface PlaybackEventHost {
     fun onLiveBuffering(buffering: Boolean): Boolean
 
     fun handleLiveFailure(reason: String)
-
-    fun clearLiveSession(reason: String)
 
     fun finishHistory(reason: String, ended: Boolean = false)
 
@@ -67,10 +72,6 @@ interface PlaybackEventHost {
 
     fun vodDanmakuBuffering(buffering: Boolean)
 
-    fun liveDanmakuClose()
-
-    fun vodDanmakuClose()
-
     fun reportPlaybackError(
         title: String,
         message: String,
@@ -88,8 +89,13 @@ interface PlaybackEventHost {
 
 /** 将唯一 Media3 后端的事件映射到既有 VOD、直播、历史与弹幕会话。 */
 class PlaybackEventRouter(private val host: PlaybackEventHost) {
-    fun dispatch(backend: PlaybackBackend, event: PlaybackEvent) {
-        if (backend != PlaybackBackend.MEDIA3 || host.activeBackend() != backend) return
+    fun dispatch(token: PlaybackSessionToken, backend: PlaybackBackend, event: PlaybackEvent) {
+        if (
+            backend != PlaybackBackend.MEDIA3 ||
+                host.activeBackend() != backend ||
+                !host.acceptPlaybackEvent(token, event)
+        )
+            return
         when (event) {
             PlaybackEvent.Playing -> playing()
             PlaybackEvent.Paused -> paused()
@@ -106,6 +112,10 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
 
     private fun playing() {
         val seek = host.consumePendingSeekMs()
+        LogHub.d(
+            TAG,
+            "event playing seek=$seek live=${host.currentPlaybackRequest()?.isLive == true}",
+        )
         host.runOnMain {
             val live = host.currentPlaybackRequest()?.isLive == true
             host.updatePlaying(seek)
@@ -120,6 +130,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
     }
 
     private fun paused() {
+        LogHub.d(TAG, "event paused live=${host.currentPlaybackRequest()?.isLive == true}")
         host.runOnMain {
             val live = host.currentPlaybackRequest()?.isLive == true
             host.updatePaused()
@@ -132,13 +143,16 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
     private fun stopped() {
         host.runOnMain {
             host.updateStopped()
-            host.vodDanmakuClose()
-            host.liveDanmakuClose()
+            host.finishPlaybackSession("media3-stopped")
             host.finishUsage(PlaybackEndReason.USER_STOPPED)
         }
     }
 
     private fun buffering(buffering: Boolean) {
+        LogHub.d(
+            TAG,
+            "event buffering=$buffering live=${host.currentPlaybackRequest()?.isLive == true}",
+        )
         host.runOnMain {
             val live = host.currentPlaybackRequest()?.isLive == true
             host.updateBuffering(buffering)
@@ -155,12 +169,10 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
 
     private fun end() {
         host.finishHistory("media3-ended", ended = true)
-        host.clearLiveSession("media3-end-reached")
         host.setCastEnded()
         host.finishUsage(PlaybackEndReason.COMPLETED)
         host.runOnMain {
-            host.vodDanmakuClose()
-            host.liveDanmakuClose()
+            host.finishPlaybackSession("media3-ended")
             host.updateEnded()
         }
     }
@@ -212,7 +224,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
             canRetry = info != null,
             keepVideo = true,
         )
-        host.vodDanmakuClose()
+        host.runOnMain { host.finishPlaybackSession("media3-error") }
         host.finishUsage(PlaybackEndReason.ERROR)
     }
 
