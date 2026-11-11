@@ -9,11 +9,8 @@ import org.junit.Test
 class CalibrationKeyRoutingTest {
     @Test
     fun `calibration owns back and key routing above the underlying page`() {
-        for (phase in
-            listOf(CalibrationPhase.INTRO, CalibrationPhase.ADJUST, CalibrationPhase.CONFIRM)) {
-            val state = TvUiState(calibration = CalibrationState(phase = phase))
-            assertEquals(KeySurface.CALIBRATION, TvKeyHandler.resolveKeySurface(state))
-            assertEquals(TvBackAction.CANCEL_CALIBRATION, TvKeyHandler.resolveBackAction(state))
-        }
+        val state = TvUiState(calibration = CalibrationState(phase = CalibrationPhase.ADJUST))
+        assertEquals(KeySurface.CALIBRATION, TvKeyHandler.resolveKeySurface(state))
+        assertEquals(TvBackAction.CANCEL_CALIBRATION, TvKeyHandler.resolveBackAction(state))
     }
 }

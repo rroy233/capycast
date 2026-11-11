@@ -14,7 +14,6 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
  * @property onOpenSidebar 打开左侧导航菜单。
  * @property onCloseSidebar 收起左侧导航菜单并把焦点交还给当前页面。
  * @property onMenuFocusMove 在菜单条目间移动焦点，正数向下、负数向上。
- * @property onReclaimPageFocus 腾出的焦点交还给当前页面。
  * @property onFocusHomeControl 首页主操作区获得焦点，清除最近投屏卡片的视觉焦点状态。
  * @property onFocusRecent 首页最近投屏卡片获得焦点，用于切换大标题与背景。
  * @property onNavigateHome 导航到首页。
@@ -62,11 +61,13 @@ class TvActions(
     val onOpenSidebar: () -> Unit = {},
     val onCloseSidebar: () -> Unit = {},
     val onMenuFocusMove: (Int) -> Unit = {},
-    val onReclaimPageFocus: () -> Unit = {},
     val onFocusHomeControl: () -> Unit = {},
     val onFocusRecent: (Long, Long) -> Unit = { _, _ -> },
     val onNavigateHome: () -> Unit = {},
     val onNavigateSettings: () -> Unit = {},
+    val onOpenPrivacySettings: () -> Unit = {},
+    val onClosePrivacyAgreement: () -> Unit = {},
+    val onAcknowledgePrivacyNotice: () -> Unit = {},
     val onStartCalibration: () -> Unit = {},
     val onCancelCalibration: () -> Unit = {},
     val onAdjustCalibration: (CalibrationDirection) -> Unit = {},
@@ -114,5 +115,7 @@ class TvActions(
     val onDismissContinue: () -> Unit = {},
     val onSetRememberPlaybackContent: (Boolean) -> Unit = {},
     val onSetSyncPlaybackHistory: (Boolean) -> Unit = {},
+    val onSetCrashTracking: (Boolean) -> Unit = {},
+    val onSetUsageStatistics: (Boolean) -> Unit = {},
     val onHomeBack: () -> Unit = {},
 )

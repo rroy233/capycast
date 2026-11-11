@@ -4,6 +4,8 @@ import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
+import com.roy233.tvcast.data.local.UiPreferences
+import com.roy233.tvcast.platform.telemetry.FirebaseQualityTelemetry
 import okhttp3.OkHttpClient
 
 /**
@@ -13,6 +15,16 @@ import okhttp3.OkHttpClient
  * 域名的图片请求补上 Referer 与浏览器 UA，避免每个 [coil.compose.AsyncImage] 调用点各自处理。
  */
 class CapyCastApplication : Application(), ImageLoaderFactory {
+
+    override fun onCreate() {
+        super.onCreate()
+        val preferences = UiPreferences(this)
+        FirebaseQualityTelemetry(this)
+            .applyCollection(
+                crashTrackingEnabled = preferences.crashTrackingEnabled,
+                usageStatisticsEnabled = preferences.usageStatisticsEnabled,
+            )
+    }
 
     override fun newImageLoader(): ImageLoader {
         val client =

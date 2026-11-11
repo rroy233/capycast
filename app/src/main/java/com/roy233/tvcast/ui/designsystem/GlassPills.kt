@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -37,7 +36,6 @@ import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
 import com.roy233.tvcast.ui.tv.rememberFocusTarget
-import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 
 /** 绘制带有可选状态圆点的胶囊形标签。 */
 @Composable
@@ -86,6 +84,7 @@ fun GlassAlert(
     message: String,
     primaryLabel: String,
     onPrimary: () -> Unit,
+    onDismissRequest: () -> Unit,
     secondaryLabel: String? = null,
     onSecondary: (() -> Unit)? = null,
     code: String? = null,
@@ -95,13 +94,9 @@ fun GlassAlert(
     val primaryFocus = rememberFocusTarget()
     RequestFocusWhenReady(activation = title, target = primaryFocus)
 
-    Box(
-        modifier =
-            modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f)).tvModalFocusRegion(),
-        contentAlignment = Alignment.Center,
-    ) {
+    TvModalDialog(onDismissRequest = onDismissRequest) {
         GlassSurface(
-            modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth(0.82f),
+            modifier = modifier.tvModalCard(),
             material = GlassMaterial.Panel,
             size = GlassSize.Large,
         ) {

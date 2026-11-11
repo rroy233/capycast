@@ -84,15 +84,12 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
         SettingsPage.ROOT -> Unit
     }
 
-    // 官方建议在页面出现时通过副作用请求一次初始焦点；页面内的恢复交给
-    // LazyColumn.focusRestorer，不观察条目挂载、回收或滚动状态。
     LaunchedEffect(Unit) {
         when (state.focusRequest.anchor) {
             UiFocusAnchor.SETTINGS_UPDATE_ENTRY -> updateEntryFocus.requestFocus()
             else -> platformFocus.requestFocus()
         }
     }
-
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < 500.dp
         val horizontalPadding = if (compact) 32.dp else 80.dp
@@ -107,8 +104,8 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     .fillMaxHeight()
                     .align(Alignment.Center)
                     .padding(vertical = verticalPadding)
-                    // LazyColumn 本身是焦点组；官方 focusRestorer 负责记住最后的子项。
-                    .focusRestorer(platformFocus),
+                    .focusRestorer(platformFocus)
+                    .testTag("settings-list"),
             verticalArrangement = Arrangement.spacedBy(sectionGap),
         ) {
             item {
@@ -157,6 +154,28 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     FocusableRow(
                         title = "画面校准",
                         onClick = actions.onStartCalibration,
+                        rowHeight = if (compact) 56.dp else 64.dp,
+                    )
+                }
+            }
+
+            item {
+                SettingsSection("隐私与数据") {
+                    SettingsToggleRow(
+                        title = "崩溃跟踪",
+                        checked = state.crashTrackingEnabled,
+                        onCheckedChange = actions.onSetCrashTracking,
+                    )
+                    SettingsRowDivider()
+                    SettingsToggleRow(
+                        title = "使用情况统计",
+                        checked = state.usageStatisticsEnabled,
+                        onCheckedChange = actions.onSetUsageStatistics,
+                    )
+                    SettingsRowDivider()
+                    FocusableRow(
+                        title = "用户协议与隐私政策",
+                        onClick = actions.onOpenPrivacySettings,
                         rowHeight = if (compact) 56.dp else 64.dp,
                     )
                 }

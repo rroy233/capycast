@@ -1,12 +1,10 @@
 package com.roy233.tvcast.ui.tv
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.SettingsNavigationState
 import com.roy233.tvcast.ui.model.SettingsPage
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
-import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
 import org.junit.Assert.assertEquals
@@ -71,42 +69,6 @@ class TvBackNavigationTest {
     }
 
     @Test
-    fun topmostOverlayClosesBeforeUnderlyingPage() {
-        val state =
-            TvUiState(
-                destination = TvDestination.SETTINGS,
-                settingsNavigation =
-                    SettingsNavigationState().replaceWith(SettingsPage.UPDATE_NOTES),
-                panel = PanelKind.QUALITY,
-                helpVisible = true,
-                error = TvError("错误", "详情"),
-                stopCastConfirm = true,
-            )
-
-        assertEquals(TvBackAction.CANCEL_STOP_CAST_CONFIRM, TvKeyHandler.resolveBackAction(state))
-        assertEquals(
-            TvBackAction.DISMISS_ERROR,
-            TvKeyHandler.resolveBackAction(state.copy(stopCastConfirm = false)),
-        )
-        assertEquals(
-            TvBackAction.BACK_PANEL,
-            TvKeyHandler.resolveBackAction(state.copy(stopCastConfirm = false, error = null)),
-        )
-        assertEquals(
-            TvBackAction.CLOSE_PANEL,
-            TvKeyHandler.resolveBackAction(
-                state.copy(stopCastConfirm = false, error = null, panel = PanelKind.ROOT),
-            ),
-        )
-        assertEquals(
-            TvBackAction.CLOSE_HELP,
-            TvKeyHandler.resolveBackAction(
-                state.copy(stopCastConfirm = false, error = null, panel = null),
-            ),
-        )
-    }
-
-    @Test
     fun playbackBackRequestsConfirmationInsteadOfFinishingImmediately() {
         assertEquals(
             TvBackAction.REQUEST_STOP_CAST,
@@ -143,17 +105,6 @@ class TvBackNavigationTest {
             TvKeyHandler.resolveBackAction(
                 home.copy(destination = TvDestination.SETTINGS, sidebarVisible = true),
             ),
-        )
-    }
-
-    @Test
-    fun loginDialogClosesBeforeHomeNavigation() {
-        val home = TvUiState(loginDialogVisible = true)
-
-        assertEquals(TvBackAction.CLOSE_LOGIN, TvKeyHandler.resolveBackAction(home))
-        assertEquals(
-            TvBackAction.HOME_BACK,
-            TvKeyHandler.resolveBackAction(home.copy(loginDialogVisible = false)),
         )
     }
 

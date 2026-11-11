@@ -20,6 +20,7 @@ class PlaybackEventRouterTest {
                 "finishHistory",
                 "clearLiveSession",
                 "setCastEnded",
+                "finishUsage",
                 "runOnMain",
                 "vodDanmakuClose",
                 "liveDanmakuClose",

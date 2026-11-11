@@ -5,16 +5,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.swipeUp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.roy233.tvcast.feature.update.AppUpdateInfo
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
@@ -26,6 +32,7 @@ import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.tv.TvActionDispatcher
 import com.roy233.tvcast.ui.tv.TvActionHost
+import com.roy233.tvcast.ui.tv.TvRoot
 import com.roy233.tvcast.ui.tv.TvStateHolder
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
@@ -284,6 +291,50 @@ class UpdateSettingsFocusTest {
         composeRule.onNodeWithTag("platform-bilibili").assertIsFocused().assertIsSelected()
         composeRule.onNodeWithText("扫码登录").performClick()
         composeRule.runOnIdle { assertTrue(loginRequested) }
+    }
+
+    @Test
+    fun closingPrivacyAgreementRestoresTheOpeningSettingsRow() {
+        lateinit var stateHolder: TvStateHolder
+        lateinit var dispatcher: TvActionDispatcher
+        composeRule.setContent {
+            stateHolder = remember {
+                TvStateHolder(TvUiState(destination = TvDestination.SETTINGS))
+            }
+            dispatcher = remember { TvActionDispatcher(stateHolder, noOpHost()) }
+            TvRoot(state = stateHolder.state, actions = dispatcher.actions)
+        }
+
+        repeat(3) {
+            composeRule.onNodeWithTag("settings-list").performTouchInput { swipeUp() }
+        }
+        composeRule.onNodeWithText("用户协议与隐私政策").apply {
+            performSemanticsAction(SemanticsActions.RequestFocus)
+            assertIsFocused()
+            performClick()
+        }
+        composeRule.runOnIdle { dispatcher.actions.onClosePrivacyAgreement() }
+        composeRule.waitForIdle()
+
+        composeRule.onNode(isDialog()).assertDoesNotExist()
+        composeRule.onNodeWithText("用户协议与隐私政策").assertIsFocused()
+    }
+
+    @Test
+    fun welcomeDialogConsumesSystemBackAndKeepsItsFocus() {
+        composeRule.setContent {
+            TvRoot(
+                state = TvUiState(privacyNoticeVisible = true),
+                actions = TvActions(),
+            )
+        }
+
+        composeRule.onNodeWithText("开始使用").assertIsFocused()
+        InstrumentationRegistry.getInstrumentation()
+            .sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        composeRule.waitForIdle()
+        composeRule.onNode(isDialog()).assertExists()
+        composeRule.onNodeWithText("开始使用").assertIsFocused()
     }
 
     @Test

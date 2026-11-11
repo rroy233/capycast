@@ -1,6 +1,7 @@
 package com.roy233.tvcast.ui.tv
 
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.core.diagnostics.Screen
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationDirection
@@ -98,6 +99,14 @@ interface TvActionHost {
 
     fun setSyncPlaybackHistory(enabled: Boolean)
 
+    fun setCrashTracking(enabled: Boolean)
+
+    fun setUsageStatistics(enabled: Boolean)
+
+    fun acknowledgePrivacyNotice()
+
+    fun reportScreen(screen: Screen)
+
     fun handleHomeBack()
 }
 
@@ -160,11 +169,6 @@ class TvActionDispatcher(
                     stateHolder.set(state.copy(focusedRecent = focusedRecent))
                 }
             },
-            onReclaimPageFocus = {
-                val state = stateHolder.read().focusCurrentPage()
-                stateHolder.set(state)
-                FocusDiagnostics.pageFocusReclaimed(state)
-            },
             onFocusHomeControl = {
                 val state = stateHolder.read()
                 if (state.destination == TvDestination.HOME && state.focusedRecent != null) {
@@ -183,6 +187,7 @@ class TvActionDispatcher(
                         )
                         .focusCurrentPage(),
                 )
+                host.reportScreen(Screen.HOME)
             },
             onNavigateSettings = {
                 val state = stateHolder.read()
@@ -196,7 +201,29 @@ class TvActionDispatcher(
                         )
                         .focusCurrentPage(),
                 )
+                host.reportScreen(Screen.SETTINGS)
             },
+            onOpenPrivacySettings = {
+                val state = stateHolder.read()
+                stateHolder.set(
+                    state.copy(
+                        privacyNoticeVisible = false,
+                        privacyAgreementVisible = true,
+                        returnToWelcomeAfterPrivacyAgreement = state.privacyNoticeVisible,
+                    ),
+                )
+            },
+            onClosePrivacyAgreement = {
+                val state = stateHolder.read()
+                stateHolder.set(
+                    state.copy(
+                        privacyAgreementVisible = false,
+                        privacyNoticeVisible = state.returnToWelcomeAfterPrivacyAgreement,
+                        returnToWelcomeAfterPrivacyAgreement = false,
+                    ),
+                )
+            },
+            onAcknowledgePrivacyNotice = { host.acknowledgePrivacyNotice() },
             onStartCalibration = { host.startCalibration() },
             onCancelCalibration = { host.cancelCalibration() },
             onAdjustCalibration = { host.adjustCalibration(it) },
@@ -219,6 +246,7 @@ class TvActionDispatcher(
                         focusRequest = state.focusRequest.moveTo(navigation.topAnchor),
                     ),
                 )
+                host.reportScreen(Screen.UPDATE)
             },
             onNavigateSettingsBack = {
                 val state = stateHolder.read()
@@ -247,6 +275,7 @@ class TvActionDispatcher(
                             focusRequest = state.focusRequest.moveTo(navigation.topAnchor),
                         ),
                     )
+                    host.reportScreen(Screen.UPDATE_NOTES)
                 }
             },
             onSelectUpdateChannel = { channel -> host.selectUpdateChannel(channel) },
@@ -328,6 +357,8 @@ class TvActionDispatcher(
             },
             onSetRememberPlaybackContent = { enabled -> host.setRememberPlaybackContent(enabled) },
             onSetSyncPlaybackHistory = { enabled -> host.setSyncPlaybackHistory(enabled) },
+            onSetCrashTracking = { enabled -> host.setCrashTracking(enabled) },
+            onSetUsageStatistics = { enabled -> host.setUsageStatistics(enabled) },
             onHomeBack = { host.handleHomeBack() },
         )
 

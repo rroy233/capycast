@@ -21,6 +21,8 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 android {
@@ -100,6 +102,10 @@ android {
 }
 
 dependencies {
+    // BoM 33.x is the newest Firebase line compatible with this app's minSdk 21.
+    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-crashlytics")
     // DanmakuFlameMaster 0.9.25 AAR (Apache-2.0), the engine used by 云视听.
     implementation(files("libs/DanmakuFlameMaster-0.9.25.aar"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
