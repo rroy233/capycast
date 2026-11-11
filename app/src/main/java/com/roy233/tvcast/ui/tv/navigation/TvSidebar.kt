@@ -97,7 +97,6 @@ internal fun Sidebar(
     // 菜单只声明条目与锚点，焦点时机由统一的恢复入口负责。
     RestoreFocus(
         request = state.focusRequest,
-        enabled = state.sidebarVisible && state.topOverlay == null,
         bindings =
             MENU_ENTRIES.map { entry ->
                 FocusBinding(anchor = entry.anchor, target = entryRequesters.getValue(entry))

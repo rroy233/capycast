@@ -83,7 +83,6 @@ internal data class FocusBinding(
  * 界面只声明自己能接住的锚点，因此不可见或正在退场的界面永远不会被请求， 也就不可能出现“焦点被离场组件抢走”。
  *
  * @param request 栈顶焦点请求，revision 或锚点变化都会重新恢复。
- * @param enabled 当前界面是否处于栈顶；被浮层或菜单遮住时不得请求页面焦点。
  * @param bindings 本界面能接住的锚点。
  * @param listState 目标位于懒列表时提供，用于先把目标滚入组合树。
  * @param contentKey 本界面可聚焦内容的指纹。内容变化会替换掉持有焦点的节点， 因此指纹一变就重新检查栈顶锚点；界面把“哪些状态决定自己的可聚焦结构”声明在这里。
@@ -91,7 +90,6 @@ internal data class FocusBinding(
 @Composable
 internal fun RestoreFocus(
     request: FocusRequest,
-    enabled: Boolean,
     bindings: List<FocusBinding>,
     listState: LazyListState? = null,
     contentKey: Any? = null,
@@ -101,8 +99,7 @@ internal fun RestoreFocus(
     val requestKey = request to contentKey
     // 读取这个状态会让 effect 在目标完成布局或被回收时自动重启；没有任何时间假设。
     val targetReady = matchedBinding?.target?.isReady ?: false
-    LaunchedEffect(enabled, request.revision, request.anchor, contentKey, targetReady) {
-        if (!enabled) return@LaunchedEffect
+    LaunchedEffect(request.revision, request.anchor, contentKey, targetReady) {
         val binding = bindings.firstOrNull { it.anchor == request.anchor } ?: return@LaunchedEffect
         val itemIndex = binding.itemIndex
         // 只在锚点已滚出懒列表时忽略回收事件。其他节点被重建后仍需恢复焦点。

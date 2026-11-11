@@ -7,7 +7,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import com.roy233.tvcast.feature.display.CalibrationDirection
 import com.roy233.tvcast.feature.display.CalibrationPhase
-import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
@@ -18,15 +17,7 @@ import com.roy233.tvcast.ui.tv.player.handlePlaybackSeekKey
 
 /** 当前页面按一次返回键应执行的层级动作。 */
 internal enum class TvBackAction {
-    SWALLOW,
-    CLOSE_PRIVACY_AGREEMENT,
     CANCEL_CALIBRATION,
-    CANCEL_STOP_CAST_CONFIRM,
-    DISMISS_ERROR,
-    BACK_PANEL,
-    CLOSE_PANEL,
-    CLOSE_HELP,
-    CLOSE_LOGIN,
     NAVIGATE_SETTINGS_BACK,
     OPEN_SIDEBAR,
     REQUEST_STOP_CAST,
@@ -122,15 +113,7 @@ object TvKeyHandler {
     /** 按照由上到下的界面层级，解析返回键的唯一目标。 */
     internal fun resolveBackAction(state: TvUiState): TvBackAction =
         when {
-            state.privacyAgreementVisible -> TvBackAction.CLOSE_PRIVACY_AGREEMENT
-            state.privacyNoticeVisible -> TvBackAction.SWALLOW
-            state.calibration.phase != CalibrationPhase.HIDDEN -> TvBackAction.CANCEL_CALIBRATION
-            state.stopCastConfirm -> TvBackAction.CANCEL_STOP_CAST_CONFIRM
-            state.error != null -> TvBackAction.DISMISS_ERROR
-            state.panel != null && state.panel != PanelKind.ROOT -> TvBackAction.BACK_PANEL
-            state.panel == PanelKind.ROOT -> TvBackAction.CLOSE_PANEL
-            state.helpVisible -> TvBackAction.CLOSE_HELP
-            state.loginDialogVisible -> TvBackAction.CLOSE_LOGIN
+            state.calibration.phase == CalibrationPhase.ADJUST -> TvBackAction.CANCEL_CALIBRATION
             state.mode == TvMode.PLAYING || (state.mode == TvMode.LOADING && state.castActive) ->
                 TvBackAction.REQUEST_STOP_CAST
             state.sidebarVisible -> TvBackAction.CLOSE_SIDEBAR
@@ -143,15 +126,7 @@ object TvKeyHandler {
     /** 将解析后的返回层级分发到宿主操作。 */
     internal fun dispatchBack(state: TvUiState, actions: TvActions) {
         when (resolveBackAction(state)) {
-            TvBackAction.SWALLOW -> Unit
-            TvBackAction.CLOSE_PRIVACY_AGREEMENT -> actions.onClosePrivacyAgreement()
             TvBackAction.CANCEL_CALIBRATION -> actions.onCancelCalibration()
-            TvBackAction.CANCEL_STOP_CAST_CONFIRM -> actions.onCancelStopCast()
-            TvBackAction.DISMISS_ERROR -> actions.onDismissError()
-            TvBackAction.BACK_PANEL -> actions.onOpenPanel(PanelKind.ROOT)
-            TvBackAction.CLOSE_PANEL -> actions.onClosePanel()
-            TvBackAction.CLOSE_HELP -> actions.onCloseHelp()
-            TvBackAction.CLOSE_LOGIN -> actions.onCloseLogin()
             TvBackAction.NAVIGATE_SETTINGS_BACK -> actions.onNavigateSettingsBack()
             TvBackAction.OPEN_SIDEBAR -> actions.onOpenSidebar()
             TvBackAction.REQUEST_STOP_CAST -> actions.onRequestStopCast()

@@ -107,7 +107,6 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
     // 首页只声明自己能接的锚点；何时请求由统一恢复入口决定。
     RestoreFocus(
         request = state.focusRequest,
-        enabled = state.topOverlay == null && !state.sidebarVisible,
         bindings =
             listOf(
                 FocusBinding(anchor = UiFocusAnchor.HOME_PRIMARY, target = primaryFocus),

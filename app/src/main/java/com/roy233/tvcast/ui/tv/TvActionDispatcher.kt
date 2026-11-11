@@ -169,11 +169,6 @@ class TvActionDispatcher(
                     stateHolder.set(state.copy(focusedRecent = focusedRecent))
                 }
             },
-            onReclaimPageFocus = {
-                val state = stateHolder.read().focusCurrentPage()
-                stateHolder.set(state)
-                FocusDiagnostics.pageFocusReclaimed(state)
-            },
             onFocusHomeControl = {
                 val state = stateHolder.read()
                 if (state.destination == TvDestination.HOME && state.focusedRecent != null) {

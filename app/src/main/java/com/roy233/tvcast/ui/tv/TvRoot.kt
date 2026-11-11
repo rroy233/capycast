@@ -55,6 +55,7 @@ import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.UiOverlay
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.tv.account.LoginDialog
 import com.roy233.tvcast.ui.tv.home.HomeScreen
@@ -102,6 +103,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                     message = "已调整四个角。确认后保存，之后播放的视频都会使用这个画面范围。",
                     primaryLabel = "已完成",
                     onPrimary = actions.onFinishCalibration,
+                    onDismissRequest = actions.onReviewCalibration,
                     secondaryLabel = "再看看",
                     onSecondary = actions.onReviewCalibration,
                 )
@@ -131,17 +133,6 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
     LaunchedEffect(state.mode, state.loginDialogVisible) {
         if (state.loginDialogVisible && state.mode != TvMode.IDLE) actions.onCloseLogin()
     }
-    // 只有浮层会夺走焦点而不改栈顶锚点，因此“浮层全部关闭”才需要交还焦点；
-    // 菜单有自己的收起动作，已经在收起时把栈顶交还给页面。
-    var overlayWasVisible by remember { mutableStateOf(false) }
-    LaunchedEffect(state.topOverlay, state.mode) {
-        val overlayVisible = state.topOverlay != null
-        if (overlayWasVisible && !overlayVisible && state.mode == TvMode.IDLE) {
-            actions.onReclaimPageFocus()
-        }
-        overlayWasVisible = overlayVisible
-    }
-
     val surface = TvKeyHandler.resolveKeySurface(state)
     var previousSurface by remember { mutableStateOf(surface) }
     LaunchedEffect(surface) {
@@ -248,10 +239,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                         animationSpec = tween(220),
                         label = "tab",
                         // 菜单显示期间页面整体退出焦点范围，保证隔层不可操作。
-                        modifier =
-                            recede.focusProperties {
-                                canFocus = !state.sidebarVisible && state.topOverlay == null
-                            },
+                        modifier = recede.focusProperties { canFocus = !state.sidebarVisible },
                     ) { destination ->
                         when (destination) {
                             TvDestination.HOME -> HomeScreen(state, actions)
@@ -309,57 +297,52 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                     }
             }
 
-            AnimatedVisibility(
-                visible = state.mode == TvMode.IDLE && state.loginDialogVisible,
-                enter = fadeIn(tween(180)),
-                exit = fadeOut(tween(160)),
-            ) {
-                LoginDialog(state, actions)
-            }
-
-            if (state.helpVisible) HelpSheet(state, actions)
-
-            if (state.privacyAgreementVisible) PrivacyAgreementDialog(state, actions)
-            if (state.privacyNoticeVisible) PrivacyNoticeDialog(state, actions)
-
-            if (state.panel != null) QuickPanel(state, actions)
-            if (state.error != null) {
-                val error = state.error
-                GlassAlert(
-                    title = error.title,
-                    message = error.message,
-                    code = error.code.ifBlank { null },
-                    primaryLabel = if (error.canRetry) "重试" else "返回",
-                    onPrimary = {
-                        if (error.canRetry) actions.onRetry() else actions.onDismissError()
-                    },
-                    secondaryLabel = if (error.canRetry) "返回" else null,
-                    onSecondary = if (error.canRetry) actions.onDismissError else null,
-                )
-            }
-            if (state.stopCastConfirm) {
-                GlassAlert(
-                    title = "停止当前投屏？",
-                    message = "电视将停止当前播放并返回主页。",
-                    primaryLabel = "停止投屏",
-                    onPrimary = actions.onConfirmStopCast,
-                    secondaryLabel = "继续观看",
-                    onSecondary = actions.onCancelStopCast,
-                    destructive = true,
-                )
-            }
-
-            when (state.calibration.phase) {
-                CalibrationPhase.INTRO ->
+            // 只渲染状态栈顶的一个 Dialog；窗口负责模态焦点和系统返回键。
+            when (state.topOverlay) {
+                UiOverlay.PRIVACY_AGREEMENT -> PrivacyAgreementDialog(state, actions)
+                UiOverlay.PRIVACY_NOTICE -> PrivacyNoticeDialog(state, actions)
+                UiOverlay.CALIBRATION ->
                     GlassAlert(
                         title = "校准电视画面？",
                         message = "如果视频超出屏幕边缘，可以用遥控器调整四边。跳过后不会再次自动提示，仍可从设置中打开。",
                         primaryLabel = "开始校准",
                         onPrimary = actions.onStartCalibration,
+                        onDismissRequest = actions.onCancelCalibration,
                         secondaryLabel = "跳过",
                         onSecondary = actions.onCancelCalibration,
                     )
-                else -> Unit
+                UiOverlay.STOP_CAST_CONFIRM ->
+                    GlassAlert(
+                        title = "停止当前投屏？",
+                        message = "电视将停止当前播放并返回主页。",
+                        primaryLabel = "停止投屏",
+                        onPrimary = actions.onConfirmStopCast,
+                        onDismissRequest = actions.onCancelStopCast,
+                        secondaryLabel = "继续观看",
+                        onSecondary = actions.onCancelStopCast,
+                        destructive = true,
+                    )
+                UiOverlay.ERROR -> {
+                    val error = state.error
+                    if (error != null) {
+                        GlassAlert(
+                            title = error.title,
+                            message = error.message,
+                            code = error.code.ifBlank { null },
+                            primaryLabel = if (error.canRetry) "重试" else "返回",
+                            onPrimary = {
+                                if (error.canRetry) actions.onRetry() else actions.onDismissError()
+                            },
+                            onDismissRequest = actions.onDismissError,
+                            secondaryLabel = if (error.canRetry) "返回" else null,
+                            onSecondary = if (error.canRetry) actions.onDismissError else null,
+                        )
+                    }
+                }
+                UiOverlay.PANEL -> QuickPanel(state, actions)
+                UiOverlay.HELP -> HelpSheet(state, actions)
+                UiOverlay.LOGIN_DIALOG -> LoginDialog(state, actions)
+                null -> Unit
             }
 
             AnimatedVisibility(

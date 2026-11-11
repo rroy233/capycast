@@ -50,7 +50,6 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
     val firstFocusable = blocks.indexOfFirst { it.kind != MarkdownBlockKind.DIVIDER }
     RestoreFocus(
         request = state.focusRequest,
-        enabled = state.topOverlay == null && !state.sidebarVisible,
         listState = listState,
         bindings =
             listOf(

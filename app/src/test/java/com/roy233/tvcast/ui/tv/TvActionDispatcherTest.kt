@@ -103,15 +103,6 @@ class TvActionDispatcherTest {
     }
 
     @Test
-    fun reclaimingFocusAfterAnOverlayTargetsTheCurrentPage() {
-        val stateHolder = TvStateHolder(TvUiState(destination = TvDestination.SETTINGS))
-
-        TvActionDispatcher(stateHolder, noOpHost()).actions.onReclaimPageFocus()
-
-        assertEquals(UiFocusAnchor.SETTINGS_PLATFORM, stateHolder.read().focusRequest.anchor)
-    }
-
-    @Test
     fun menuOpenedStateIsConsistentOnEveryDestination() {
         TvDestination.entries.forEach { destination ->
             val opened = TvUiState(destination = destination).withMenuOpen()
