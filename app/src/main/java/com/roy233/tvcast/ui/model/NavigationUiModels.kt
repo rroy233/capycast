@@ -54,6 +54,8 @@ fun pageAnchorFor(destination: TvDestination): UiFocusAnchor =
  * 浮层与页面、菜单共用同一条层级规则：只有栈顶接收按键并持有焦点。枚举顺序即 优先级，界面只需要读 [TvUiState.topOverlay]，不再各自维护一套判定链。
  */
 enum class UiOverlay {
+    PRIVACY_AGREEMENT,
+    PRIVACY_NOTICE,
     CALIBRATION,
     STOP_CAST_CONFIRM,
     ERROR,

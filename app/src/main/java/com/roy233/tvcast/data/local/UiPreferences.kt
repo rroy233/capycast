@@ -34,6 +34,27 @@ class UiPreferences(context: Context) {
             prefs.edit().putBoolean(KEY_SYNC_PLAYBACK_HISTORY, value).apply()
         }
 
+    /** 是否允许 Firebase Crashlytics 收集质量报告，默认开启。 */
+    var crashTrackingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_CRASH_TRACKING_ENABLED, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_CRASH_TRACKING_ENABLED, value).apply()
+        }
+
+    /** 是否允许 Firebase Analytics 收集匿名使用情况，默认开启。 */
+    var usageStatisticsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_USAGE_STATISTICS_ENABLED, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_USAGE_STATISTICS_ENABLED, value).apply()
+        }
+
+    /** 是否已确认本安装周期的隐私协议提示。 */
+    var privacyNoticeAcknowledged: Boolean
+        get() = prefs.getBoolean(KEY_PRIVACY_NOTICE_ACKNOWLEDGED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_PRIVACY_NOTICE_ACKNOWLEDGED, value).apply()
+        }
+
     private companion object {
         /** 偏好文件名。 */
         const val PREFS = "ui_prefs"
@@ -41,5 +62,8 @@ class UiPreferences(context: Context) {
         const val KEY_REMEMBER_PLAYBACK_CONTENT = "remember_playback_content"
         /** 是否将投屏播放记录同步到 B 站的偏好键。 */
         const val KEY_SYNC_PLAYBACK_HISTORY = "sync_playback_history"
+        const val KEY_CRASH_TRACKING_ENABLED = "crash_tracking_enabled"
+        const val KEY_USAGE_STATISTICS_ENABLED = "usage_statistics_enabled"
+        const val KEY_PRIVACY_NOTICE_ACKNOWLEDGED = "privacy_notice_acknowledged"
     }
 }

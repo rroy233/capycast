@@ -8,6 +8,10 @@ import android.os.Environment
 import android.os.SystemClock
 import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.core.diagnostics.NoOpQualityTelemetry
+import com.roy233.tvcast.core.diagnostics.Outcome
+import com.roy233.tvcast.core.diagnostics.QualityTelemetry
+import com.roy233.tvcast.core.diagnostics.UsageEvent
 import com.roy233.tvcast.feature.update.data.ReleaseRepository
 import com.roy233.tvcast.feature.update.data.UpdatePreferences
 import com.roy233.tvcast.feature.update.model.UpdateChannel
@@ -37,6 +41,7 @@ class UpdateCoordinator(
     private val preferences: UpdatePreferences = UpdatePreferences(context),
     private val repository: ReleaseRepository = ReleaseRepository(),
     private val installer: ApkUpdateInstaller = ApkUpdateInstaller(context),
+    private val telemetry: QualityTelemetry = NoOpQualityTelemetry,
 ) {
 
     /** 应用上下文，避免持有 Activity 实例。 */
@@ -115,6 +120,7 @@ class UpdateCoordinator(
         scope.launch {
             runCatching { repository.fetchLatest(channel) }
                 .onSuccess { update ->
+                    telemetry.log(UsageEvent.UpdateChecked(Outcome.SUCCESS))
                     when {
                         update == null -> {
                             LogHub.i(TAG, "check complete no release channel=${channel.apiValue}")
@@ -135,6 +141,7 @@ class UpdateCoordinator(
                     }
                 }
                 .onFailure { error ->
+                    telemetry.log(UsageEvent.UpdateChecked(Outcome.FAILURE))
                     LogHub.e(TAG, "check failed channel=${channel.apiValue}", error)
                     setUpdateState {
                         it.copy(

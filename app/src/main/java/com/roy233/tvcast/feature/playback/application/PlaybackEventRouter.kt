@@ -2,6 +2,7 @@ package com.roy233.tvcast.feature.playback.application
 
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
+import com.roy233.tvcast.core.diagnostics.PlaybackEndReason
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackRequest
@@ -79,6 +80,12 @@ interface PlaybackEventHost {
         canRetry: Boolean,
         keepVideo: Boolean,
     )
+
+    fun usageOnPlaying()
+
+    fun usageOnPaused()
+
+    fun finishUsage(reason: PlaybackEndReason)
 }
 
 /** 将唯一 Media3 后端的事件映射到既有 VOD、直播、历史与弹幕会话。 */
@@ -114,6 +121,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
                 host.vodDanmakuPlaying(seek)
             }
             host.historyOnPlaying()
+            host.usageOnPlaying()
         }
     }
 
@@ -124,6 +132,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
             host.updatePaused()
             host.historyOnPaused()
             if (live) host.onLivePaused() else host.vodDanmakuPaused()
+            host.usageOnPaused()
         }
     }
 
@@ -133,6 +142,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
             host.vodDanmakuClose()
             host.vodSubtitleClose()
             host.liveDanmakuClose()
+            host.finishUsage(PlaybackEndReason.USER_STOPPED)
         }
     }
 
@@ -159,6 +169,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
         host.finishHistory("media3-ended", ended = true)
         host.clearLiveSession("media3-end-reached")
         host.setCastEnded()
+        host.finishUsage(PlaybackEndReason.COMPLETED)
         host.runOnMain {
             host.vodDanmakuClose()
             host.vodSubtitleClose()
@@ -216,6 +227,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
         )
         host.vodDanmakuClose()
         host.vodSubtitleClose()
+        host.finishUsage(PlaybackEndReason.ERROR)
     }
 
     private companion object {

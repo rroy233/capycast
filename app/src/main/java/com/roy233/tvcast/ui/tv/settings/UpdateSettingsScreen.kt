@@ -61,6 +61,7 @@ import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.FocusBinding
 import com.roy233.tvcast.ui.tv.FocusTarget
 import com.roy233.tvcast.ui.tv.RestoreFocus
+import com.roy233.tvcast.ui.tv.document.markdownDocumentPreview
 import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.home.WhiteButton
@@ -468,7 +469,7 @@ private fun ReleaseNotesEntry(
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.collectIsFocusedAsState().value
     val shape = RoundedCornerShape(16.dp)
-    val preview = releaseNotesPreview(notes)
+    val preview = markdownDocumentPreview(notes)
     Row(
         modifier =
             Modifier.fillMaxWidth()

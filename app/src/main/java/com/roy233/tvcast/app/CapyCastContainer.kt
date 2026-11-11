@@ -1,6 +1,7 @@
 package com.roy233.tvcast.app
 
 import android.content.Context
+import com.roy233.tvcast.core.diagnostics.QualityTelemetry
 import com.roy233.tvcast.core.playback.PlaybackResolver
 import com.roy233.tvcast.data.auth.AuthTokenStore
 import com.roy233.tvcast.data.auth.CastAuth
@@ -26,6 +27,7 @@ import com.roy233.tvcast.feature.update.UpdateCoordinator
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.platform.device.DeviceInfoProvider
 import com.roy233.tvcast.platform.qr.QrCodeGenerator
+import com.roy233.tvcast.platform.telemetry.FirebaseQualityTelemetry
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -49,6 +51,9 @@ class CapyCastContainer(
 
     /** 设备身份偏好读取器。 */
     val uiPreferences: UiPreferences by lazy { UiPreferences(context) }
+
+    /** Firebase 的匿名使用统计与质量报告端口。 */
+    val qualityTelemetry: QualityTelemetry by lazy { FirebaseQualityTelemetry(context) }
 
     val displayCalibrationPreferences: DisplayCalibrationPreferences by lazy {
         DisplayCalibrationPreferences(context)
@@ -134,6 +139,7 @@ class CapyCastContainer(
             readUpdateState = readUpdateState,
             writeUpdateState = writeUpdateState,
             onToast = onToast,
+            telemetry = qualityTelemetry,
         )
     }
 }

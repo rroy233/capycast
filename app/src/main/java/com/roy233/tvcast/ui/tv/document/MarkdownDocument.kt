@@ -1,9 +1,9 @@
-package com.roy233.tvcast.ui.tv.settings
+package com.roy233.tvcast.ui.tv.document
 
 import androidx.compose.ui.text.AnnotatedString
 
-/** 更新日志的块类型。 */
-internal enum class ReleaseNoteKind {
+/** 电视端长文档的结构块类型。 */
+internal enum class MarkdownBlockKind {
     HEADING,
     BULLET,
     ORDERED,
@@ -13,17 +13,17 @@ internal enum class ReleaseNoteKind {
     TEXT,
 }
 
-/** 更新日志中的一段可聚焦内容。 */
-internal data class ReleaseNote(
-    val kind: ReleaseNoteKind,
+/** 可由电视端文档阅读器逐段显示与聚焦的一段 Markdown 内容。 */
+internal data class MarkdownBlock(
+    val kind: MarkdownBlockKind,
     val text: AnnotatedString = AnnotatedString(""),
     val prefix: String = "",
     val level: Int = 0,
 )
 
-/** 将更新日志 Markdown 解析为可逐段聚焦的块。 */
-internal fun parseReleaseNotes(markdown: String): List<ReleaseNote> {
-    val blocks = mutableListOf<ReleaseNote>()
+/** 将 Markdown 解析为适合电视端逐段翻阅的结构块。 */
+internal fun parseMarkdownDocument(markdown: String): List<MarkdownBlock> {
+    val blocks = mutableListOf<MarkdownBlock>()
     val code = mutableListOf<String>()
     var inCode = false
     markdown.lineSequence().forEach { raw ->
@@ -32,7 +32,10 @@ internal fun parseReleaseNotes(markdown: String): List<ReleaseNote> {
             line.startsWith("```") -> {
                 if (inCode) {
                     blocks +=
-                        ReleaseNote(ReleaseNoteKind.CODE, AnnotatedString(code.joinToString("\n")))
+                        MarkdownBlock(
+                            MarkdownBlockKind.CODE,
+                            AnnotatedString(code.joinToString("\n")),
+                        )
                     code.clear()
                 }
                 inCode = !inCode
@@ -41,13 +44,13 @@ internal fun parseReleaseNotes(markdown: String): List<ReleaseNote> {
             inCode -> code += line
             line.isBlank() -> Unit
             line == "---" || line == "***" || line == "___" ->
-                blocks += ReleaseNote(ReleaseNoteKind.DIVIDER)
+                blocks += MarkdownBlock(MarkdownBlockKind.DIVIDER)
 
             line.startsWith("#") -> {
                 val level = line.takeWhile { it == '#' }.length
                 blocks +=
-                    ReleaseNote(
-                        kind = ReleaseNoteKind.HEADING,
+                    MarkdownBlock(
+                        kind = MarkdownBlockKind.HEADING,
                         text = renderInlineMarkdown(line.drop(level).trim()),
                         level = level,
                     )
@@ -55,16 +58,16 @@ internal fun parseReleaseNotes(markdown: String): List<ReleaseNote> {
 
             line.startsWith("- ") || line.startsWith("* ") ->
                 blocks +=
-                    ReleaseNote(
-                        kind = ReleaseNoteKind.BULLET,
+                    MarkdownBlock(
+                        kind = MarkdownBlockKind.BULLET,
                         text = renderInlineMarkdown(line.drop(2)),
                     )
 
             ORDERED_LIST_PATTERN.containsMatchIn(line) -> {
                 val match = requireNotNull(ORDERED_LIST_PATTERN.find(line))
                 blocks +=
-                    ReleaseNote(
-                        kind = ReleaseNoteKind.ORDERED,
+                    MarkdownBlock(
+                        kind = MarkdownBlockKind.ORDERED,
                         text = renderInlineMarkdown(line.drop(match.value.length)),
                         prefix = match.value.trim(),
                     )
@@ -72,35 +75,33 @@ internal fun parseReleaseNotes(markdown: String): List<ReleaseNote> {
 
             line.startsWith("> ") ->
                 blocks +=
-                    ReleaseNote(
-                        kind = ReleaseNoteKind.QUOTE,
+                    MarkdownBlock(
+                        kind = MarkdownBlockKind.QUOTE,
                         text = renderInlineMarkdown(line.drop(2)),
                     )
 
             else ->
                 blocks +=
-                    ReleaseNote(
-                        kind = ReleaseNoteKind.TEXT,
+                    MarkdownBlock(
+                        kind = MarkdownBlockKind.TEXT,
                         text = renderInlineMarkdown(line),
                     )
         }
     }
     if (code.isNotEmpty()) {
-        blocks += ReleaseNote(ReleaseNoteKind.CODE, AnnotatedString(code.joinToString("\n")))
+        blocks += MarkdownBlock(MarkdownBlockKind.CODE, AnnotatedString(code.joinToString("\n")))
     }
     return blocks
 }
 
-/** 有序列表项的 Markdown 前缀。 */
-private val ORDERED_LIST_PATTERN = Regex("^\\d+\\.\\s+")
-
-/** 提取更新日志首行作为入口摘要。 */
-internal fun releaseNotesPreview(notes: String): String =
-    notes
+/** 提取 Markdown 首行作为列表入口摘要。 */
+internal fun markdownDocumentPreview(markdown: String): String =
+    markdown
         .lineSequence()
         .map { line -> line.trim().trimStart('#', '*', '-', '>', ' ') }
         .firstOrNull { it.isNotBlank() && !it.startsWith("```") }
         .orEmpty()
         .take(90)
 
-/** 显示带标题的更新设置分组。 */
+/** 有序列表项的 Markdown 前缀。 */
+private val ORDERED_LIST_PATTERN = Regex("^\\d+\\.\\s+")

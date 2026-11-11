@@ -1,4 +1,4 @@
-package com.roy233.tvcast.ui.tv.settings
+package com.roy233.tvcast.ui.tv.document
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -45,9 +45,10 @@ import com.roy233.tvcast.ui.tv.FocusTarget
 import com.roy233.tvcast.ui.tv.focusTarget
 import kotlinx.coroutines.launch
 
+/** 显示一段可聚焦、可逐行滚动的 Markdown 文档内容。 */
 @Composable
-internal fun ReleaseNoteBlock(block: ReleaseNote, focusTarget: FocusTarget?) {
-    if (block.kind == ReleaseNoteKind.DIVIDER) {
+internal fun MarkdownDocumentBlock(block: MarkdownBlock, focusTarget: FocusTarget?) {
+    if (block.kind == MarkdownBlockKind.DIVIDER) {
         Box(
             Modifier.fillMaxWidth()
                 .padding(vertical = 6.dp)
@@ -105,7 +106,7 @@ internal fun ReleaseNoteBlock(block: ReleaseNote, focusTarget: FocusTarget?) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         when (block.kind) {
-            ReleaseNoteKind.BULLET -> {
+            MarkdownBlockKind.BULLET -> {
                 BasicText("•", style = TvType.body.copy(color = TvColors.accent))
                 BasicText(
                     text = block.text,
@@ -114,7 +115,7 @@ internal fun ReleaseNoteBlock(block: ReleaseNote, focusTarget: FocusTarget?) {
                 )
             }
 
-            ReleaseNoteKind.ORDERED -> {
+            MarkdownBlockKind.ORDERED -> {
                 BasicText(block.prefix, style = TvType.body.copy(color = TvColors.accent))
                 BasicText(
                     text = block.text,
@@ -123,7 +124,7 @@ internal fun ReleaseNoteBlock(block: ReleaseNote, focusTarget: FocusTarget?) {
                 )
             }
 
-            ReleaseNoteKind.CODE ->
+            MarkdownBlockKind.CODE ->
                 BasicText(
                     text = block.text,
                     style =
@@ -138,7 +139,7 @@ internal fun ReleaseNoteBlock(block: ReleaseNote, focusTarget: FocusTarget?) {
                             .padding(10.dp),
                 )
 
-            ReleaseNoteKind.QUOTE ->
+            MarkdownBlockKind.QUOTE ->
                 BasicText(
                     text = block.text,
                     style =
@@ -152,7 +153,7 @@ internal fun ReleaseNoteBlock(block: ReleaseNote, focusTarget: FocusTarget?) {
                             .padding(10.dp),
                 )
 
-            ReleaseNoteKind.HEADING ->
+            MarkdownBlockKind.HEADING ->
                 BasicText(
                     text = block.text,
                     style =
@@ -162,18 +163,18 @@ internal fun ReleaseNoteBlock(block: ReleaseNote, focusTarget: FocusTarget?) {
                         ),
                 )
 
-            ReleaseNoteKind.TEXT ->
+            MarkdownBlockKind.TEXT ->
                 BasicText(
                     text = block.text,
                     style = TvType.body.copy(color = TvColors.textSecondary),
                 )
 
-            ReleaseNoteKind.DIVIDER -> Unit
+            MarkdownBlockKind.DIVIDER -> Unit
         }
     }
 }
 
-/** 将 Markdown 行中的粗体和行内代码转换为带样式文本。 */
+/** 将 Markdown 行中的粗体、代码和链接转换为带样式文本。 */
 internal fun renderInlineMarkdown(source: String): AnnotatedString = buildAnnotatedString {
     var index = 0
     while (index < source.length) {
@@ -225,5 +226,3 @@ internal fun renderInlineMarkdown(source: String): AnnotatedString = buildAnnota
         }
     }
 }
-
-/** 返回更新状态对应的标题。 */

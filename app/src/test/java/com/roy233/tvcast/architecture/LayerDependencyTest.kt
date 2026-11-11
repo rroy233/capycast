@@ -54,6 +54,25 @@ class LayerDependencyTest {
     }
 
     @Test
+    fun `legal content stays independent of rendering state and application layers`() {
+        assertNoImports(
+            packageDir = "ui/legal",
+            forbidden =
+                listOf(
+                    "android.",
+                    "androidx.",
+                    "com.roy233.tvcast.app",
+                    "com.roy233.tvcast.core",
+                    "com.roy233.tvcast.data",
+                    "com.roy233.tvcast.feature",
+                    "com.roy233.tvcast.platform",
+                    "com.roy233.tvcast.ui.model",
+                    "com.roy233.tvcast.ui.tv",
+                ),
+        )
+    }
+
+    @Test
     fun `playback coordinators do not reference the root ui state holder`() {
         val dir = File(root, "feature/playback")
         val offenders =
@@ -97,6 +116,26 @@ class LayerDependencyTest {
         assertNoImports(
             packageDir = "platform/player",
             forbidden = listOf("com.roy233.tvcast.data.bili"),
+        )
+    }
+
+    @Test
+    fun `Firebase SDK imports stay inside the platform telemetry adapter`() {
+        val offenders =
+            root
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { file ->
+                    file.readLines().any { line ->
+                        line.startsWith("import ") && line.contains("com.google.firebase")
+                    }
+                }
+                .filterNot { it.relativeTo(root).path.startsWith("platform/telemetry/") }
+                .map { it.relativeTo(root).path }
+                .toList()
+        assertTrue(
+            "Firebase imports must stay in platform telemetry: $offenders",
+            offenders.isEmpty(),
         )
     }
 

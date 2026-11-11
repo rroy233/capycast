@@ -1,21 +1,23 @@
 package com.roy233.tvcast.ui.tv.overlay
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,18 +25,22 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.playback.presentation.PlaybackSpeed
 import com.roy233.tvcast.ui.designsystem.*
+import com.roy233.tvcast.ui.legal.UserAgreementPolicy
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
@@ -42,10 +48,141 @@ import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.FocusDiagnostics
 import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
+import com.roy233.tvcast.ui.tv.document.MarkdownBlockKind
+import com.roy233.tvcast.ui.tv.document.MarkdownDocumentBlock
+import com.roy233.tvcast.ui.tv.document.parseMarkdownDocument
+import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.rememberFocusTarget
-import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import kotlin.math.roundToInt
+
+private const val WELCOME_MESSAGE =
+    "CapyCast是一款为 Android TV 打造的极简 Bilibili 投屏播放器，使用过程遇到任何问题请向我们反馈。如果喜欢，麻烦点点Star (≧▽≦)"
+
+/** 首次安装时显示的欢迎提示。 */
+@Composable
+internal fun PrivacyNoticeDialog(state: TvUiState, actions: TvActions) {
+    val focus = rememberFocusTarget()
+    RequestFocusWhenReady(activation = state.privacyNoticeVisible, target = focus)
+    TvModalDialog(
+        onDismissRequest = {},
+        dismissOnBackPress = false,
+    ) {
+        GlassSurface(
+            modifier = Modifier.tvModalCard(),
+            material = GlassMaterial.Panel,
+            size = GlassSize.Large,
+        ) {
+            Column(
+                Modifier.padding(horizontal = 30.dp, vertical = 26.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                BasicText("欢迎", style = TvType.section.copy(fontSize = 30.sp))
+                BasicText(
+                    text = WELCOME_MESSAGE,
+                    style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 19.sp),
+                )
+                PrivacyAgreementLink(onClick = actions.onOpenPrivacySettings)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    WhiteButton(
+                        text = "开始使用",
+                        onClick = actions.onAcknowledgePrivacyNotice,
+                        focusTarget = focus,
+                        compact = true,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 欢迎弹窗中的协议入口；焦点状态需要在电视端清晰可辨。 */
+@Composable
+private fun PrivacyAgreementLink(onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val shape = RoundedCornerShape(8.dp)
+    BasicText(
+        text = "《用户协议与隐私政策》",
+        style =
+            TvType.caption.copy(
+                color = if (focused) Color.White else TvColors.accent,
+                fontSize = 16.sp,
+            ),
+        modifier =
+            Modifier.clip(shape)
+                .background(
+                    if (focused) TvColors.accent.copy(alpha = 0.36f) else Color.Transparent,
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (focused) TvColors.accent else Color.Transparent,
+                    shape = shape,
+                )
+                .focusProperties { canFocus = true }
+                .focusTrace("link:隐私协议")
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    role = Role.Button,
+                    onClick = onClick,
+                )
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+    )
+}
+
+/** 由欢迎弹窗或设置页进入的隐私协议模态层。 */
+@Composable
+internal fun PrivacyAgreementDialog(state: TvUiState, actions: TvActions) {
+    val blocks = remember { parseMarkdownDocument(UserAgreementPolicy.markdown) }
+    val initialFocus = rememberFocusTarget()
+    val backFocus = rememberFocusTarget()
+    val listState = rememberLazyListState()
+    val firstFocusable = blocks.indexOfFirst { it.kind != MarkdownBlockKind.DIVIDER }
+    RequestFocusWhenReady(
+        activation = state.privacyAgreementVisible,
+        target = if (firstFocusable >= 0) initialFocus else backFocus,
+    )
+    TvModalDialog(onDismissRequest = actions.onClosePrivacyAgreement) {
+        GlassSurface(
+            modifier = Modifier.tvModalCard(TvModalCardKind.DOCUMENT),
+            material = GlassMaterial.Panel,
+            size = GlassSize.Large,
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 30.dp, vertical = 26.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                BasicText(
+                    "用户协议与隐私政策",
+                    style = TvType.section.copy(fontSize = 30.sp),
+                )
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    blocks.forEachIndexed { index, block ->
+                        item(key = index) {
+                            MarkdownDocumentBlock(
+                                block = block,
+                                focusTarget = if (index == firstFocusable) initialFocus else null,
+                            )
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    WhiteButton(
+                        text = "返回",
+                        onClick = actions.onClosePrivacyAgreement,
+                        focusTarget = backFocus,
+                        compact = true,
+                    )
+                }
+            }
+        }
+    }
+}
 
 /**
  * 显示投屏帮助模态层。
@@ -58,16 +195,12 @@ internal fun HelpSheet(state: TvUiState, actions: TvActions) {
     val focus = rememberFocusTarget()
     RequestFocusWhenReady(activation = state.helpVisible, target = focus)
 
-    Box(
-        modifier =
-            Modifier.fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.68f))
-                .tvModalFocusRegion()
-                .pointerInput(Unit) { detectTapGestures { actions.onCloseHelp() } },
-        contentAlignment = Alignment.Center,
+    TvModalDialog(
+        onDismissRequest = actions.onCloseHelp,
+        dismissOnClickOutside = true,
     ) {
         GlassSurface(
-            modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth(0.76f).pointerInput(Unit) {},
+            modifier = Modifier.tvModalCard(),
             material = GlassMaterial.Panel,
             size = GlassSize.Large,
         ) {
@@ -154,264 +287,256 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
         FocusDiagnostics.transientFocusResult(focused)
     }
 
-    Box(
-        modifier =
-            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).tvModalFocusRegion(),
-        contentAlignment = Alignment.Center,
+    TvModalDialog(
+        onDismissRequest = {
+            if (panel == PanelKind.ROOT) actions.onClosePanel()
+            else actions.onOpenPanel(PanelKind.ROOT)
+        },
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val panelMaxHeight = (maxHeight * 0.88f).coerceAtMost(520.dp)
-            GlassSurface(
-                modifier =
-                    Modifier.widthIn(max = 700.dp)
-                        .fillMaxWidth(0.80f)
-                        .heightIn(max = panelMaxHeight)
-                        .align(Alignment.Center),
-                material = GlassMaterial.Panel,
-                size = GlassSize.Large,
+        GlassSurface(
+            modifier = Modifier.tvModalCard(TvModalCardKind.PANEL),
+            material = GlassMaterial.Panel,
+            size = GlassSize.Large,
+        ) {
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 18.dp),
             ) {
-                Column(
-                    Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 18.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        BasicText(
-                            text =
-                                when (panel) {
-                                    PanelKind.ROOT -> "播放设置"
-                                    PanelKind.QUALITY -> "清晰度"
-                                    PanelKind.AUDIO -> "音轨"
-                                    PanelKind.SUBTITLE -> "字幕"
-                                    PanelKind.SPEED -> "播放速度"
-                                    PanelKind.DANMAKU -> "弹幕设置"
-                                    PanelKind.LIVE_QUALITY -> "直播画质"
-                                },
-                            style = TvType.section,
-                            modifier = Modifier.weight(1f),
-                        )
-                        GlassIconButton(
-                            icon = Icons.Rounded.Close,
-                            contentDescription = "关闭",
-                            onClick = actions.onClosePanel,
-                            size = 48.dp,
-                            focusTarget = closeFocus,
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
+                    BasicText(
+                        text =
+                            when (panel) {
+                                PanelKind.ROOT -> "播放设置"
+                                PanelKind.QUALITY -> "清晰度"
+                                PanelKind.AUDIO -> "音轨"
+                                PanelKind.SUBTITLE -> "字幕"
+                                PanelKind.SPEED -> "播放速度"
+                                PanelKind.DANMAKU -> "弹幕设置"
+                                PanelKind.LIVE_QUALITY -> "直播画质"
+                            },
+                        style = TvType.section,
+                        modifier = Modifier.weight(1f),
+                    )
+                    GlassIconButton(
+                        icon = Icons.Rounded.Close,
+                        contentDescription = "关闭",
+                        onClick = actions.onClosePanel,
+                        size = 48.dp,
+                        focusTarget = closeFocus,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
 
-                    Column(
-                        modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(scrollState),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        when (panel) {
-                            PanelKind.ROOT -> {
-                                if (state.isLive) {
-                                    FocusableRow(
-                                        title = "直播画质",
-                                        value = state.qualityLabel.ifBlank { "自动" },
-                                        onClick = { actions.onOpenPanel(PanelKind.LIVE_QUALITY) },
-                                        focusTarget = firstFocus,
-                                    )
-                                    FocusableRow(
-                                        title = "弹幕",
-                                        value = if (state.danmakuEnabled) "开" else "关",
-                                        selected = state.danmakuEnabled,
-                                        onClick = actions.onToggleDanmaku,
-                                    )
-                                } else {
-                                    FocusableRow(
-                                        title = "清晰度",
-                                        value = state.qualityLabel.ifBlank { "自动" },
-                                        onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
-                                        focusTarget = firstFocus,
-                                    )
-                                    FocusableRow(
-                                        title = "音轨",
-                                        value = state.audioLabel.ifBlank { "自动" },
-                                        onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
-                                    )
-                                    FocusableRow(
-                                        title = "字幕",
-                                        value = state.subtitleSummary.ifBlank { "无字幕" },
-                                        enabled = state.subtitleTracks.isNotEmpty(),
-                                        onClick = { actions.onOpenPanel(PanelKind.SUBTITLE) },
-                                    )
-                                    FocusableRow(
-                                        title = "播放速度",
-                                        value = PlaybackSpeed.label(state.playbackSpeed),
-                                        onClick = { actions.onOpenPanel(PanelKind.SPEED) },
-                                    )
-                                    FocusableRow(
-                                        title = "弹幕设置",
-                                        value =
-                                            if (!state.danmakuEnabled) {
-                                                "已关闭"
-                                            } else {
-                                                aiShieldLabel(state.danmakuAiShield)
-                                            },
-                                        onClick = { actions.onOpenPanel(PanelKind.DANMAKU) },
-                                    )
-                                }
-                                if (!state.isLive) {
-                                    BasicText(
-                                        text = "aid ${state.aid} · cid ${state.cid}",
-                                        style =
-                                            TvType.caption.copy(
-                                                color = TvColors.textTertiary,
-                                                fontSize = 15.sp,
-                                            ),
-                                        modifier =
-                                            Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                                    )
-                                }
-                            }
-
-                            PanelKind.LIVE_QUALITY -> {
-                                state.liveQualities.forEachIndexed { index, option ->
-                                    FocusableRow(
-                                        title = option.label,
-                                        value = if (option.qn == state.selectedQn) "当前" else null,
-                                        selected = option.qn == state.selectedQn,
-                                        onClick = { actions.onSelectQuality(option.qn) },
-                                        focusTarget = if (index == 0) firstFocus else null,
-                                    )
-                                }
-                            }
-
-                            PanelKind.QUALITY -> {
-                                state.tracks.forEachIndexed { index, track ->
-                                    FocusableRow(
-                                        title = track.label,
-                                        value = track.detail,
-                                        selected = track.qn == state.selectedQn,
-                                        onClick = { actions.onSelectQuality(track.qn) },
-                                        focusTarget = if (index == 0) firstFocus else null,
-                                    )
-                                }
-                            }
-
-                            PanelKind.AUDIO -> {
-                                state.audios.forEachIndexed { index, audio ->
-                                    FocusableRow(
-                                        title = audio.label,
-                                        value =
-                                            if (audio.id == state.selectedAudioId) "当前" else null,
-                                        selected = audio.id == state.selectedAudioId,
-                                        onClick = { actions.onSelectAudio(audio.id) },
-                                        focusTarget = if (index == 0) firstFocus else null,
-                                    )
-                                }
-                            }
-
-                            PanelKind.SUBTITLE -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(scrollState),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    when (panel) {
+                        PanelKind.ROOT -> {
+                            if (state.isLive) {
                                 FocusableRow(
-                                    title = "关闭字幕",
-                                    value = if (state.selectedSubtitleKey == null) "当前" else null,
-                                    selected = state.selectedSubtitleKey == null,
-                                    onClick = { actions.onSelectSubtitleTrack(null) },
+                                    title = "直播画质",
+                                    value = state.qualityLabel.ifBlank { "自动" },
+                                    onClick = { actions.onOpenPanel(PanelKind.LIVE_QUALITY) },
                                     focusTarget = firstFocus,
                                 )
-                                state.subtitleTracks.forEach { option ->
-                                    FocusableRow(
-                                        title = option.label,
-                                        value = if (option.selected) "当前" else option.detail,
-                                        selected = option.selected,
-                                        enabled = !option.locked,
-                                        onClick = { actions.onSelectSubtitleTrack(option.key) },
-                                    )
-                                }
-                            }
-
-                            PanelKind.SPEED -> {
-                                val selectedSpeed = PlaybackSpeed.normalize(state.playbackSpeed)
-                                PlaybackSpeed.options.forEachIndexed { index, speed ->
-                                    FocusableRow(
-                                        title = PlaybackSpeed.label(speed),
-                                        value = if (speed == 1f) "正常速度" else null,
-                                        selected = speed == selectedSpeed,
-                                        onClick = { actions.onSetPlaybackSpeed(speed) },
-                                        focusTarget =
-                                            if (speed == selectedSpeed) selectedSpeedFocus
-                                            else null,
-                                    )
-                                }
-                            }
-
-                            PanelKind.DANMAKU -> {
                                 FocusableRow(
                                     title = "弹幕",
                                     value = if (state.danmakuEnabled) "开" else "关",
                                     selected = state.danmakuEnabled,
                                     onClick = actions.onToggleDanmaku,
+                                )
+                            } else {
+                                FocusableRow(
+                                    title = "清晰度",
+                                    value = state.qualityLabel.ifBlank { "自动" },
+                                    onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
                                     focusTarget = firstFocus,
                                 )
                                 FocusableRow(
-                                    title = "智能云屏蔽",
-                                    value = aiShieldLabel(state.danmakuAiShield),
-                                    onClick = {
-                                        actions.onSetDanmakuAiShield(
-                                            nextAiShield(state.danmakuAiShield),
-                                        )
-                                    },
+                                    title = "音轨",
+                                    value = state.audioLabel.ifBlank { "自动" },
+                                    onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
                                 )
                                 FocusableRow(
-                                    title = "显示区域",
-                                    value = areaLabel(state.danmakuAreaRatio),
-                                    onClick = {
-                                        actions.onSetDanmakuArea(
-                                            nextArea(state.danmakuAreaRatio),
-                                        )
-                                    },
+                                    title = "字幕",
+                                    value = state.subtitleSummary.ifBlank { "无字幕" },
+                                    enabled = state.subtitleTracks.isNotEmpty(),
+                                    onClick = { actions.onOpenPanel(PanelKind.SUBTITLE) },
                                 )
                                 FocusableRow(
-                                    title = "同屏数量",
-                                    value = maxOnScreenLabel(state.danmakuMaxOnScreen),
-                                    onClick = {
-                                        actions.onSetDanmakuMaxOnScreen(
-                                            nextMaxOnScreen(state.danmakuMaxOnScreen),
-                                        )
-                                    },
+                                    title = "播放速度",
+                                    value = PlaybackSpeed.label(state.playbackSpeed),
+                                    onClick = { actions.onOpenPanel(PanelKind.SPEED) },
                                 )
                                 FocusableRow(
-                                    title = "不透明度",
-                                    value = opacityLabel(state.danmakuOpacity),
-                                    onClick = {
-                                        actions.onSetDanmakuOpacity(
-                                            nextOpacity(state.danmakuOpacity),
-                                        )
-                                    },
+                                    title = "弹幕设置",
+                                    value =
+                                        if (!state.danmakuEnabled) {
+                                            "已关闭"
+                                        } else {
+                                            aiShieldLabel(state.danmakuAiShield)
+                                        },
+                                    onClick = { actions.onOpenPanel(PanelKind.DANMAKU) },
                                 )
-                                FocusableRow(
-                                    title = "字号",
-                                    value = fontScaleLabel(state.danmakuFontScale),
-                                    onClick = {
-                                        actions.onSetDanmakuFontScale(
-                                            nextFontScale(state.danmakuFontScale),
-                                        )
-                                    },
-                                )
-                                FocusableRow(
-                                    title = "速度",
-                                    value = durationLabel(state.danmakuDurationSec),
-                                    onClick = {
-                                        actions.onSetDanmakuDuration(
-                                            nextDuration(state.danmakuDurationSec),
-                                        )
-                                    },
+                            }
+                            if (!state.isLive) {
+                                BasicText(
+                                    text = "aid ${state.aid} · cid ${state.cid}",
+                                    style =
+                                        TvType.caption.copy(
+                                            color = TvColors.textTertiary,
+                                            fontSize = 15.sp,
+                                        ),
+                                    modifier =
+                                        Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
                                 )
                             }
                         }
-                    }
 
-                    Spacer(Modifier.height(8.dp))
-                    GlassButton(
-                        text = "完成",
-                        onClick = actions.onClosePanel,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                        PanelKind.LIVE_QUALITY -> {
+                            state.liveQualities.forEachIndexed { index, option ->
+                                FocusableRow(
+                                    title = option.label,
+                                    value = if (option.qn == state.selectedQn) "当前" else null,
+                                    selected = option.qn == state.selectedQn,
+                                    onClick = { actions.onSelectQuality(option.qn) },
+                                    focusTarget = if (index == 0) firstFocus else null,
+                                )
+                            }
+                        }
+
+                        PanelKind.QUALITY -> {
+                            state.tracks.forEachIndexed { index, track ->
+                                FocusableRow(
+                                    title = track.label,
+                                    value = track.detail,
+                                    selected = track.qn == state.selectedQn,
+                                    onClick = { actions.onSelectQuality(track.qn) },
+                                    focusTarget = if (index == 0) firstFocus else null,
+                                )
+                            }
+                        }
+
+                        PanelKind.AUDIO -> {
+                            state.audios.forEachIndexed { index, audio ->
+                                FocusableRow(
+                                    title = audio.label,
+                                    value = if (audio.id == state.selectedAudioId) "当前" else null,
+                                    selected = audio.id == state.selectedAudioId,
+                                    onClick = { actions.onSelectAudio(audio.id) },
+                                    focusTarget = if (index == 0) firstFocus else null,
+                                )
+                            }
+                        }
+
+                        PanelKind.SUBTITLE -> {
+                            FocusableRow(
+                                title = "关闭字幕",
+                                value = if (state.selectedSubtitleKey == null) "当前" else null,
+                                selected = state.selectedSubtitleKey == null,
+                                onClick = { actions.onSelectSubtitleTrack(null) },
+                                focusTarget = firstFocus,
+                            )
+                            state.subtitleTracks.forEach { option ->
+                                FocusableRow(
+                                    title = option.label,
+                                    value = if (option.selected) "当前" else option.detail,
+                                    selected = option.selected,
+                                    enabled = !option.locked,
+                                    onClick = { actions.onSelectSubtitleTrack(option.key) },
+                                )
+                            }
+                        }
+
+                        PanelKind.SPEED -> {
+                            val selectedSpeed = PlaybackSpeed.normalize(state.playbackSpeed)
+                            PlaybackSpeed.options.forEachIndexed { index, speed ->
+                                FocusableRow(
+                                    title = PlaybackSpeed.label(speed),
+                                    value = if (speed == 1f) "正常速度" else null,
+                                    selected = speed == selectedSpeed,
+                                    onClick = { actions.onSetPlaybackSpeed(speed) },
+                                    focusTarget =
+                                        if (speed == selectedSpeed) selectedSpeedFocus else null,
+                                )
+                            }
+                        }
+
+                        PanelKind.DANMAKU -> {
+                            FocusableRow(
+                                title = "弹幕",
+                                value = if (state.danmakuEnabled) "开" else "关",
+                                selected = state.danmakuEnabled,
+                                onClick = actions.onToggleDanmaku,
+                                focusTarget = firstFocus,
+                            )
+                            FocusableRow(
+                                title = "智能云屏蔽",
+                                value = aiShieldLabel(state.danmakuAiShield),
+                                onClick = {
+                                    actions.onSetDanmakuAiShield(
+                                        nextAiShield(state.danmakuAiShield),
+                                    )
+                                },
+                            )
+                            FocusableRow(
+                                title = "显示区域",
+                                value = areaLabel(state.danmakuAreaRatio),
+                                onClick = {
+                                    actions.onSetDanmakuArea(
+                                        nextArea(state.danmakuAreaRatio),
+                                    )
+                                },
+                            )
+                            FocusableRow(
+                                title = "同屏数量",
+                                value = maxOnScreenLabel(state.danmakuMaxOnScreen),
+                                onClick = {
+                                    actions.onSetDanmakuMaxOnScreen(
+                                        nextMaxOnScreen(state.danmakuMaxOnScreen),
+                                    )
+                                },
+                            )
+                            FocusableRow(
+                                title = "不透明度",
+                                value = opacityLabel(state.danmakuOpacity),
+                                onClick = {
+                                    actions.onSetDanmakuOpacity(
+                                        nextOpacity(state.danmakuOpacity),
+                                    )
+                                },
+                            )
+                            FocusableRow(
+                                title = "字号",
+                                value = fontScaleLabel(state.danmakuFontScale),
+                                onClick = {
+                                    actions.onSetDanmakuFontScale(
+                                        nextFontScale(state.danmakuFontScale),
+                                    )
+                                },
+                            )
+                            FocusableRow(
+                                title = "速度",
+                                value = durationLabel(state.danmakuDurationSec),
+                                onClick = {
+                                    actions.onSetDanmakuDuration(
+                                        nextDuration(state.danmakuDurationSec),
+                                    )
+                                },
+                            )
+                        }
+                    }
                 }
+
+                Spacer(Modifier.height(8.dp))
+                GlassButton(
+                    text = "完成",
+                    onClick = actions.onClosePanel,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }

@@ -32,6 +32,8 @@ DLNA phone / Compose UI / player SDK
 | `data` | Bilibili APIs, WebSocket/HTTP, DTO mapping, preferences and local stores | core and feature-owned ports/models |
 | `platform` | Android/SDK/protocol implementation details | core contracts and Android/third-party SDKs |
 | `ui` | Compose rendering, focus/navigation and UI state projection | UI models and action contracts |
+| `ui/legal` | Static legal, policy and other independently reviewable user-facing documents | Kotlin text/model primitives only; no Compose, Android, state, actions or storage |
+| `ui/tv/document` | Shared Markdown parsing and TV long-document rendering | UI theme and focus primitives; no feature policy, persistence or host actions |
 
 The repository enforces the essential rules in `app/src/test/java/com/roy233/tvcast/architecture/LayerDependencyTest.kt`. Respect its intent even when an import can be made to compile through a fully qualified name or typealias.
 

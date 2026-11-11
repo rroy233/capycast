@@ -124,6 +124,10 @@ data class TvUiState(
     val loginDialogVisible: Boolean = false,
     val loginSkipped: Boolean = false,
     val helpVisible: Boolean = false,
+    val privacyNoticeVisible: Boolean = false,
+    val privacyAgreementVisible: Boolean = false,
+    /** 欢迎弹窗经协议链接打开协议模态层后，关闭时恢复欢迎弹窗。 */
+    val returnToWelcomeAfterPrivacyAgreement: Boolean = false,
     val tracks: List<TrackOption> = emptyList(),
     val audios: List<AudioOption> = emptyList(),
     val subtitleTracks: List<SubtitleTrackOption> = emptyList(),
@@ -146,6 +150,8 @@ data class TvUiState(
     val focusedRecent: RecentCastFocus? = null,
     val rememberPlaybackContent: Boolean = true,
     val syncPlaybackHistory: Boolean = true,
+    val crashTrackingEnabled: Boolean = true,
+    val usageStatisticsEnabled: Boolean = true,
     val showContinue: Boolean = true,
     val update: UpdateUiState = UpdateUiState(),
     val calibration: CalibrationState = CalibrationState(),
@@ -153,6 +159,8 @@ data class TvUiState(
     /** 当前叠在目的页之上的浮层，按优先级从高到低排列。 */
     val overlayStack: List<UiOverlay>
         get() = buildList {
+            if (privacyAgreementVisible) add(UiOverlay.PRIVACY_AGREEMENT)
+            if (privacyNoticeVisible) add(UiOverlay.PRIVACY_NOTICE)
             if (calibration.phase != CalibrationPhase.HIDDEN) add(UiOverlay.CALIBRATION)
             if (stopCastConfirm) add(UiOverlay.STOP_CAST_CONFIRM)
             if (error != null) add(UiOverlay.ERROR)

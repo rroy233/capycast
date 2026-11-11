@@ -23,10 +23,17 @@ import com.roy233.tvcast.app.MainThreadPlaybackAccess
 import com.roy233.tvcast.app.PlaybackEngineHost
 import com.roy233.tvcast.app.SubtitleOverlayHost
 import com.roy233.tvcast.app.VideoViewportHost
+import com.roy233.tvcast.core.diagnostics.ContentKind
 import com.roy233.tvcast.core.diagnostics.DeviceDiagnostics
+import com.roy233.tvcast.core.diagnostics.Feature
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
+import com.roy233.tvcast.core.diagnostics.NonFatalReport
+import com.roy233.tvcast.core.diagnostics.Outcome
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
+import com.roy233.tvcast.core.diagnostics.PlaybackEndReason
+import com.roy233.tvcast.core.diagnostics.Screen
+import com.roy233.tvcast.core.diagnostics.UsageEvent
 import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackRequest
@@ -67,6 +74,7 @@ import com.roy233.tvcast.feature.playback.application.PlaybackSessionHost
 import com.roy233.tvcast.feature.playback.application.PlaybackSessionLifecycle
 import com.roy233.tvcast.feature.playback.application.PlaybackTicker
 import com.roy233.tvcast.feature.playback.application.PlaybackTickerHost
+import com.roy233.tvcast.feature.playback.application.PlaybackUsageSession
 import com.roy233.tvcast.feature.playback.application.VodPlaybackCoordinator
 import com.roy233.tvcast.feature.playback.application.VodPlaybackHost
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
@@ -128,6 +136,9 @@ class MainActivity :
     private lateinit var playbackEngineHost: PlaybackEngineHost
     /** 统一接收播放后端转换后的事件。 */
     private val playbackEventRouter = PlaybackEventRouter(this)
+    private val playbackUsageSession by lazy {
+        PlaybackUsageSession(container.qualityTelemetry, SystemClock::elapsedRealtime)
+    }
 
     /** 视频渲染布局。 */
     /** 唯一 Media3 使用的 SurfaceView 容器。 */
@@ -307,6 +318,9 @@ class MainActivity :
     private val playbackHistoryCoordinator
         get() = container.playbackHistoryCoordinator
 
+    private val qualityTelemetry
+        get() = container.qualityTelemetry
+
     /** 首页双击返回退出计时。 */
     private val homeBackExitGate = DoubleBackExitGate(HOME_BACK_EXIT_WINDOW_MS)
     /** 设备身份偏好读取器。 */
@@ -431,7 +445,9 @@ class MainActivity :
     override fun setAutomaticUpdateCheck(enabled: Boolean) =
         updateCoordinator.setAutomaticCheck(enabled)
 
-    override fun checkForUpdates() = updateCoordinator.checkForUpdates()
+    override fun checkForUpdates() {
+        updateCoordinator.checkForUpdates()
+    }
 
     override fun downloadUpdate() = updateCoordinator.downloadUpdate()
 
@@ -439,7 +455,10 @@ class MainActivity :
 
     override fun installUpdate() = updateCoordinator.installUpdate()
 
-    override fun requestPlayPause() = togglePlayPause()
+    override fun requestPlayPause() {
+        togglePlayPause()
+        qualityTelemetry.log(UsageEvent.FeatureUsed(Feature.PLAY_PAUSE))
+    }
 
     override fun requestSeekBy(deltaMs: Long) = seekBy(deltaMs)
 
@@ -452,6 +471,7 @@ class MainActivity :
     override fun toggleDanmaku() {
         val enabled = !danmakuSettings.enabled
         updateDanmakuSettings(danmakuSettings.copy(enabled = enabled))
+        qualityTelemetry.log(UsageEvent.FeatureUsed(Feature.DANMAKU))
         ui = ui.copy(toast = if (enabled) "弹幕已开启" else "弹幕已关闭")
     }
 
@@ -475,9 +495,15 @@ class MainActivity :
 
     override fun requestVolume(volume: Int) = setVolume(volume)
 
-    override fun selectQuality(qn: Int) = switchQuality(qn)
+    override fun selectQuality(qn: Int) {
+        qualityTelemetry.log(UsageEvent.FeatureUsed(Feature.QUALITY))
+        switchQuality(qn)
+    }
 
-    override fun selectAudio(id: Int) = switchAudio(id)
+    override fun selectAudio(id: Int) {
+        qualityTelemetry.log(UsageEvent.FeatureUsed(Feature.AUDIO))
+        switchAudio(id)
+    }
 
     /** 选择字幕轨道；null 表示关闭字幕。 */
     override fun selectSubtitleTrack(key: SubtitleTrackKey?) {
@@ -526,6 +552,28 @@ class MainActivity :
             enabled = enabled,
             accountMid = authTokenStore.load()?.mid ?: ui.mid,
         )
+    }
+
+    override fun setCrashTracking(enabled: Boolean) {
+        uiPreferences.crashTrackingEnabled = enabled
+        qualityTelemetry.applyCollection(enabled, uiPreferences.usageStatisticsEnabled)
+        ui = ui.copy(crashTrackingEnabled = enabled)
+    }
+
+    override fun setUsageStatistics(enabled: Boolean) {
+        uiPreferences.usageStatisticsEnabled = enabled
+        qualityTelemetry.applyCollection(uiPreferences.crashTrackingEnabled, enabled)
+        ui = ui.copy(usageStatisticsEnabled = enabled)
+    }
+
+    override fun acknowledgePrivacyNotice() {
+        uiPreferences.privacyNoticeAcknowledged = true
+        ui = ui.copy(privacyNoticeVisible = false)
+        finishStartupFlow()
+    }
+
+    override fun reportScreen(screen: Screen) {
+        qualityTelemetry.log(UsageEvent.ScreenViewed(screen))
     }
 
     override fun handleHomeBack() = handleHomeBackInternal()
@@ -864,12 +912,34 @@ class MainActivity :
 
     /** 通过唯一的 Media3 后端打开媒体。 */
     override fun startPlaybackBackend(request: PlaybackRequest, seekToMs: Long): Boolean {
+        playbackUsageSession.open(request.isLive)
         return runCatching { playbackEngineHost.open(request, seekToMs) }
+            .onSuccess { opened ->
+                qualityTelemetry.log(
+                    UsageEvent.CastResolved(
+                        outcome = if (opened) Outcome.SUCCESS else Outcome.FAILURE,
+                        contentKind = if (request.isLive) ContentKind.LIVE else ContentKind.VOD,
+                    ),
+                )
+            }
             .onFailure { error ->
                 LogHub.e(
                     TAG,
                     "open playback backend failed drm=${request.isDrm} hdr=${request.video.isHdr} " +
                         "dolbyVision=${request.video.isDolbyVision} error=${LogRedaction.reason(error)}",
+                )
+                qualityTelemetry.recordNonFatal(
+                    NonFatalReport(
+                        throwable = error,
+                        component = NonFatalReport.Component.CAST,
+                        operation = NonFatalReport.Operation.SESSION_INTERNAL,
+                    ),
+                )
+                qualityTelemetry.log(
+                    UsageEvent.CastResolved(
+                        outcome = Outcome.FAILURE,
+                        contentKind = if (request.isLive) ContentKind.LIVE else ContentKind.VOD,
+                    ),
                 )
             }
             .getOrDefault(false)
@@ -1091,6 +1161,9 @@ class MainActivity :
                 danmakuDurationSec = danmakuSettings.durationSec,
                 subtitleFontScale = subtitleSettings.fontScale,
                 subtitleBottomMarginRatio = subtitleSettings.bottomMarginRatio,
+                crashTrackingEnabled = uiPreferences.crashTrackingEnabled,
+                usageStatisticsEnabled = uiPreferences.usageStatisticsEnabled,
+                privacyNoticeVisible = !uiPreferences.privacyNoticeAcknowledged,
             )
         updateCoordinator.initialize()
 
@@ -1157,6 +1230,13 @@ class MainActivity :
                         "reason=${LogRedaction.reason(error)} " +
                             "device=${Build.MANUFACTURER}/${Build.MODEL}",
                 )
+                qualityTelemetry.recordNonFatal(
+                    NonFatalReport(
+                        throwable = error,
+                        component = NonFatalReport.Component.STARTUP,
+                        operation = NonFatalReport.Operation.PLAYER_ENGINE_INITIALIZATION,
+                    ),
+                )
                 showError(
                     title = "播放器初始化失败",
                     message = "设备可能缺少必要的解码组件，请查看诊断日志。",
@@ -1174,15 +1254,7 @@ class MainActivity :
                 recents = if (rememberPlaybackContent) recentCastStore.load() else emptyList(),
                 showContinue = rememberPlaybackContent,
             )
-        playbackHistoryCoordinator
-        startupLoginPending = true
-        calibrationCoordinator.initialize()
-        if (calibrationCoordinator.state.phase == CalibrationPhase.HIDDEN) {
-            startupLoginPending = false
-            startOrLogin()
-        }
-        startTicker()
-        updateCoordinator.checkAutomaticallyOnLaunch()
+        if (!ui.privacyNoticeVisible) finishStartupFlow()
     }
 
     /** 播放器事件只经统一路由进入会话逻辑。 */
@@ -1237,6 +1309,14 @@ class MainActivity :
 
     override fun historyOnPaused() {
         playbackHistoryCoordinator.onPaused(playerPositionMs(), playerDurationMs())
+    }
+
+    override fun usageOnPlaying() = playbackUsageSession.onPlaying()
+
+    override fun usageOnPaused() = playbackUsageSession.onPaused()
+
+    override fun finishUsage(reason: PlaybackEndReason) {
+        playbackUsageSession.finish(reason, playerPositionMs(), playerDurationMs())
     }
 
     override fun setCastEnded() {
@@ -1402,6 +1482,20 @@ class MainActivity :
     /** 根据已有凭据进入登录状态或准备登录页面。 */
     private fun startOrLogin() {
         loginCoordinator.startOrLogin()
+    }
+
+    /** 首次隐私提示确认后再启动会影响用户流程的初始化。 */
+    private fun finishStartupFlow() {
+        playbackHistoryCoordinator
+        startupLoginPending = true
+        calibrationCoordinator.initialize()
+        if (calibrationCoordinator.state.phase == CalibrationPhase.HIDDEN) {
+            startupLoginPending = false
+            startOrLogin()
+        }
+        startTicker()
+        updateCoordinator.checkAutomaticallyOnLaunch()
+        qualityTelemetry.log(UsageEvent.ScreenViewed(Screen.HOME))
     }
 
     /** 启动二维码登录流程。 */
@@ -2031,6 +2125,13 @@ class MainActivity :
 
     /** 释放投屏、登录、协程和播放器资源。 */
     override fun onDestroy() {
+        if (::playbackEngineHost.isInitialized) {
+            playbackUsageSession.finish(
+                PlaybackEndReason.ACTIVITY_DESTROYED,
+                playerPositionMs(),
+                playerDurationMs(),
+            )
+        }
         super.onDestroy()
         LogHub.i(TAG, "activity destroy")
         playbackSessionLifecycle.destroy()

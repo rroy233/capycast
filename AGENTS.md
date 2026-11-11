@@ -4,6 +4,7 @@
 
 - Read the relevant code, configuration, documentation, and existing conventions before making changes. Do not rewrite existing behavior based on assumptions.
 - Before changing Android behaviour, read the **Current Architecture** section below. Then read the task-specific reference selected by `.agents/skills/capycast-architecture/SKILL.md`.
+- Before designing or changing Compose focus, you MUST read the current official Android Developers documentation and use its prescribed mechanism.
 - Keep changes focused on the requested outcome. Do not mix unrelated cleanup, refactoring, or formatting with functional changes.
 - Preserve and respect existing user changes in the working tree.
 - Every behaviour has one owning mechanism. A fix extends that owner so the whole category of defect becomes impossible; a change that only removes the current symptom leaves the mechanism wrong.
