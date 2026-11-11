@@ -2,6 +2,7 @@ package com.roy233.tvcast.feature.playback.application
 
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEvent
+import com.roy233.tvcast.core.playback.PlaybackSessionToken
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -13,18 +14,15 @@ class PlaybackEventRouterTest {
         val calls = mutableListOf<String>()
         val router = PlaybackEventRouter(host(PlaybackBackend.MEDIA3, calls))
 
-        router.dispatch(PlaybackBackend.MEDIA3, PlaybackEvent.Ended)
+        router.dispatch(PlaybackSessionToken(1L, 1L), PlaybackBackend.MEDIA3, PlaybackEvent.Ended)
 
         assertEquals(
             listOf(
                 "finishHistory",
-                "clearLiveSession",
                 "setCastEnded",
                 "finishUsage",
                 "runOnMain",
-                "vodDanmakuClose",
-                "vodSubtitleClose",
-                "liveDanmakuClose",
+                "finishPlaybackSession",
                 "updateEnded",
             ),
             calls,
@@ -38,6 +36,7 @@ class PlaybackEventRouterTest {
         ) { _, method, args ->
             when (method.name) {
                 "activeBackend" -> backend
+                "acceptPlaybackEvent" -> true
                 "currentPlaybackRequest" -> null
                 "runOnMain" -> {
                     calls += method.name

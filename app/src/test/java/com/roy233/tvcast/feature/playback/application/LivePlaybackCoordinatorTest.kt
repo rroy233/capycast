@@ -16,7 +16,7 @@ import org.junit.Test
 
 class LivePlaybackCoordinatorTest {
     @Test
-    fun `successful live start and route switch activate the room danmaku session`() {
+    fun `successful live start and route switch only reopen the playback backend`() {
         val calls = mutableListOf<String>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val host =
@@ -31,10 +31,6 @@ class LivePlaybackCoordinatorTest {
                     "openPlayback" -> {
                         calls += "open"
                         true
-                    }
-                    "onLivePlaybackOpened" -> {
-                        calls += "danmaku:${args[0]}"
-                        Unit
                     }
                     "getCoroutineScope" -> scope
                     "isPausedWithoutBuffering",
@@ -62,7 +58,7 @@ class LivePlaybackCoordinatorTest {
                 "live",
             )
             assertTrue(coordinator.switchRoute(routes[1], "test-switch", candidateA))
-            assertEquals(listOf("open", "danmaku:42", "open", "danmaku:42"), calls)
+            assertEquals(listOf("open", "open"), calls)
         } finally {
             coordinator.clear()
             scope.cancel()

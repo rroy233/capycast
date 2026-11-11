@@ -36,7 +36,9 @@ import com.roy233.tvcast.core.diagnostics.Screen
 import com.roy233.tvcast.core.diagnostics.UsageEvent
 import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
 import com.roy233.tvcast.core.playback.PlaybackBackend
+import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.PlaybackSessionToken
 import com.roy233.tvcast.core.playback.PlaybackSnapshot
 import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.data.bili.danmaku.BiliDanmakuRepository
@@ -70,6 +72,7 @@ import com.roy233.tvcast.feature.playback.application.PlaybackEventHost
 import com.roy233.tvcast.feature.playback.application.PlaybackEventRouter
 import com.roy233.tvcast.feature.playback.application.PlaybackSelectionCoordinator
 import com.roy233.tvcast.feature.playback.application.PlaybackSelectionHost
+import com.roy233.tvcast.feature.playback.application.PlaybackSessionContext
 import com.roy233.tvcast.feature.playback.application.PlaybackSessionHost
 import com.roy233.tvcast.feature.playback.application.PlaybackSessionLifecycle
 import com.roy233.tvcast.feature.playback.application.PlaybackTicker
@@ -678,16 +681,28 @@ class MainActivity :
 
     override fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean {
         currentRequest = request
-        return runCatching { playbackEngineHost.open(request, seekToMs) }
+        return runCatching { openPlaybackBackendForSession(request, seekToMs) }
             .onFailure { error ->
                 LogHub.e(TAG, "open playback backend failed ${LogRedaction.reason(error)}", error)
             }
             .getOrDefault(false)
     }
 
-    override fun onLivePlaybackOpened(roomId: Long) {
-        onDanmakuClose()
-        openLiveDanmaku(roomId)
+    /** 所有初次播放、线路切换和表示层回退共用的后端打开边界。 */
+    private fun openPlaybackBackendForSession(
+        request: PlaybackRequest,
+        seekToMs: Long,
+    ): Boolean {
+        val context = playbackSessionLifecycle.beginOpen(request, seekToMs) ?: return false
+        val opened =
+            try {
+                playbackEngineHost.open(request, seekToMs, context.token)
+            } catch (failure: Throwable) {
+                playbackSessionLifecycle.completeOpen(context, opened = false)
+                throw failure
+            }
+        playbackSessionLifecycle.completeOpen(context, opened)
+        return opened
     }
 
     /** 用于后台线路探测的协程作用域。 */
@@ -876,9 +891,6 @@ class MainActivity :
     /** 开始一次新的观看历史会话。 */
     override fun newHistorySession() = playbackHistoryCoordinator.onNewCast()
 
-    /** 结束直播会话与直播专属任务。 */
-    override fun endLiveSession(reason: String) = clearLiveSession(reason)
-
     /** 标记本次投屏失败。 */
     override fun markCastFailed(code: String) = dlna.markCastFailed(code)
 
@@ -890,7 +902,8 @@ class MainActivity :
     ) = startLivePlayback(info, routes, title)
 
     /** 停止当前投屏的播放后端。 */
-    override fun stopPlaybackForCast(reason: String) = stopActivePlayback(reason)
+    override fun stopPlaybackForCast(reason: String) =
+        playbackSessionLifecycle.stopForReplacement(reason)
 
     /** 点播会话协调器。 */
     override fun vodSessionCoordinator(): VodPlaybackCoordinator = vodCoordinator
@@ -913,7 +926,7 @@ class MainActivity :
     /** 通过唯一的 Media3 后端打开媒体。 */
     override fun startPlaybackBackend(request: PlaybackRequest, seekToMs: Long): Boolean {
         playbackUsageSession.open(request.isLive)
-        return runCatching { playbackEngineHost.open(request, seekToMs) }
+        return runCatching { openPlaybackBackendForSession(request, seekToMs) }
             .onSuccess { opened ->
                 qualityTelemetry.log(
                     UsageEvent.CastResolved(
@@ -945,25 +958,25 @@ class MainActivity :
             .getOrDefault(false)
     }
 
-    /** 暂停点播弹幕渲染。 */
-    override fun onDanmakuClose() {
+    /** 关闭点播弹幕渲染。 */
+    private fun closeVodDanmaku() {
         if (::danmakuController.isInitialized) danmakuController.close()
     }
 
-    /** 暂停直播弹幕会话。 */
-    override fun onLiveDanmakuClose() {
+    /** 关闭直播弹幕会话。 */
+    private fun closeLiveDanmaku() {
         if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
     }
 
     /** 打开点播弹幕会话。 */
-    override fun onVodDanmakuOpen(aid: Long, cid: Long, durationMs: Long, seekToMs: Long) {
+    private fun openVodDanmaku(aid: Long, cid: Long, durationMs: Long, seekToMs: Long) {
         if (::danmakuController.isInitialized) {
             danmakuController.open(VodDanmakuContent(aid = aid, cid = cid), durationMs, seekToMs)
         }
     }
 
     /** 打开点播字幕会话。 */
-    override fun onVodSubtitleOpen(request: PlaybackRequest) {
+    private fun openVodSubtitle(request: PlaybackRequest) {
         if (!::subtitleController.isInitialized) return
         subtitleController.applySettings(subtitleSettings)
         subtitleController.open(
@@ -977,27 +990,24 @@ class MainActivity :
         subtitleSyncDriver.start()
     }
 
-    /** 播放终止路径统一关闭字幕会话。 */
-    override fun closeSubtitleSession() = onSubtitleClose()
-
     /** 关闭点播字幕会话。 */
-    override fun onSubtitleClose() {
+    private fun closeVodSubtitle() {
         if (::subtitleSyncDriver.isInitialized) subtitleSyncDriver.stop()
         if (::subtitleController.isInitialized) subtitleController.close()
     }
 
     /** 同步弹幕速度。 */
-    override fun onDanmakuPlaybackRate(rate: Float) {
+    private fun syncDanmakuPlaybackRate(rate: Float) {
         if (::danmakuController.isInitialized) danmakuController.onPlaybackRateChanged(rate)
     }
 
     /** 应用当前弹幕设置。 */
-    override fun onDanmakuSettings() {
+    private fun applyDanmakuSettings() {
         if (::danmakuController.isInitialized) danmakuController.applySettings(danmakuSettings)
     }
 
     /** 重新计算弹幕布局。 */
-    override fun onDanmakuLayout() {
+    private fun updateDanmakuLayout() {
         if (::danmakuController.isInitialized) layoutDanmaku()
     }
 
@@ -1260,6 +1270,14 @@ class MainActivity :
     /** 播放器事件只经统一路由进入会话逻辑。 */
     override fun activeBackend(): PlaybackBackend = playbackEngineHost.backend
 
+    override fun acceptPlaybackEvent(
+        token: PlaybackSessionToken,
+        event: PlaybackEvent,
+    ): Boolean = playbackSessionLifecycle.acceptEvent(token, event)
+
+    override fun finishPlaybackSession(reason: String) =
+        playbackSessionLifecycle.finishCurrent(reason)
+
     override fun currentPlaybackRequest(): PlaybackRequest? = currentRequest
 
     override fun consumePendingSeekMs(): Long = pendingSeekMs.also { pendingSeekMs = 0L }
@@ -1421,16 +1439,6 @@ class MainActivity :
             danmakuController.onBuffering(buffering, playerPositionMs())
     }
 
-    override fun vodDanmakuClose() {
-        if (::danmakuController.isInitialized) danmakuController.close()
-    }
-
-    override fun vodSubtitleClose() = onSubtitleClose()
-
-    override fun liveDanmakuClose() {
-        if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
-    }
-
     override fun reportPlaybackError(
         title: String,
         message: String,
@@ -1568,13 +1576,12 @@ class MainActivity :
     /** 播放稳定后结束直播切源事务。 */
     private fun completeLiveRouteSwitch() = liveCoordinator.completeRouteSwitch()
 
-    /** 清理直播专属任务和阈值，防止用户停止后触发后台自动重连。 */
-    override fun clearLiveSession(reason: String) {
+    /** 清理点播、直播恢复任务和阈值，防止会话终止后触发后台切源。 */
+    private fun clearPlaybackRoutingSessions(reason: String) {
         val session = liveCoordinator.activeSession
         liveCoordinator.clear()
         val oldVodSession = vodCoordinator.activeSession
         vodCoordinator.clear()
-        if (::liveDanmakuController.isInitialized) liveDanmakuController.close()
         if (session != null)
             LogHub.i(TAG, "live session cleared room=${session.stream.roomId} reason=$reason")
         if (oldVodSession != null) LogHub.i(TAG, "VOD session cleared reason=$reason")
@@ -1783,6 +1790,50 @@ class MainActivity :
     }
 
     override fun stopPlaybackForSession(reason: String) = stopActivePlayback(reason)
+
+    override fun openPlaybackComponents(context: PlaybackSessionContext) {
+        val request = context.request
+        if (request.isLive) {
+            openLiveDanmaku(request.cid)
+        } else {
+            openVodDanmaku(
+                aid = request.aid,
+                cid = request.cid,
+                durationMs = request.durationSec * 1000,
+                seekToMs = context.startPositionMs,
+            )
+            openVodSubtitle(request)
+            syncDanmakuPlaybackRate(ui.playbackSpeed)
+            applyDanmakuSettings()
+            updateDanmakuLayout()
+        }
+    }
+
+    override fun closePlaybackComponents(reason: String) {
+        LogHub.i(TAG, "close playback components reason=$reason")
+        closePlaybackComponent("routing-sessions", reason) {
+            clearPlaybackRoutingSessions(reason)
+        }
+        closePlaybackComponent("vod-subtitle", reason, ::closeVodSubtitle)
+        closePlaybackComponent("vod-danmaku", reason, ::closeVodDanmaku)
+        closePlaybackComponent("live-danmaku", reason, ::closeLiveDanmaku)
+    }
+
+    /** 单个组件清理失败不能阻止同一内容的其他组件释放。 */
+    private fun closePlaybackComponent(
+        name: String,
+        reason: String,
+        close: () -> Unit,
+    ) {
+        runCatching(close).onFailure { failure ->
+            LogHub.e(
+                TAG,
+                "close playback component failed name=$name reason=$reason " +
+                    "detail=${LogRedaction.reason(failure)}",
+                failure,
+            )
+        }
+    }
 
     override fun clearSessionIdentity(clearCastMetadata: Boolean, clearResolving: Boolean) {
         currentRequest = null

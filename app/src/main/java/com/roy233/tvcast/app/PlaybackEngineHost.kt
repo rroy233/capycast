@@ -11,6 +11,7 @@ import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEngine
 import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.PlaybackSessionToken
 import com.roy233.tvcast.core.playback.PlaybackSnapshot
 import com.roy233.tvcast.platform.player.Media3PlaybackEngineAdapter
 import com.roy233.tvcast.platform.player.Media3PlayerEngine
@@ -21,25 +22,34 @@ class PlaybackEngineHost(
     context: Context,
     private val playerView: PlayerView,
     private val viewportHost: VideoViewportHost,
-    private val onEvent: (PlaybackBackend, PlaybackEvent) -> Unit,
+    private val onEvent: (PlaybackSessionToken, PlaybackBackend, PlaybackEvent) -> Unit,
     private val onHdrWindowChanged: (Boolean) -> Unit,
 ) {
+    /** 当前 Media3 打开代次；停止或替换期间保持为空，使同步产生的旧事件直接失效。 */
+    private var eventToken: PlaybackSessionToken? = null
     private val media3 =
         Media3PlayerEngine(
             context = context,
             playerView = playerView,
-            onEvent = { event ->
-                if (event is PlaybackEvent.VideoSizeChanged) {
-                    viewportHost.setMedia3ContentAspect(event.width, event.height)
-                }
-                onEvent(PlaybackBackend.MEDIA3, event)
-            },
+            onEvent = eventCallback@{ event ->
+                    val token = eventToken ?: return@eventCallback
+                    if (event is PlaybackEvent.VideoSizeChanged) {
+                        viewportHost.setMedia3ContentAspect(event.width, event.height)
+                    }
+                    onEvent(token, PlaybackBackend.MEDIA3, event)
+                },
         )
     private val engine: PlaybackEngine = Media3PlaybackEngineAdapter { media3 }
 
     val backend: PlaybackBackend = PlaybackBackend.MEDIA3
 
-    fun open(request: PlaybackRequest, seekToMs: Long): Boolean {
+    fun open(
+        request: PlaybackRequest,
+        seekToMs: Long,
+        token: PlaybackSessionToken,
+    ): Boolean {
+        // Media3 替换旧媒体前先撤销 token，替换期间的同步回调不能冒充新尝试。
+        eventToken = null
         val output: Surface? =
             if (request.isDrm || request.video.isHdr || request.video.isDolbyVision) {
                 if (viewportHost.hasCompensation()) {
@@ -71,7 +81,9 @@ class PlaybackEngineHost(
         playerView.visibility = View.VISIBLE
         media3.setVideoOutput(output)
         viewportHost.showPlaybackCompensation(compensated)
-        return engine.open(request, seekToMs)
+        val opened = engine.open(request, seekToMs)
+        if (opened) eventToken = token
+        return opened
     }
 
     fun snapshot(fallbackVolume: Int): PlaybackSnapshot = engine.snapshot(fallbackVolume)
@@ -85,6 +97,7 @@ class PlaybackEngineHost(
     fun setVolume(volume: Int, reason: String) = engine.setVolume(volume, reason)
 
     fun stop(reason: String) {
+        eventToken = null
         engine.stop(reason)
         viewportHost.showPlaybackCompensation(false)
     }
@@ -98,6 +111,7 @@ class PlaybackEngineHost(
     fun liveTelemetry(): LivePlaybackTelemetry = media3.liveTelemetry()
 
     fun release() {
+        eventToken = null
         engine.release()
         viewportHost.showPlaybackCompensation(false)
     }
