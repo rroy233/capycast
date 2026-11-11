@@ -8,17 +8,16 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -44,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.playback.presentation.PlaybackSpeed
 import com.roy233.tvcast.ui.designsystem.*
+import com.roy233.tvcast.ui.legal.UserAgreementPolicy
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
@@ -51,14 +51,14 @@ import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.FocusDiagnostics
 import com.roy233.tvcast.ui.tv.RequestFocusWhenReady
+import com.roy233.tvcast.ui.tv.document.MarkdownBlockKind
+import com.roy233.tvcast.ui.tv.document.MarkdownDocumentBlock
+import com.roy233.tvcast.ui.tv.document.parseMarkdownDocument
 import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.tvModalFocusRegion
 import kotlin.math.roundToInt
-
-internal const val PRIVACY_NOTICE_TEXT =
-    "本应用集成了 Google Firebase 服务用于质量维护：崩溃报告（Firebase Crashlytics，崩溃堆栈、设备型号与系统版本等）与匿名化的用量统计（Firebase Analytics，如每日活跃、页面浏览与基础功能使用事件、应用版本与语言区域），不含您的账号 ID、手机号等个人身份信息。上述数据会发送至 Google 的 Firebase 服务器；您可以在应用设置的“崩溃跟踪”与“使用情况统计”开关中分别关闭对应收集。"
 
 private const val WELCOME_MESSAGE =
     "CapyCast是一款为 Android TV 打造的极简 Bilibili 投屏播放器，使用过程遇到任何问题请向我们反馈。如果喜欢，麻烦点点Star (≧▽≦)"
@@ -74,7 +74,7 @@ internal fun PrivacyNoticeDialog(state: TvUiState, actions: TvActions) {
         contentAlignment = Alignment.Center,
     ) {
         GlassSurface(
-            modifier = Modifier.widthIn(max = 820.dp).fillMaxWidth(0.84f),
+            modifier = Modifier.tvModalCard(),
             material = GlassMaterial.Panel,
             size = GlassSize.Large,
         ) {
@@ -108,7 +108,7 @@ private fun PrivacyAgreementLink(onClick: () -> Unit) {
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(8.dp)
     BasicText(
-        text = "《隐私协议》",
+        text = "《用户协议与隐私政策》",
         style =
             TvType.caption.copy(
                 color = if (focused) Color.White else TvColors.accent,
@@ -139,32 +139,52 @@ private fun PrivacyAgreementLink(onClick: () -> Unit) {
 /** 由欢迎弹窗或设置页进入的隐私协议模态层。 */
 @Composable
 internal fun PrivacyAgreementDialog(state: TvUiState, actions: TvActions) {
-    val focus = rememberFocusTarget()
-    RequestFocusWhenReady(activation = state.privacyAgreementVisible, target = focus)
+    val blocks = remember { parseMarkdownDocument(UserAgreementPolicy.markdown) }
+    val initialFocus = rememberFocusTarget()
+    val backFocus = rememberFocusTarget()
+    val listState = rememberLazyListState()
+    val firstFocusable = blocks.indexOfFirst { it.kind != MarkdownBlockKind.DIVIDER }
+    RequestFocusWhenReady(
+        activation = state.privacyAgreementVisible,
+        target = if (firstFocusable >= 0) initialFocus else backFocus,
+    )
     Box(
         modifier =
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).tvModalFocusRegion(),
         contentAlignment = Alignment.Center,
     ) {
         GlassSurface(
-            modifier = Modifier.widthIn(max = 820.dp).fillMaxWidth(0.84f),
+            modifier = Modifier.tvModalCard(TvModalCardKind.DOCUMENT),
             material = GlassMaterial.Panel,
             size = GlassSize.Large,
         ) {
             Column(
-                Modifier.padding(horizontal = 30.dp, vertical = 26.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 30.dp, vertical = 26.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                BasicText("隐私协议", style = TvType.section.copy(fontSize = 30.sp))
                 BasicText(
-                    text = PRIVACY_NOTICE_TEXT,
-                    style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 19.sp),
+                    "用户协议与隐私政策",
+                    style = TvType.section.copy(fontSize = 30.sp),
                 )
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    blocks.forEachIndexed { index, block ->
+                        item(key = index) {
+                            MarkdownDocumentBlock(
+                                block = block,
+                                focusTarget = if (index == firstFocusable) initialFocus else null,
+                            )
+                        }
+                    }
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     WhiteButton(
                         text = "返回",
                         onClick = actions.onClosePrivacyAgreement,
-                        focusTarget = focus,
+                        focusTarget = backFocus,
                         compact = true,
                     )
                 }
@@ -193,7 +213,7 @@ internal fun HelpSheet(state: TvUiState, actions: TvActions) {
         contentAlignment = Alignment.Center,
     ) {
         GlassSurface(
-            modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth(0.76f).pointerInput(Unit) {},
+            modifier = Modifier.tvModalCard().pointerInput(Unit) {},
             material = GlassMaterial.Panel,
             size = GlassSize.Large,
         ) {
@@ -285,14 +305,9 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.72f)).tvModalFocusRegion(),
         contentAlignment = Alignment.Center,
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val panelMaxHeight = (maxHeight * 0.88f).coerceAtMost(520.dp)
+        Box(Modifier.fillMaxSize()) {
             GlassSurface(
-                modifier =
-                    Modifier.widthIn(max = 700.dp)
-                        .fillMaxWidth(0.80f)
-                        .heightIn(max = panelMaxHeight)
-                        .align(Alignment.Center),
+                modifier = Modifier.tvModalCard(TvModalCardKind.PANEL).align(Alignment.Center),
                 material = GlassMaterial.Panel,
                 size = GlassSize.Large,
             ) {

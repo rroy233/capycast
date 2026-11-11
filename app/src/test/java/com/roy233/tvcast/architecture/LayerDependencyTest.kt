@@ -53,6 +53,25 @@ class LayerDependencyTest {
     }
 
     @Test
+    fun `legal content stays independent of rendering state and application layers`() {
+        assertNoImports(
+            packageDir = "ui/legal",
+            forbidden =
+                listOf(
+                    "android.",
+                    "androidx.",
+                    "com.roy233.tvcast.app",
+                    "com.roy233.tvcast.core",
+                    "com.roy233.tvcast.data",
+                    "com.roy233.tvcast.feature",
+                    "com.roy233.tvcast.platform",
+                    "com.roy233.tvcast.ui.model",
+                    "com.roy233.tvcast.ui.tv",
+                ),
+        )
+    }
+
+    @Test
     fun `playback coordinators do not reference the root ui state holder`() {
         val dir = File(root, "feature/playback")
         val offenders =

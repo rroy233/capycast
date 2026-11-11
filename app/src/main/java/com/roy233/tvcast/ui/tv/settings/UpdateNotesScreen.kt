@@ -31,6 +31,9 @@ import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.FocusBinding
 import com.roy233.tvcast.ui.tv.RestoreFocus
+import com.roy233.tvcast.ui.tv.document.MarkdownBlockKind
+import com.roy233.tvcast.ui.tv.document.MarkdownDocumentBlock
+import com.roy233.tvcast.ui.tv.document.parseMarkdownDocument
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import com.roy233.tvcast.ui.tv.tvFocusRegion
@@ -40,13 +43,14 @@ import com.roy233.tvcast.ui.tv.tvFocusRegion
 internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
     val available = state.update.availableUpdate
     val notes = available?.releaseNotes.orEmpty()
-    val blocks = remember(notes) { parseReleaseNotes(notes) }
+    val blocks = remember(notes) { parseMarkdownDocument(notes) }
     val firstFocus = rememberFocusTarget()
     val backFocus = rememberFocusTarget()
     val listState = rememberLazyListState()
-    val firstFocusable = blocks.indexOfFirst { it.kind != ReleaseNoteKind.DIVIDER }
+    val firstFocusable = blocks.indexOfFirst { it.kind != MarkdownBlockKind.DIVIDER }
     RestoreFocus(
         request = state.focusRequest,
+        enabled = state.topOverlay == null && !state.sidebarVisible,
         listState = listState,
         bindings =
             listOf(
@@ -109,7 +113,7 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
             } else {
                 blocks.forEachIndexed { index, block ->
                     item(key = index) {
-                        ReleaseNoteBlock(
+                        MarkdownDocumentBlock(
                             block = block,
                             focusTarget = if (index == firstFocusable) firstFocus else null,
                         )

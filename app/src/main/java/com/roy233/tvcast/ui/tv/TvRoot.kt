@@ -248,7 +248,10 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                         animationSpec = tween(220),
                         label = "tab",
                         // 菜单显示期间页面整体退出焦点范围，保证隔层不可操作。
-                        modifier = recede.focusProperties { canFocus = !state.sidebarVisible },
+                        modifier =
+                            recede.focusProperties {
+                                canFocus = !state.sidebarVisible && state.topOverlay == null
+                            },
                     ) { destination ->
                         when (destination) {
                             TvDestination.HOME -> HomeScreen(state, actions)

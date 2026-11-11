@@ -61,6 +61,7 @@ import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.FocusBinding
 import com.roy233.tvcast.ui.tv.FocusTarget
 import com.roy233.tvcast.ui.tv.RestoreFocus
+import com.roy233.tvcast.ui.tv.document.markdownDocumentPreview
 import com.roy233.tvcast.ui.tv.focusTarget
 import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.home.WhiteButton
@@ -101,6 +102,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
     }
     RestoreFocus(
         request = state.focusRequest,
+        enabled = state.topOverlay == null && !state.sidebarVisible,
         listState = listState,
         bindings = focusBindings,
         // 更新日志入口只在有说明时存在，条目数量变化后需要重新取回焦点。
@@ -468,7 +470,7 @@ private fun ReleaseNotesEntry(
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.collectIsFocusedAsState().value
     val shape = RoundedCornerShape(16.dp)
-    val preview = releaseNotesPreview(notes)
+    val preview = markdownDocumentPreview(notes)
     Row(
         modifier =
             Modifier.fillMaxWidth()

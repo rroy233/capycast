@@ -65,10 +65,12 @@ private enum class AccountPlatform(val label: String) {
 /** 显示由账号、软件与设备信息组成的设置首页。 */
 @Composable
 internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
+    val settingsListFocus = remember { FocusRequester() }
     val platformFocus = remember { FocusRequester() }
     val loginFocus = remember { FocusRequester() }
     val updateEntryFocus = remember { FocusRequester() }
     var selectedPlatform by remember { mutableStateOf(AccountPlatform.BILIBILI) }
+    var privacyAgreementWasVisible by remember { mutableStateOf(false) }
 
     when (state.settingsPage) {
         SettingsPage.UPDATE -> {
@@ -84,13 +86,20 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
         SettingsPage.ROOT -> Unit
     }
 
-    // 官方建议在页面出现时通过副作用请求一次初始焦点；页面内的恢复交给
-    // LazyColumn.focusRestorer，不观察条目挂载、回收或滚动状态。
     LaunchedEffect(Unit) {
+        if (state.topOverlay != null || state.sidebarVisible) return@LaunchedEffect
         when (state.focusRequest.anchor) {
             UiFocusAnchor.SETTINGS_UPDATE_ENTRY -> updateEntryFocus.requestFocus()
             else -> platformFocus.requestFocus()
         }
+    }
+    // 协议是暂时离开设置列表的内容层。按 Compose 的焦点恢复模型保存当前子项，
+    // 关闭后由列表恢复该子项，避免依赖未挂载的列表项或手工滚动位置。
+    LaunchedEffect(state.privacyAgreementVisible) {
+        if (privacyAgreementWasVisible && !state.privacyAgreementVisible) {
+            settingsListFocus.restoreFocusedChild()
+        }
+        privacyAgreementWasVisible = state.privacyAgreementVisible
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -107,8 +116,9 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     .fillMaxHeight()
                     .align(Alignment.Center)
                     .padding(vertical = verticalPadding)
-                    // LazyColumn 本身是焦点组；官方 focusRestorer 负责记住最后的子项。
-                    .focusRestorer(platformFocus),
+                    .focusRequester(settingsListFocus)
+                    .focusRestorer(platformFocus)
+                    .testTag("settings-list"),
             verticalArrangement = Arrangement.spacedBy(sectionGap),
         ) {
             item {
@@ -177,8 +187,11 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     )
                     SettingsRowDivider()
                     FocusableRow(
-                        title = "隐私协议",
-                        onClick = actions.onOpenPrivacySettings,
+                        title = "用户协议与隐私政策",
+                        onClick = {
+                            settingsListFocus.saveFocusedChild()
+                            actions.onOpenPrivacySettings()
+                        },
                         rowHeight = if (compact) 56.dp else 64.dp,
                     )
                 }
