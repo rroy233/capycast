@@ -24,8 +24,6 @@ interface DlnaTransportHost {
 
     fun isSeekable(): Boolean
 
-    fun setVolume(volume: Int, reason: String)
-
     fun positionMs(): Long
 
     fun durationMs(): Long
@@ -42,8 +40,6 @@ interface DlnaTransportHost {
     fun showDlnaPlayState(playing: Boolean)
 
     fun showDlnaSeekState(positionMs: Long)
-
-    fun showDlnaVolumeState(volume: Int)
 }
 
 /** 协议适配器只向此端口传递语义命令。 */
@@ -115,13 +111,9 @@ class DlnaTransportCoordinator(private val host: DlnaTransportHost) : DlnaCastCo
         !host.currentIsLive() && host.engineAvailable() && host.isSeekable()
     }
 
+    /** Bilibili 投屏的音量只由电视端控制，远端 DLNA 音量命令仅保留诊断记录。 */
     override fun setVolume(volume: Int) {
-        val value = volume.coerceIn(0, 100)
-        host.onMainThread {
-            if (host.engineAvailable()) host.setVolume(value, "dlna-volume")
-            else LogHub.w(TAG, "dlna volume ignored: player engine unavailable")
-            host.showDlnaVolumeState(value)
-        }
+        LogHub.i(TAG, "dlna volume ignored by Bilibili cast policy value=$volume")
     }
 
     override fun positionMs(): Long = host.readOnMainThread {
