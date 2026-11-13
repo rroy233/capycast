@@ -36,6 +36,8 @@ interface PlaybackEventHost {
 
     fun handleVodFailure(reason: String, preferCodecFallback: Boolean = false): Boolean
 
+    fun handleVodSourceLoadFailure(httpStatus: Int?): Boolean
+
     fun onLivePlaying()
 
     fun onLivePaused()
@@ -102,12 +104,18 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
             PlaybackEvent.Stopped -> stopped()
             PlaybackEvent.Ended -> end()
             is PlaybackEvent.Buffering -> buffering(event.isBuffering)
+            is PlaybackEvent.SourceLoadFailed -> sourceLoadFailed(event)
             is PlaybackEvent.Failed -> failed(event)
             is PlaybackEvent.VideoSizeChanged ->
                 host.runOnMain {
                     host.updateVideoSize(event.width, event.height)
                 }
         }
+    }
+
+    private fun sourceLoadFailed(event: PlaybackEvent.SourceLoadFailed) {
+        if (host.currentPlaybackRequest()?.isLive == true) return
+        host.handleVodSourceLoadFailure(event.httpStatus)
     }
 
     private fun playing() {

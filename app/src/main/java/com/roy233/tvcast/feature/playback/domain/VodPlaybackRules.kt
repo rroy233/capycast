@@ -1,6 +1,7 @@
 package com.roy233.tvcast.feature.playback.domain
 
 import com.roy233.tvcast.core.playback.MediaTrack
+import com.roy233.tvcast.core.playback.PlaybackRequest
 
 /**
  * 点播表示层与恢复判定规则。
@@ -21,6 +22,22 @@ object VodPlaybackRules {
             7 -> 1
             else -> 0
         }
+
+    /** 将当前视频与音频选择投影到重新解析得到的播放请求。 */
+    fun restoreSelection(
+        fresh: PlaybackRequest,
+        current: PlaybackRequest,
+    ): PlaybackRequest {
+        val video =
+            fresh.videos.firstOrNull {
+                it.id == current.video.id && it.codecId == current.video.codecId
+            } ?: fresh.video
+        val audio =
+            current.audio?.let { selected ->
+                fresh.audios.firstOrNull { it.id == selected.id }
+            } ?: fresh.audio
+        return fresh.copy(video = video, audio = audio)
+    }
 
     /** 把恢复状态机的失败类型映射为日志与分支使用的稳定标识。 */
     fun recoveryReason(failure: VodRecoveryController.Failure): String =

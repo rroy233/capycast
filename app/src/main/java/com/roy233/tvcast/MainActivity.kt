@@ -243,7 +243,13 @@ class MainActivity :
     /** 最近一次播放器读取失败告警的单调时刻。 */
     private var lastPlayerReadWarningAt = 0L
     /** 点播会话协调器。 */
-    private val vodCoordinator by lazy { VodPlaybackCoordinator(this, OkHttpVodRouteProbe()) }
+    private val vodCoordinator by lazy {
+        VodPlaybackCoordinator(
+            playback = this,
+            routeProbe = OkHttpVodRouteProbe(),
+            resolver = container.playbackResolver,
+        )
+    }
     /** 直播会话协调器。 */
     private val liveCoordinator by lazy { LivePlaybackCoordinator(this, OkHttpLiveRouteProbe()) }
     /** 播放轮询协调器。 */
@@ -1287,6 +1293,9 @@ class MainActivity :
     override fun handleVodFailure(reason: String, preferCodecFallback: Boolean): Boolean =
         handleVodPlaybackFailure(reason, preferCodecFallback)
 
+    override fun handleVodSourceLoadFailure(httpStatus: Int?): Boolean =
+        vodCoordinator.handleSourceLoadFailure(httpStatus)
+
     override fun onLivePlaying() {
         if (::liveDanmakuController.isInitialized) liveDanmakuController.onPlaying()
         liveCoordinator.health.onPlaying()
@@ -1337,8 +1346,9 @@ class MainActivity :
     }
 
     override fun setRetryFor(request: PlaybackRequest) {
+        val position = playerPositionMs()
         playbackSessionLifecycle.setRetry {
-            castCoordinator.openPlayback(request, playerPositionMs())
+            castCoordinator.retryVod(request, position)
         }
     }
 

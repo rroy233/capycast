@@ -42,8 +42,16 @@ data class VodSession(
     val attemptedRepresentations: MutableSet<String> = mutableSetOf(),
     var lastPositionMs: Long = 0L,
     var lastProgressAtMs: Long = 0L,
+    var assetRefreshState: VodAssetRefreshState = VodAssetRefreshState.IDLE,
     val recovery: VodRecoveryController = VodRecoveryController(),
 )
+
+/** 当前点播资源针对 HTTP 403 的单飞刷新状态。 */
+enum class VodAssetRefreshState {
+    IDLE,
+    RESOLVING,
+    AWAITING_STABLE,
+}
 
 /** 等待实际进入播放态后展示的点播线路切换提示。 */
 data class PendingVodRouteSwitch(
