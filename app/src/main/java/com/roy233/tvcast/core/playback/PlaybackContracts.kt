@@ -116,6 +116,9 @@ sealed interface PlaybackEvent {
 
     data class Buffering(val isBuffering: Boolean, val percent: Float? = null) : PlaybackEvent
 
+    /** 媒体源单次加载失败；播放器仍可继续执行自身重试。 */
+    data class SourceLoadFailed(val httpStatus: Int?) : PlaybackEvent
+
     data class Failed(val code: String, val message: String, val cause: Throwable? = null) :
         PlaybackEvent
 

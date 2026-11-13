@@ -2,6 +2,7 @@ package com.roy233.tvcast.feature.cast.application
 
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.feature.cast.domain.CastContent
+import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
 import com.roy233.tvcast.feature.playback.model.CastResolution
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
@@ -15,7 +16,11 @@ class CastRequestResolver(
     private val resolveVod: suspend (Long, Long, String, String, Long, Long) -> PlaybackRequest,
     private val rankVod: suspend (PlaybackRequest) -> RankedVodPlayback,
 ) {
-    suspend fun resolve(nva: CastContent, title: String): CastResolution =
+    suspend fun resolve(
+        nva: CastContent,
+        title: String,
+        preferredVod: PlaybackRequest? = null,
+    ): CastResolution =
         when {
             nva.hasLive -> {
                 val key = accessKey() ?: error("TV account login is required for live playback")
@@ -27,20 +32,40 @@ class CastRequestResolver(
             nva.hasPgc ->
                 CastResolution.Vod(
                     rankVod(
-                        resolveVod(
-                            nva.aid,
-                            nva.cid,
-                            nva.bvid.orEmpty(),
-                            title,
-                            nva.epId,
-                            nva.seasonId,
+                        restoreVodSelection(
+                            resolveVod(
+                                nva.aid,
+                                nva.cid,
+                                nva.bvid.orEmpty(),
+                                title,
+                                nva.epId,
+                                nva.seasonId,
+                            ),
+                            preferredVod,
                         ),
                     ),
                 )
             nva.hasUgc ->
                 CastResolution.Vod(
-                    rankVod(resolveVod(nva.aid, nva.cid, nva.bvid.orEmpty(), title, 0L, 0L)),
+                    rankVod(
+                        restoreVodSelection(
+                            resolveVod(
+                                nva.aid,
+                                nva.cid,
+                                nva.bvid.orEmpty(),
+                                title,
+                                0L,
+                                0L,
+                            ),
+                            preferredVod,
+                        ),
+                    ),
                 )
             else -> error("no playable identity in nva_ext")
         }
+
+    private fun restoreVodSelection(
+        fresh: PlaybackRequest,
+        preferred: PlaybackRequest?,
+    ): PlaybackRequest = preferred?.let { VodPlaybackRules.restoreSelection(fresh, it) } ?: fresh
 }

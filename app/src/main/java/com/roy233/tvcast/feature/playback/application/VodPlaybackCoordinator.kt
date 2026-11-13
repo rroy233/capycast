@@ -6,14 +6,18 @@ import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.playback.MediaTrack
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.PlaybackResolver
 import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
 import com.roy233.tvcast.feature.playback.domain.VodRecoveryController
 import com.roy233.tvcast.feature.playback.model.PendingVodRouteSwitch
 import com.roy233.tvcast.feature.playback.model.RankedVodRoute
+import com.roy233.tvcast.feature.playback.model.VodAssetRefreshState
 import com.roy233.tvcast.feature.playback.model.VodSession
 import com.roy233.tvcast.feature.playback.routing.CdnRouteRules
 import com.roy233.tvcast.feature.playback.routing.VodCdnCoordinator
 import com.roy233.tvcast.feature.playback.routing.VodRouteProbe
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,6 +53,8 @@ interface VodPlaybackHost {
 class VodPlaybackCoordinator(
     private val playback: VodPlaybackHost,
     routeProbe: VodRouteProbe,
+    private val resolver: PlaybackResolver,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
     /** 当前点播会话；为空表示没有进行中的点播内容。 */
@@ -65,6 +71,9 @@ class VodPlaybackCoordinator(
 
     /** 备用线路评分刷新任务。 */
     private var backupRefreshJob: Job? = null
+
+    /** 当前点播资源的 HTTP 403 刷新任务。 */
+    private var assetRefreshJob: Job? = null
 
     /** 播放器确认进入播放态后重置恢复计时。 */
     fun onPlaying() {
@@ -85,11 +94,128 @@ class VodPlaybackCoordinator(
 
     /** 结束当前点播会话并取消后台任务。 */
     fun clear() {
+        assetRefreshJob?.cancel()
+        assetRefreshJob = null
         backupRefreshJob?.cancel()
         backupRefreshJob = null
         activeSession = null
         switching = false
         pendingSwitch = null
+    }
+
+    /** 当前点播媒体返回 HTTP 403 时单飞重新解析整套播放地址。 */
+    fun handleSourceLoadFailure(httpStatus: Int?): Boolean {
+        if (httpStatus != HTTP_FORBIDDEN) return false
+        if (playback.currentRequest()?.isLive == true || !playback.isCastActive()) return false
+        val session = activeSession ?: return false
+        val request = playback.currentRequest() ?: return false
+        when (session.assetRefreshState) {
+            VodAssetRefreshState.RESOLVING -> {
+                LogHub.d(TAG, "VOD playurl refresh coalesced status=$httpStatus")
+                return true
+            }
+            VodAssetRefreshState.AWAITING_STABLE -> {
+                LogHub.w(
+                    TAG,
+                    "VOD playurl refresh suppressed before stable playback status=$httpStatus",
+                )
+                return false
+            }
+            VodAssetRefreshState.IDLE -> Unit
+        }
+
+        session.assetRefreshState = VodAssetRefreshState.RESOLVING
+        val previousRequest = request
+        val previousVideoRoutes = session.videoRoutes
+        val previousAudioRoutes = session.audioRoutes
+        LogHub.i(
+            TAG,
+            "VOD playurl refresh begin status=$httpStatus qn=${request.video.id} " +
+                "codec=${request.video.codecId} audio=${request.audio?.id}",
+        )
+        assetRefreshJob =
+            playback.coroutineScope.launch {
+                val result =
+                    try {
+                        val ranked =
+                            withContext(ioDispatcher) {
+                                val fresh =
+                                    resolver.resolveVod(
+                                        aid = request.aid,
+                                        cid = request.cid,
+                                        bvid = request.bvid,
+                                        title = request.title,
+                                        epId = request.epId,
+                                        seasonId = request.seasonId,
+                                    )
+                                cdn.rankPlayback(VodPlaybackRules.restoreSelection(fresh, request))
+                            }
+                        Result.success(ranked)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (failure: Exception) {
+                        Result.failure(failure)
+                    }
+                if (!isActive) return@launch
+                assetRefreshJob = null
+                if (activeSession !== session || !playback.isCastActive()) {
+                    LogHub.i(TAG, "VOD playurl refresh discarded because session changed")
+                    return@launch
+                }
+                result
+                    .onSuccess { ranked ->
+                        val position = playback.positionMs()
+                        session.assetRefreshState = VodAssetRefreshState.AWAITING_STABLE
+                        session.request = ranked.request
+                        session.videoRoutes = ranked.videoRoutes
+                        session.audioRoutes = ranked.audioRoutes
+                        session.attemptedUrls.clear()
+                        session.attemptedAudioUrls.clear()
+                        session.lastPositionMs = position
+                        session.lastProgressAtMs = SystemClock.elapsedRealtime()
+                        pendingSwitch = null
+                        switching = true
+                        session.recovery.onSwitching()
+                        val opened = playback.openPlayback(ranked.request, position)
+                        if (!opened) {
+                            session.request = previousRequest
+                            session.videoRoutes = previousVideoRoutes
+                            session.audioRoutes = previousAudioRoutes
+                            playback.setCurrent(previousRequest)
+                            LogHub.e(
+                                TAG,
+                                "VOD playurl refresh open rejected; restoring previous request",
+                            )
+                            playback.openPlayback(previousRequest, position)
+                            return@onSuccess
+                        }
+                        LogHub.i(
+                            TAG,
+                            "VOD playurl refresh opened qn=${ranked.request.video.id} " +
+                                "codec=${ranked.request.video.codecId} audio=${ranked.request.audio?.id} " +
+                                "position=${position}ms host=${LogRedaction.host(ranked.request.video.url)}",
+                        )
+                        PlaybackDiagnostics.event(
+                            "VodPlayurlRefresh",
+                            "status=$httpStatus qn=${ranked.request.video.id} " +
+                                "codec=${ranked.request.video.codecId} position=${position}ms",
+                        )
+                    }
+                    .onFailure { failure ->
+                        session.assetRefreshState = VodAssetRefreshState.AWAITING_STABLE
+                        LogHub.e(
+                            TAG,
+                            "VOD playurl refresh failed ${LogRedaction.reason(failure)}",
+                            failure,
+                        )
+                        PlaybackDiagnostics.fail(
+                            code = "VOD_PLAYURL_REFRESH_FAILED",
+                            message = "播放地址刷新失败",
+                            detail = "status=$httpStatus reason=${LogRedaction.reason(failure)}",
+                        )
+                    }
+            }
+        return true
     }
 
     /** 将播放器缓冲事件交给恢复状态机。初始化和定位阶段的缓冲只保留诊断，稳定 播放后持续达到阈值的两次缓冲才会触发线路恢复。 */
@@ -364,6 +490,14 @@ class VodPlaybackCoordinator(
         val now = SystemClock.elapsedRealtime()
         val progress = session.recovery.onProgress(positionMs, activelyPlaying, now)
         if (progress.becameStable) {
+            if (session.assetRefreshState == VodAssetRefreshState.AWAITING_STABLE) {
+                session.assetRefreshState = VodAssetRefreshState.IDLE
+                LogHub.i(
+                    TAG,
+                    "VOD playurl refresh stabilized qn=${session.request.video.id} " +
+                        "host=${LogRedaction.host(session.request.video.url)}",
+                )
+            }
             LogHub.i(
                 TAG,
                 "VOD playback stabilized qn=${session.request.video.id} " +
@@ -458,6 +592,8 @@ class VodPlaybackCoordinator(
         private const val VOD_BACKUP_REFRESH_INTERVAL_MS = 30_000L
         /** 点播播放位置无前进时触发故障切源的时间阈值。 */
         private const val VOD_STALL_TIMEOUT_MS = 5_000L
+        /** B 站签名媒体地址失效时返回的 HTTP 状态码。 */
+        private const val HTTP_FORBIDDEN = 403
         /** 日志标签。 */
         const val TAG = "SimpleBili"
     }

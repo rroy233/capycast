@@ -21,6 +21,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -736,6 +737,9 @@ class Media3PlayerEngine(
                 message = failureMessage("加载失败"),
                 detail = message,
             )
+            if (!wasCanceled) {
+                onEvent(PlaybackEvent.SourceLoadFailed(httpStatus = httpStatus(error)))
+            }
         }
 
         override fun onVideoCodecError(
@@ -758,6 +762,18 @@ class Media3PlayerEngine(
         ) {
             LogHub.e(TAG, "audio sink error: ${safeErrorReason(audioSinkError)}")
         }
+    }
+
+    /** 从播放器异常链中提取稳定的 HTTP 状态码。 */
+    private fun httpStatus(error: Throwable): Int? {
+        var current: Throwable? = error
+        while (current != null) {
+            if (current is HttpDataSource.InvalidResponseCodeException) {
+                return current.responseCode
+            }
+            current = current.cause
+        }
+        return null
     }
 
     /** 只为视频 MIME 保留硬件解码器，防止 Dolby Vision 回退到软件解码。 */

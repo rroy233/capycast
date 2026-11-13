@@ -1,7 +1,9 @@
 package com.roy233.tvcast.feature.playback.application
 
+import com.roy233.tvcast.core.playback.MediaTrack
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEvent
+import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.core.playback.PlaybackSessionToken
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
@@ -29,7 +31,39 @@ class PlaybackEventRouterTest {
         )
     }
 
-    private fun host(backend: PlaybackBackend, calls: MutableList<String>): PlaybackEventHost =
+    @Test
+    fun `VOD source load failure is routed to the VOD coordinator`() {
+        val calls = mutableListOf<String>()
+        val router = PlaybackEventRouter(host(PlaybackBackend.MEDIA3, calls, isLive = false))
+
+        router.dispatch(
+            PlaybackSessionToken(1L, 1L),
+            PlaybackBackend.MEDIA3,
+            PlaybackEvent.SourceLoadFailed(httpStatus = 403),
+        )
+
+        assertEquals(listOf("handleVodSourceLoadFailure"), calls)
+    }
+
+    @Test
+    fun `live source load failure stays outside VOD recovery`() {
+        val calls = mutableListOf<String>()
+        val router = PlaybackEventRouter(host(PlaybackBackend.MEDIA3, calls, isLive = true))
+
+        router.dispatch(
+            PlaybackSessionToken(1L, 1L),
+            PlaybackBackend.MEDIA3,
+            PlaybackEvent.SourceLoadFailed(httpStatus = 403),
+        )
+
+        assertEquals(emptyList<String>(), calls)
+    }
+
+    private fun host(
+        backend: PlaybackBackend,
+        calls: MutableList<String>,
+        isLive: Boolean? = null,
+    ): PlaybackEventHost =
         Proxy.newProxyInstance(
             PlaybackEventHost::class.java.classLoader,
             arrayOf(PlaybackEventHost::class.java),
@@ -37,7 +71,7 @@ class PlaybackEventRouterTest {
             when (method.name) {
                 "activeBackend" -> backend
                 "acceptPlaybackEvent" -> true
-                "currentPlaybackRequest" -> null
+                "currentPlaybackRequest" -> isLive?.let(::request)
                 "runOnMain" -> {
                     calls += method.name
                     @Suppress("UNCHECKED_CAST") (args!![0] as Function0<Unit>).invoke()
@@ -53,4 +87,44 @@ class PlaybackEventRouterTest {
                 }
             }
         } as PlaybackEventHost
+
+    private fun request(isLive: Boolean): PlaybackRequest {
+        val track =
+            MediaTrack(
+                id = 80,
+                codecId = 7,
+                width = 1920,
+                height = 1080,
+                bandwidth = 1_000_000L,
+                url = "https://example.test/video",
+                backupUrls = emptyList(),
+            )
+        return PlaybackRequest(
+            title = "test",
+            bvid = "BV1test",
+            aid = 1L,
+            cid = 2L,
+            durationSec = 60L,
+            video = track,
+            audio = null,
+            progressiveUrl = null,
+            videos = listOf(track),
+            audios = emptyList(),
+            cover = "",
+            isLive = isLive,
+            liveFormat = "",
+            liveCdn = "",
+            liveBackupCount = 0,
+            isPgc = false,
+            epId = 0L,
+            seasonId = 0L,
+            hasPaid = false,
+            isDrm = false,
+            isPreview = false,
+            actualQuality = 80,
+            acceptedQualities = listOf(80),
+            qualityLabels = emptyMap(),
+            userAgent = "test",
+        )
+    }
 }

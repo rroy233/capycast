@@ -98,6 +98,11 @@ interface CastSessionHost : RecentCastHost {
 class CastSessionCoordinator(
     private val playback: CastSessionHost,
 ) {
+    private data class VodResume(
+        val request: PlaybackRequest,
+        val positionMs: Long,
+    )
+
     private val recent = RecentCastCoordinator(playback, ::openPlayback)
     private val requestResolver =
         CastRequestResolver(
@@ -189,7 +194,26 @@ class CastSessionCoordinator(
     }
 
     /** 根据 nva 内容解析播放地址并开始播放。 */
-    fun resolve(nva: CastContent, title: String) {
+    fun resolve(nva: CastContent, title: String) = resolve(nva, title, vodResume = null)
+
+    /** 失败页重试时重新解析点播地址并保持原播放位置与选轨。 */
+    fun retryVod(request: PlaybackRequest, positionMs: Long) {
+        val nva =
+            CastContent(
+                aid = request.aid,
+                cid = request.cid,
+                bvid = request.bvid,
+                epId = request.epId,
+                seasonId = request.seasonId,
+            )
+        resolve(nva, request.title, VodResume(request, positionMs.coerceAtLeast(0L)))
+    }
+
+    private fun resolve(
+        nva: CastContent,
+        title: String,
+        vodResume: VodResume?,
+    ) {
         playback.cancelResolve()
         playback.setResolving(true)
         playback.setLastNva(nva)
@@ -214,7 +238,13 @@ class CastSessionCoordinator(
             playback.coroutineScope().launch {
                 val result =
                     withContext(Dispatchers.IO) {
-                        runCatching { requestResolver.resolve(nva, title) }
+                        runCatching {
+                            requestResolver.resolve(
+                                nva = nva,
+                                title = title,
+                                preferredVod = vodResume?.request,
+                            )
+                        }
                     }
                 if (!isActive) return@launch
                 playback.setResolving(false)
@@ -224,12 +254,13 @@ class CastSessionCoordinator(
                             is CastResolution.Vod -> {
                                 val ranked = resolved.playback
                                 val request = ranked.request
+                                val position = vodResume?.positionMs ?: 0L
                                 playback.vodSessionCoordinator().activeSession =
                                     VodSession(
                                         request = request,
                                         videoRoutes = ranked.videoRoutes,
                                         audioRoutes = ranked.audioRoutes,
-                                        lastPositionMs = 0L,
+                                        lastPositionMs = position,
                                         lastProgressAtMs = SystemClock.elapsedRealtime(),
                                     )
                                 playback.vodSessionCoordinator().startBackupRefresh()
@@ -254,7 +285,7 @@ class CastSessionCoordinator(
                                     (request.progressiveUrl != null).toString(),
                                 )
                                 playback.setCastDurationMs(request.durationSec * 1000)
-                                openPlayback(request, 0L)
+                                openPlayback(request, position)
                             }
                             is CastResolution.Live ->
                                 playback.startLiveSession(resolved.info, resolved.routes, title)
@@ -289,7 +320,7 @@ class CastSessionCoordinator(
                                     "$pgcStatus reason=${LogRedaction.reason(t)}",
                         )
                         playback.markCastFailed(code)
-                        playback.setRetry { resolve(nva, title) }
+                        playback.setRetry { resolve(nva, title, vodResume) }
                         playback.reportError(
                             title =
                                 when {
