@@ -27,7 +27,7 @@ import com.roy233.tvcast.feature.update.UpdateCoordinator
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.platform.device.DeviceInfoProvider
 import com.roy233.tvcast.platform.qr.QrCodeGenerator
-import com.roy233.tvcast.platform.telemetry.FirebaseQualityTelemetry
+import com.roy233.tvcast.platform.telemetry.createQualityTelemetry
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -52,8 +52,8 @@ class CapyCastContainer(
     /** 设备身份偏好读取器。 */
     val uiPreferences: UiPreferences by lazy { UiPreferences(context) }
 
-    /** Firebase 的匿名使用统计与质量报告端口。 */
-    val qualityTelemetry: QualityTelemetry by lazy { FirebaseQualityTelemetry(context) }
+    /** 当前构建变体使用的质量遥测端口。 */
+    val qualityTelemetry: QualityTelemetry by lazy { createQualityTelemetry(context) }
 
     val displayCalibrationPreferences: DisplayCalibrationPreferences by lazy {
         DisplayCalibrationPreferences(context)

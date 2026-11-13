@@ -11,7 +11,7 @@ help:
 		'make verify       Run format, unit-test, lint and debug APK checks.' \
 		'make format       Apply Kotlin and Gradle Kotlin DSL formatting.' \
 		'make format-check Check formatting without changing files.' \
-		'make debug        Build the default debug-signed APK.' \
+		'make debug        Build the co-installable, Firebase-free CapyCast Debug APK.' \
 		'make release      Build a signed release APK when keystore.properties exists; otherwise unsigned.' \
 		'make package      Build debug and release APKs.' \
 		'make metadata     Print versionName and versionCode.' \

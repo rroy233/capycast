@@ -5,7 +5,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import com.roy233.tvcast.core.playback.DEFAULT_PLAYBACK_USER_AGENT
 import com.roy233.tvcast.data.local.UiPreferences
-import com.roy233.tvcast.platform.telemetry.FirebaseQualityTelemetry
+import com.roy233.tvcast.platform.telemetry.createQualityTelemetry
 import okhttp3.OkHttpClient
 
 /**
@@ -19,7 +19,7 @@ class CapyCastApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         val preferences = UiPreferences(this)
-        FirebaseQualityTelemetry(this)
+        createQualityTelemetry(this)
             .applyCollection(
                 crashTrackingEnabled = preferences.crashTrackingEnabled,
                 usageStatisticsEnabled = preferences.usageStatisticsEnabled,

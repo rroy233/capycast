@@ -65,6 +65,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
             if (releaseKeystoreProperties.isNotEmpty()) {
@@ -103,9 +107,9 @@ android {
 
 dependencies {
     // BoM 33.x is the newest Firebase line compatible with this app's minSdk 21.
-    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
-    implementation("com.google.firebase:firebase-analytics")
-    implementation("com.google.firebase:firebase-crashlytics")
+    releaseImplementation(platform("com.google.firebase:firebase-bom:33.16.0"))
+    releaseImplementation("com.google.firebase:firebase-analytics")
+    releaseImplementation("com.google.firebase:firebase-crashlytics")
     // DanmakuFlameMaster 0.9.25 AAR (Apache-2.0), the engine used by 云视听.
     implementation(files("libs/DanmakuFlameMaster-0.9.25.aar"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -139,6 +143,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("junit:junit:4.13.2")
 }
+
+// Debug 变体不生成 Google Services 资源。
+tasks.matching { it.name == "processDebugGoogleServices" }.configureEach { enabled = false }
 
 /** 输出工作流校验与发布所需的版本元数据。 */
 tasks.register("printReleaseMetadata") {
