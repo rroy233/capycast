@@ -121,8 +121,8 @@ class LayerDependencyTest {
 
     @Test
     fun `Firebase SDK imports stay inside the platform telemetry adapter`() {
-        val offenders =
-            root
+        val offenders = sourceRoots.flatMap { sourceRoot ->
+            sourceRoot
                 .walkTopDown()
                 .filter { it.isFile && it.extension == "kt" }
                 .filter { file ->
@@ -130,11 +130,34 @@ class LayerDependencyTest {
                         line.startsWith("import ") && line.contains("com.google.firebase")
                     }
                 }
-                .filterNot { it.relativeTo(root).path.startsWith("platform/telemetry/") }
-                .map { it.relativeTo(root).path }
+                .filterNot {
+                    it.relativeTo(sourceRoot).path.startsWith("platform/telemetry/")
+                }
+                .map { "${sourceRoot.name}:${it.relativeTo(sourceRoot).path}" }
                 .toList()
+        }
         assertTrue(
             "Firebase imports must stay in platform telemetry: $offenders",
+            offenders.isEmpty(),
+        )
+    }
+
+    @Test
+    fun `debug source set does not depend on Firebase SDK`() {
+        val debugRoot = File("src/debug/java/com/roy233/tvcast")
+        val offenders =
+            debugRoot
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { file ->
+                    file.readLines().any { line ->
+                        line.startsWith("import ") && line.contains("com.google.firebase")
+                    }
+                }
+                .map { it.relativeTo(debugRoot).path }
+                .toList()
+        assertTrue(
+            "debug must not depend on Firebase: $offenders",
             offenders.isEmpty(),
         )
     }
@@ -211,5 +234,12 @@ class LayerDependencyTest {
                 }
                 .toList()
         assertTrue("unexpected cross-layer imports: $offenders", offenders.isEmpty())
+    }
+
+    private companion object {
+        val sourceRoots =
+            listOf("main", "debug", "release").map { sourceSet ->
+                File("src/$sourceSet/java/com/roy233/tvcast")
+            }
     }
 }
