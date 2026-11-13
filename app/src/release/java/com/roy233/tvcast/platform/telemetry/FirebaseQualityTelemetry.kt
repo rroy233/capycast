@@ -10,7 +10,7 @@ import com.roy233.tvcast.core.diagnostics.QualityTelemetry
 import com.roy233.tvcast.core.diagnostics.UsageEvent
 
 /** 将受限的质量遥测契约映射到 Firebase SDK。 */
-class FirebaseQualityTelemetry(context: Context) : QualityTelemetry {
+internal class FirebaseQualityTelemetry(context: Context) : QualityTelemetry {
     private val analytics = FirebaseAnalytics.getInstance(context.applicationContext)
     private val crashlytics = FirebaseCrashlytics.getInstance()
 
