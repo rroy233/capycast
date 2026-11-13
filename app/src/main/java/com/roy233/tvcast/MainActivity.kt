@@ -1079,8 +1079,6 @@ class MainActivity :
 
     override fun isSeekable(): Boolean = playbackEngineHost.isSeekable()
 
-    override fun setVolume(volume: Int, reason: String) = setPlayerVolume(volume, reason)
-
     override fun durationMs(): Long = playerDurationMs()
 
     override fun volume(): Int = playerVolume()
@@ -1095,10 +1093,6 @@ class MainActivity :
 
     override fun showDlnaSeekState(positionMs: Long) {
         ui = ui.copy(positionMs = positionMs, hudVisible = true)
-    }
-
-    override fun showDlnaVolumeState(volume: Int) {
-        ui = ui.copy(volume = volume, hudVisible = true)
     }
 
     /** 初始化播放器、投屏服务、界面和账号状态。 */

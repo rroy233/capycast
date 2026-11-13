@@ -70,14 +70,15 @@ class DlnaTransportCoordinatorTest {
     }
 
     @Test
-    fun `volume clamps to range before forwarding`() {
+    fun `volume command is ignored by Bilibili cast policy`() {
         val calls = mutableListOf<String>()
-        val state = HostState(engineAvailable = true)
-        val coordinator = DlnaTransportCoordinator(host(calls, state))
+        val queued = mutableListOf<() -> Unit>()
+        val coordinator = DlnaTransportCoordinator(host(calls, queue = queued))
 
-        coordinator.setVolume(150)
+        coordinator.setVolume(0)
 
-        assertEquals(listOf("volume:100", "volume-state:100"), calls)
+        assertTrue(calls.isEmpty())
+        assertTrue(queued.isEmpty())
     }
 
     @Test
@@ -93,7 +94,7 @@ class DlnaTransportCoordinatorTest {
         coordinator.setVolume(75)
         coordinator.stop()
         assertTrue(calls.isEmpty())
-        assertEquals(5, queued.size)
+        assertEquals(4, queued.size)
 
         queued.forEach { it() }
         assertEquals(
@@ -107,8 +108,6 @@ class DlnaTransportCoordinatorTest {
                 "seekTo:2000",
                 "seek-state:2000",
                 "seekDanmaku:2000",
-                "volume:75",
-                "volume-state:75",
                 "stopCastFromDlna",
             ),
             calls,
@@ -195,11 +194,6 @@ class DlnaTransportCoordinatorTest {
                     state.verifyThread()
                     state.seekable
                 }
-                "setVolume" -> {
-                    state.verifyThread()
-                    calls += "volume:${arguments[0]}"
-                    Unit
-                }
                 "positionMs" -> {
                     state.verifyThread()
                     5000L
@@ -233,10 +227,6 @@ class DlnaTransportCoordinatorTest {
                 }
                 "showDlnaSeekState" -> {
                     calls += "seek-state:${arguments[0]}"
-                    Unit
-                }
-                "showDlnaVolumeState" -> {
-                    calls += "volume-state:${arguments[0]}"
                     Unit
                 }
                 else -> defaultReturn(method.returnType)
