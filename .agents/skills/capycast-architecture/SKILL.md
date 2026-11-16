@@ -1,3 +1,10 @@
+---
+name: capycast-architecture
+description: Preserves CapyCast architectural boundaries, component ownership, and layer dependencies across UI, playback, cast/DLNA, danmaku, subtitle, and data services. Use when modifying Android behavior, adding features, or fixing bugs that touch or cross package boundaries.
+license: MIT
+compatibility: Android project with Kotlin, Jetpack Compose, Media3, and Gradle
+---
+
 # CapyCast Architecture Skill
 
 Use this skill before changing application behaviour, adding a feature, or fixing a bug that crosses a package boundary. Its purpose is to place a change at the existing ownership boundary and preserve the current user-visible behaviour.
