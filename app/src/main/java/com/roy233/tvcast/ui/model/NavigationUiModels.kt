@@ -61,6 +61,7 @@ enum class UiOverlay {
     ERROR,
     PANEL,
     HELP,
+    FEEDBACK,
     LOGIN_DIALOG,
 }
 

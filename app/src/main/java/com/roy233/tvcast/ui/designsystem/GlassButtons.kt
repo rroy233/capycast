@@ -327,10 +327,13 @@ fun PrimaryPlayButton(
 
 /** 绘制加载指示器。 */
 @Composable
-fun LoadingSpinner(modifier: Modifier = Modifier) {
+fun LoadingSpinner(
+    modifier: Modifier = Modifier,
+    color: Color = Color.White,
+) {
     CircularProgressIndicator(
         modifier = modifier.size(38.dp),
-        color = Color.White,
+        color = color,
         strokeWidth = 2.5.dp,
     )
 }

@@ -5,6 +5,7 @@ import com.roy233.tvcast.core.diagnostics.Screen
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationDirection
+import com.roy233.tvcast.feature.feedback.FeedbackChannel
 import com.roy233.tvcast.feature.subtitle.domain.SubtitleTrackKey
 import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.ui.model.PanelKind
@@ -43,6 +44,12 @@ interface TvActionHost {
     fun requestSkipLogin()
 
     fun requestLogout()
+
+    fun openFeedback()
+
+    fun closeFeedback()
+
+    fun selectFeedbackChannel(channel: FeedbackChannel)
 
     fun selectUpdateChannel(channel: UpdateChannel)
 
@@ -295,6 +302,9 @@ class TvActionDispatcher(
             onCloseHelp = {
                 stateHolder.set(stateHolder.read().copy(helpVisible = false))
             },
+            onShowFeedback = { host.openFeedback() },
+            onCloseFeedback = { host.closeFeedback() },
+            onSelectFeedbackChannel = { host.selectFeedbackChannel(it) },
             onLogout = { host.requestLogout() },
             onPlayPause = { host.requestPlayPause() },
             onSeekBy = { host.requestSeekBy(it) },
