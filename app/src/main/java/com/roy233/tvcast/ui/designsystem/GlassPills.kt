@@ -151,6 +151,7 @@ fun GlassAlert(
 @Composable
 fun QrCodeImage(
     bitmap: Bitmap,
+    contentDescription: String = "登录二维码",
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -159,7 +160,7 @@ fun QrCodeImage(
     ) {
         Image(
             bitmap = bitmap.asImageBitmap(),
-            contentDescription = "登录二维码",
+            contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Fit,
         )

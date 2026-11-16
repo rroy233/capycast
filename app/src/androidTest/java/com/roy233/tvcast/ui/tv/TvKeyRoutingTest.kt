@@ -2,6 +2,7 @@ package com.roy233.tvcast.ui.tv
 
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.roy233.tvcast.feature.feedback.FeedbackUiState
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
@@ -46,6 +47,10 @@ class TvKeyRoutingTest {
         assertEquals(
             KeySurface.PANEL,
             TvKeyHandler.resolveKeySurface(menu.copy(panel = PanelKind.QUALITY)),
+        )
+        assertEquals(
+            KeySurface.FEEDBACK,
+            TvKeyHandler.resolveKeySurface(menu.copy(feedback = FeedbackUiState(visible = true))),
         )
         assertEquals(
             KeySurface.ERROR,

@@ -20,6 +20,11 @@ import com.roy233.tvcast.data.local.SubtitlePreferences
 import com.roy233.tvcast.data.local.UiPreferences
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
 import com.roy233.tvcast.feature.account.AccountUiState
+import com.roy233.tvcast.feature.feedback.FeedbackCoordinator
+import com.roy233.tvcast.feature.feedback.FeedbackMetadata
+import com.roy233.tvcast.feature.feedback.FeedbackMetadataProvider
+import com.roy233.tvcast.feature.feedback.FeedbackQrCodeEncoder
+import com.roy233.tvcast.feature.feedback.FeedbackUiState
 import com.roy233.tvcast.feature.history.PlaybackHistoryCoordinator
 import com.roy233.tvcast.feature.playback.model.LivePlaybackResolver
 import com.roy233.tvcast.feature.subtitle.domain.SubtitleRepository
@@ -42,6 +47,8 @@ class CapyCastContainer(
     private val writeAccountState: (AccountUiState) -> Unit,
     private val readUpdateState: () -> UpdateUiState,
     private val writeUpdateState: (UpdateUiState) -> Unit,
+    private val readFeedbackState: () -> FeedbackUiState,
+    private val writeFeedbackState: (FeedbackUiState) -> Unit,
     private val onLogoutUi: () -> Unit,
     private val onToast: (String) -> Unit,
     private val isPlaying: () -> Boolean,
@@ -140,6 +147,22 @@ class CapyCastContainer(
             writeUpdateState = writeUpdateState,
             onToast = onToast,
             telemetry = qualityTelemetry,
+        )
+    }
+
+    /** 用户反馈二维码会话协调器。 */
+    val feedbackCoordinator: FeedbackCoordinator by lazy {
+        FeedbackCoordinator(
+            scope = scope,
+            qrCodeEncoder = FeedbackQrCodeEncoder(QrCodeGenerator()::generate),
+            metadataProvider =
+                FeedbackMetadataProvider {
+                    FeedbackMetadata(
+                        versionLabel = "${deviceInfo.versionName()} (${deviceInfo.versionCode()})",
+                    )
+                },
+            readState = readFeedbackState,
+            writeState = writeFeedbackState,
         )
     }
 }

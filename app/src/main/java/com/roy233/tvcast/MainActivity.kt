@@ -62,6 +62,7 @@ import com.roy233.tvcast.feature.danmaku.presentation.DfmDanmakuEngine
 import com.roy233.tvcast.feature.display.CalibrationDirection
 import com.roy233.tvcast.feature.display.CalibrationPhase
 import com.roy233.tvcast.feature.display.DisplayCalibrationCoordinator
+import com.roy233.tvcast.feature.feedback.FeedbackChannel
 import com.roy233.tvcast.feature.history.PlaybackHistoryContent
 import com.roy233.tvcast.feature.playback.application.CastSessionCoordinator
 import com.roy233.tvcast.feature.playback.application.CastSessionHost
@@ -298,6 +299,8 @@ class MainActivity :
             },
             readUpdateState = { ui.update },
             writeUpdateState = { update -> ui = ui.copy(update = update) },
+            readFeedbackState = { ui.feedback },
+            writeFeedbackState = { feedback -> ui = ui.copy(feedback = feedback) },
             onLogoutUi = {
                 ui =
                     ui.copy(
@@ -355,6 +358,10 @@ class MainActivity :
     /** 应用更新流程协调器。 */
     private val updateCoordinator
         get() = container.updateCoordinator
+
+    /** 用户反馈二维码会话协调器。 */
+    private val feedbackCoordinator
+        get() = container.feedbackCoordinator
 
     private val playbackResolver
         get() = container.playbackResolver
@@ -447,6 +454,13 @@ class MainActivity :
     override fun requestSkipLogin() = skipLogin()
 
     override fun requestLogout() = logout()
+
+    override fun openFeedback() = feedbackCoordinator.open()
+
+    override fun closeFeedback() = feedbackCoordinator.close()
+
+    override fun selectFeedbackChannel(channel: FeedbackChannel) =
+        feedbackCoordinator.selectChannel(channel)
 
     override fun selectUpdateChannel(channel: UpdateChannel) =
         updateCoordinator.selectChannel(channel)
@@ -2193,6 +2207,7 @@ class MainActivity :
         runCatching { dlna.stop() }
         loginCoordinator.cancel()
         updateCoordinator.cancel()
+        feedbackCoordinator.release()
         resolveJob?.cancel()
         playbackTicker.stop()
         runCatching { if (::danmakuController.isInitialized) danmakuController.release() }

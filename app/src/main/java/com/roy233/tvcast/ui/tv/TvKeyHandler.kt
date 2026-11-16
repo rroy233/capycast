@@ -18,6 +18,7 @@ import com.roy233.tvcast.ui.tv.player.handlePlaybackSeekKey
 /** 当前页面按一次返回键应执行的层级动作。 */
 internal enum class TvBackAction {
     CANCEL_CALIBRATION,
+    CLOSE_FEEDBACK,
     NAVIGATE_SETTINGS_BACK,
     OPEN_SIDEBAR,
     REQUEST_STOP_CAST,
@@ -51,6 +52,7 @@ internal enum class KeySurface {
     ERROR,
     PANEL,
     HELP,
+    FEEDBACK,
     LOGIN_DIALOG,
     MENU,
     PAGE,
@@ -80,6 +82,7 @@ object TvKeyHandler {
             UiOverlay.ERROR -> return KeySurface.ERROR
             UiOverlay.PANEL -> return KeySurface.PANEL
             UiOverlay.HELP -> return KeySurface.HELP
+            UiOverlay.FEEDBACK -> return KeySurface.FEEDBACK
             UiOverlay.LOGIN_DIALOG -> return KeySurface.LOGIN_DIALOG
             null -> Unit
         }
@@ -114,6 +117,7 @@ object TvKeyHandler {
     internal fun resolveBackAction(state: TvUiState): TvBackAction =
         when {
             state.calibration.phase == CalibrationPhase.ADJUST -> TvBackAction.CANCEL_CALIBRATION
+            state.feedback.visible -> TvBackAction.CLOSE_FEEDBACK
             state.mode == TvMode.PLAYING || (state.mode == TvMode.LOADING && state.castActive) ->
                 TvBackAction.REQUEST_STOP_CAST
             state.sidebarVisible -> TvBackAction.CLOSE_SIDEBAR
@@ -127,6 +131,7 @@ object TvKeyHandler {
     internal fun dispatchBack(state: TvUiState, actions: TvActions) {
         when (resolveBackAction(state)) {
             TvBackAction.CANCEL_CALIBRATION -> actions.onCancelCalibration()
+            TvBackAction.CLOSE_FEEDBACK -> actions.onCloseFeedback()
             TvBackAction.NAVIGATE_SETTINGS_BACK -> actions.onNavigateSettingsBack()
             TvBackAction.OPEN_SIDEBAR -> actions.onOpenSidebar()
             TvBackAction.REQUEST_STOP_CAST -> actions.onRequestStopCast()
@@ -221,6 +226,7 @@ object TvKeyHandler {
         if (event.key == Key.Menu) {
             when {
                 state.helpVisible -> actions.onCloseHelp()
+                state.feedback.visible -> actions.onCloseFeedback()
                 state.loginDialogVisible -> actions.onCloseLogin()
                 state.panel != null -> actions.onClosePanel()
                 state.error != null -> actions.onDismissError()

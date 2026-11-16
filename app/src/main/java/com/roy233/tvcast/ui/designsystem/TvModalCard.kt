@@ -15,6 +15,7 @@ enum class TvModalCardKind(
     STANDARD(maxWidth = 640.dp, widthFraction = 0.72f, maxHeight = 500.dp),
     DOCUMENT(maxWidth = 760.dp, widthFraction = 0.76f, maxHeight = 540.dp),
     PANEL(maxWidth = 660.dp, widthFraction = 0.74f, maxHeight = 500.dp),
+    FEEDBACK(maxWidth = 760.dp, widthFraction = 0.72f, maxHeight = 420.dp),
 }
 
 /** 将可见模态卡片限制在适合电视观看距离的尺寸内。 */
