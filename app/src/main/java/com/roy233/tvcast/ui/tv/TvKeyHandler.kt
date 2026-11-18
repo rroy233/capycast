@@ -17,6 +17,7 @@ import com.roy233.tvcast.ui.tv.player.handlePlaybackSeekKey
 
 /** 当前页面按一次返回键应执行的层级动作。 */
 internal enum class TvBackAction {
+    CLOSE_LANGUAGE,
     CANCEL_CALIBRATION,
     CLOSE_FEEDBACK,
     NAVIGATE_SETTINGS_BACK,
@@ -39,9 +40,8 @@ internal class DoubleBackExitGate(private val intervalMs: Long) {
     }
 }
 
-/** 主页退出提示文案与连续返回时间窗。 */
+/** 主页连续返回的时间窗。 */
 internal object HomeBackExitTiming {
-    const val PROMPT_TEXT = "再按一次返回键退出"
     const val EXIT_WINDOW_MS = 5_000L
 }
 
@@ -81,6 +81,7 @@ object TvKeyHandler {
             UiOverlay.STOP_CAST_CONFIRM -> return KeySurface.STOP_CAST_CONFIRM
             UiOverlay.ERROR -> return KeySurface.ERROR
             UiOverlay.PANEL -> return KeySurface.PANEL
+            UiOverlay.LANGUAGE -> return KeySurface.PANEL
             UiOverlay.HELP -> return KeySurface.HELP
             UiOverlay.FEEDBACK -> return KeySurface.FEEDBACK
             UiOverlay.LOGIN_DIALOG -> return KeySurface.LOGIN_DIALOG
@@ -116,6 +117,7 @@ object TvKeyHandler {
     /** 按照由上到下的界面层级，解析返回键的唯一目标。 */
     internal fun resolveBackAction(state: TvUiState): TvBackAction =
         when {
+            state.topOverlay == UiOverlay.LANGUAGE -> TvBackAction.CLOSE_LANGUAGE
             state.calibration.phase == CalibrationPhase.ADJUST -> TvBackAction.CANCEL_CALIBRATION
             state.feedback.visible -> TvBackAction.CLOSE_FEEDBACK
             state.mode == TvMode.PLAYING || (state.mode == TvMode.LOADING && state.castActive) ->
@@ -130,6 +132,7 @@ object TvKeyHandler {
     /** 将解析后的返回层级分发到宿主操作。 */
     internal fun dispatchBack(state: TvUiState, actions: TvActions) {
         when (resolveBackAction(state)) {
+            TvBackAction.CLOSE_LANGUAGE -> actions.onCloseLanguageSettings()
             TvBackAction.CANCEL_CALIBRATION -> actions.onCancelCalibration()
             TvBackAction.CLOSE_FEEDBACK -> actions.onCloseFeedback()
             TvBackAction.NAVIGATE_SETTINGS_BACK -> actions.onNavigateSettingsBack()
@@ -225,6 +228,7 @@ object TvKeyHandler {
 
         if (event.key == Key.Menu) {
             when {
+                state.topOverlay == UiOverlay.LANGUAGE -> actions.onCloseLanguageSettings()
                 state.helpVisible -> actions.onCloseHelp()
                 state.feedback.visible -> actions.onCloseFeedback()
                 state.loginDialogVisible -> actions.onCloseLogin()

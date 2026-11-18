@@ -10,6 +10,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.roy233.tvcast.R
 import com.roy233.tvcast.feature.feedback.FeedbackChannel
 import com.roy233.tvcast.feature.feedback.FeedbackUiState
 import com.roy233.tvcast.ui.model.TvActions
@@ -26,6 +28,8 @@ class FeedbackDialogTest {
 
     @get:Rule val composeRule = createComposeRule()
 
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+
     @Test
     fun feedbackDialogStartsWithGitHubFocusedAndSwitchesChannelOnClick() {
         var selected: FeedbackChannel? = null
@@ -36,7 +40,7 @@ class FeedbackDialogTest {
                         feedback =
                             FeedbackUiState(
                                 visible = true,
-                                errorMessage = "二维码生成失败，请重试。",
+                                generationFailed = true,
                                 versionLabel = "0.2.1 (19)",
                             ),
                     ),
@@ -44,9 +48,14 @@ class FeedbackDialogTest {
             )
         }
 
-        composeRule.onNodeWithContentDescription("反馈渠道：GitHub").assertIsFocused()
-        composeRule.onNodeWithText("问题反馈").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("反馈渠道：GitHub").performKeyInput {
+        val channelDescription =
+            context.getString(R.string.feedback_channel_description, FeedbackChannel.GITHUB.label)
+        composeRule.onNodeWithContentDescription(channelDescription).assertIsFocused()
+        composeRule.onNodeWithText(context.getString(R.string.feedback_title)).assertIsDisplayed()
+        composeRule
+            .onNodeWithText(context.getString(R.string.feedback_qr_failed))
+            .assertIsDisplayed()
+        composeRule.onNodeWithContentDescription(channelDescription).performKeyInput {
             pressKey(androidx.compose.ui.input.key.Key.DirectionRight)
         }
         composeRule.runOnIdle { assertEquals(FeedbackChannel.EMAIL, selected) }
@@ -62,7 +71,9 @@ class FeedbackDialogTest {
             )
         }
 
-        composeRule.onNodeWithContentDescription("关闭反馈").performClick()
+        composeRule
+            .onNodeWithContentDescription(context.getString(R.string.feedback_close))
+            .performClick()
         composeRule.runOnIdle { assertTrue(closed) }
     }
 }

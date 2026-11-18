@@ -3,6 +3,8 @@ package com.roy233.tvcast.feature.subtitle.presentation
 import com.roy233.tvcast.feature.subtitle.application.SubtitleAvailability
 import com.roy233.tvcast.feature.subtitle.application.SubtitleSessionState
 import com.roy233.tvcast.feature.subtitle.domain.SubtitleLabels
+import com.roy233.tvcast.ui.model.SubtitleSummary
+import com.roy233.tvcast.ui.model.SubtitleSummaryKind
 import com.roy233.tvcast.ui.model.SubtitleTrackOption
 
 /** 把字幕会话状态映射为界面选项，保持既有顺序不变。 */
@@ -22,17 +24,20 @@ object SubtitleTrackMapper {
         }
 
     /** 播放设置面板中显示的字幕摘要。 */
-    fun summary(state: SubtitleSessionState): String {
+    fun summary(state: SubtitleSessionState): SubtitleSummary {
         state.selected?.let {
-            return SubtitleLabels.trackTitle(it)
+            return SubtitleSummary(SubtitleSummaryKind.SELECTED, SubtitleLabels.trackTitle(it))
         }
-        return when {
-            !state.enabled -> "已关闭"
-            state.availability == SubtitleAvailability.LOADING -> "加载中"
-            state.availability == SubtitleAvailability.UNAVAILABLE -> "不可用"
-            state.availability == SubtitleAvailability.EMPTY -> "无字幕"
-            state.tracks.isEmpty() -> "无字幕"
-            else -> "关闭"
-        }
+        val kind =
+            when {
+                !state.enabled -> SubtitleSummaryKind.DISABLED
+                state.availability == SubtitleAvailability.LOADING -> SubtitleSummaryKind.LOADING
+                state.availability == SubtitleAvailability.UNAVAILABLE ->
+                    SubtitleSummaryKind.UNAVAILABLE
+                state.availability == SubtitleAvailability.EMPTY || state.tracks.isEmpty() ->
+                    SubtitleSummaryKind.EMPTY
+                else -> SubtitleSummaryKind.OFF
+            }
+        return SubtitleSummary(kind)
     }
 }

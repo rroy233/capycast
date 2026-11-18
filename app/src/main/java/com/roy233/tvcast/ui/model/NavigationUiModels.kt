@@ -22,6 +22,7 @@ enum class UiFocusAnchor {
     /** 设置主页的平台卡片与软件信息入口。 */
     SETTINGS_PLATFORM,
     SETTINGS_UPDATE_ENTRY,
+    SETTINGS_LANGUAGE_ENTRY,
 
     /** 应用更新页的返回按钮与更新日志入口。 */
     SETTINGS_UPDATE_BACK,
@@ -60,6 +61,7 @@ enum class UiOverlay {
     STOP_CAST_CONFIRM,
     ERROR,
     PANEL,
+    LANGUAGE,
     HELP,
     FEEDBACK,
     LOGIN_DIALOG,

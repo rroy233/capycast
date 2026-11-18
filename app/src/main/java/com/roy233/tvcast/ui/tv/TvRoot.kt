@@ -42,9 +42,11 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.roy233.tvcast.R
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.display.CalibrationPhase
 import com.roy233.tvcast.ui.designsystem.*
@@ -69,6 +71,7 @@ import com.roy233.tvcast.ui.tv.player.LoadingScreen
 import com.roy233.tvcast.ui.tv.player.PlaybackSeekAccelerator
 import com.roy233.tvcast.ui.tv.player.PlayingScreen
 import com.roy233.tvcast.ui.tv.settings.CalibrationAdjustScreen
+import com.roy233.tvcast.ui.tv.settings.LanguageDialog
 import com.roy233.tvcast.ui.tv.settings.SettingsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -100,12 +103,12 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
             )
             if (state.calibration.phase == CalibrationPhase.CONFIRM) {
                 GlassAlert(
-                    title = "完成画面校准？",
-                    message = "已调整四个角。确认后保存，之后播放的视频都会使用这个画面范围。",
-                    primaryLabel = "已完成",
+                    title = stringResource(R.string.calibration_confirm_title),
+                    message = stringResource(R.string.calibration_confirm_message),
+                    primaryLabel = stringResource(R.string.calibration_confirm_done),
                     onPrimary = actions.onFinishCalibration,
                     onDismissRequest = actions.onReviewCalibration,
-                    secondaryLabel = "再看看",
+                    secondaryLabel = stringResource(R.string.calibration_review),
                     onSecondary = actions.onReviewCalibration,
                 )
             }
@@ -304,22 +307,22 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                 UiOverlay.PRIVACY_NOTICE -> PrivacyNoticeDialog(state, actions)
                 UiOverlay.CALIBRATION ->
                     GlassAlert(
-                        title = "校准电视画面？",
-                        message = "如果视频超出屏幕边缘，可以用遥控器调整四边。跳过后不会再次自动提示，仍可从设置中打开。",
-                        primaryLabel = "开始校准",
+                        title = stringResource(R.string.dialog_calibration_title),
+                        message = stringResource(R.string.dialog_calibration_message),
+                        primaryLabel = stringResource(R.string.dialog_calibration_start),
                         onPrimary = actions.onStartCalibration,
                         onDismissRequest = actions.onCancelCalibration,
-                        secondaryLabel = "跳过",
+                        secondaryLabel = stringResource(R.string.dialog_calibration_skip),
                         onSecondary = actions.onCancelCalibration,
                     )
                 UiOverlay.STOP_CAST_CONFIRM ->
                     GlassAlert(
-                        title = "停止当前投屏？",
-                        message = "电视将停止当前播放并返回主页。",
-                        primaryLabel = "停止投屏",
+                        title = stringResource(R.string.dialog_stop_cast_title),
+                        message = stringResource(R.string.dialog_stop_cast_message),
+                        primaryLabel = stringResource(R.string.dialog_stop_cast_confirm),
                         onPrimary = actions.onConfirmStopCast,
                         onDismissRequest = actions.onCancelStopCast,
-                        secondaryLabel = "继续观看",
+                        secondaryLabel = stringResource(R.string.home_continue_watch),
                         onSecondary = actions.onCancelStopCast,
                         destructive = true,
                     )
@@ -330,17 +333,21 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                             title = error.title,
                             message = error.message,
                             code = error.code.ifBlank { null },
-                            primaryLabel = if (error.canRetry) "重试" else "返回",
+                            primaryLabel =
+                                if (error.canRetry) stringResource(R.string.common_retry)
+                                else stringResource(R.string.common_back),
                             onPrimary = {
                                 if (error.canRetry) actions.onRetry() else actions.onDismissError()
                             },
                             onDismissRequest = actions.onDismissError,
-                            secondaryLabel = if (error.canRetry) "返回" else null,
+                            secondaryLabel =
+                                if (error.canRetry) stringResource(R.string.common_back) else null,
                             onSecondary = if (error.canRetry) actions.onDismissError else null,
                         )
                     }
                 }
                 UiOverlay.PANEL -> QuickPanel(state, actions)
+                UiOverlay.LANGUAGE -> LanguageDialog(state, actions)
                 UiOverlay.HELP -> HelpSheet(state, actions)
                 UiOverlay.FEEDBACK -> FeedbackDialog(state, actions)
                 UiOverlay.LOGIN_DIALOG -> LoginDialog(state, actions)

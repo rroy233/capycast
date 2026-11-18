@@ -51,6 +51,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.roy233.tvcast.R
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.ui.designsystem.*
@@ -186,7 +189,9 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     ) {
                         PulseDot(if (state.loggedIn) TvColors.accent else TvColors.warning, 7.dp)
                         BasicText(
-                            text = if (state.loggedIn) "等待手机投屏" else "访客模式",
+                            text =
+                                if (state.loggedIn) stringResource(R.string.home_waiting_phone)
+                                else stringResource(R.string.home_guest),
                             style =
                                 TvType.caption.copy(
                                     color = TvColors.textSecondary,
@@ -204,7 +209,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     ) { hero ->
                         Column {
                             BasicText(
-                                text = hero?.title ?: "Bilibili 投屏",
+                                text = hero?.title ?: stringResource(R.string.menu_home),
                                 style =
                                     TvType.hero.copy(
                                         fontSize = titleSize,
@@ -224,7 +229,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                             BasicText(
                                 text =
                                     hero?.let {
-                                        listOf(it.quality, it.relativeTimeLabel())
+                                        listOf(it.quality, relativeTimeText(it.relativeTime()))
                                             .filter { value -> value.isNotBlank() }
                                             .joinToString(" · ")
                                     } ?: "${state.deviceName} · ${state.roomName}",
@@ -246,7 +251,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (!state.loggedIn) {
                     WhiteButton(
-                        text = "扫码登录",
+                        text = stringResource(R.string.settings_scan_login),
                         onClick = actions.onLogin,
                         modifier =
                             Modifier.focusProperties {
@@ -261,7 +266,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     )
                     if (featured != null) {
                         GlassButton(
-                            text = "继续播放",
+                            text = stringResource(R.string.home_continue_play),
                             onClick = { actions.onRecast(featured) },
                             modifier =
                                 Modifier.focusProperties {
@@ -276,7 +281,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     }
                 } else if (featured != null) {
                     WhiteButton(
-                        text = "继续播放",
+                        text = stringResource(R.string.home_continue_play),
                         onClick = { actions.onRecast(featured) },
                         modifier =
                             Modifier.focusProperties {
@@ -290,7 +295,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                         compact = compact,
                     )
                     GlassButton(
-                        text = "返回",
+                        text = stringResource(R.string.common_back),
                         onClick = actions.onDismissContinue,
                         modifier =
                             Modifier.focusProperties {
@@ -304,7 +309,7 @@ internal fun HomeScreen(state: TvUiState, actions: TvActions) {
                     )
                 } else {
                     WhiteButton(
-                        text = "投屏帮助",
+                        text = stringResource(R.string.home_help),
                         onClick = actions.onShowHelp,
                         modifier = Modifier.focusProperties { left = FocusRequester.Cancel },
                         focusTarget = primaryFocus,
@@ -441,7 +446,7 @@ private fun RecentShelf(
         cardWidth * (1f / RECENT_CARD_ASPECT_RATIO) * RECENT_CARD_FOCUS_OVERFLOW_RATIO
     Column {
         BasicText(
-            text = "最近投屏",
+            text = stringResource(R.string.home_recent_cast),
             style = TvType.section.copy(fontSize = 22.sp),
         )
         Spacer(Modifier.height(12.dp))
@@ -582,19 +587,43 @@ private fun RecentCard(
 
 private fun RecentCast.focusKey(): String = "$aid-$cid"
 
-/** 将最近投屏的记录时间转换为适合十英尺界面的简短相对时间。 */
-internal fun RecentCast.relativeTimeLabel(nowMs: Long = System.currentTimeMillis()): String {
-    if (at <= 0L) return "好久之前"
+/** 以不含语言的状态表达相对时间，文本在界面层按当前语言生成。 */
+internal enum class RelativeTimeUnit {
+    JUST_NOW,
+    MINUTES,
+    HOURS,
+    YESTERDAY,
+    DAYS,
+    LONG_AGO,
+}
+
+internal data class RelativeCastTime(val unit: RelativeTimeUnit, val count: Int = 0)
+
+internal fun RecentCast.relativeTime(nowMs: Long = System.currentTimeMillis()): RelativeCastTime {
+    if (at <= 0L) return RelativeCastTime(RelativeTimeUnit.LONG_AGO)
     val elapsed = (nowMs - at).coerceAtLeast(0L)
-    when {
-        elapsed < MINUTE_MS -> return "刚刚"
-        elapsed < HOUR_MS -> return "${elapsed / MINUTE_MS}分钟前"
-        isYesterday(at, nowMs) -> return "昨天"
-        elapsed < DAY_MS -> return "${elapsed / HOUR_MS}小时前"
-        elapsed < WEEK_MS -> return "${elapsed / DAY_MS}天前"
-        else -> return "好久之前"
+    return when {
+        elapsed < MINUTE_MS -> RelativeCastTime(RelativeTimeUnit.JUST_NOW)
+        elapsed < HOUR_MS ->
+            RelativeCastTime(RelativeTimeUnit.MINUTES, (elapsed / MINUTE_MS).toInt())
+        isYesterday(at, nowMs) -> RelativeCastTime(RelativeTimeUnit.YESTERDAY)
+        elapsed < DAY_MS -> RelativeCastTime(RelativeTimeUnit.HOURS, (elapsed / HOUR_MS).toInt())
+        elapsed < WEEK_MS -> RelativeCastTime(RelativeTimeUnit.DAYS, (elapsed / DAY_MS).toInt())
+        else -> RelativeCastTime(RelativeTimeUnit.LONG_AGO)
     }
 }
+
+@Composable
+private fun relativeTimeText(time: RelativeCastTime): String =
+    when (time.unit) {
+        RelativeTimeUnit.JUST_NOW -> stringResource(R.string.time_just_now)
+        RelativeTimeUnit.MINUTES -> stringResource(R.string.time_minutes_ago, time.count)
+        RelativeTimeUnit.HOURS -> stringResource(R.string.time_hours_ago, time.count)
+        RelativeTimeUnit.YESTERDAY -> stringResource(R.string.time_yesterday)
+        RelativeTimeUnit.DAYS ->
+            pluralStringResource(R.plurals.time_days_ago_plural, time.count, time.count)
+        RelativeTimeUnit.LONG_AGO -> stringResource(R.string.time_long_ago)
+    }
 
 private fun isYesterday(timestampMs: Long, nowMs: Long): Boolean {
     val now = Calendar.getInstance().apply { timeInMillis = nowMs }

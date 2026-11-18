@@ -120,6 +120,11 @@ fun TvUiState.playbackUiState() =
 fun TvUiState.withPlaybackUiState(value: PlaybackUiState) =
     copy(
         mode = value.mode,
+        languageDialogVisible =
+            languageDialogVisible &&
+                value.mode == TvMode.IDLE &&
+                value.destination == TvDestination.SETTINGS &&
+                value.settingsPage == SettingsPage.ROOT,
         destination = value.destination,
         settingsNavigation = settingsNavigation.replaceWith(value.settingsPage),
         sidebarVisible = value.sidebarVisible,

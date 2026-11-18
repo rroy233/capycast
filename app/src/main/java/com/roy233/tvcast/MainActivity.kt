@@ -11,10 +11,12 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.os.LocaleListCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.app.CapyCastContainer
@@ -47,6 +49,7 @@ import com.roy233.tvcast.data.bili.danmaku.DanmakuApi
 import com.roy233.tvcast.data.bili.routing.OkHttpLiveRouteProbe
 import com.roy233.tvcast.data.bili.routing.OkHttpVodRouteProbe
 import com.roy233.tvcast.feature.account.AccountUiState
+import com.roy233.tvcast.feature.account.LoginStatus
 import com.roy233.tvcast.feature.account.model.Token
 import com.roy233.tvcast.feature.cast.application.DlnaTransportCoordinator
 import com.roy233.tvcast.feature.cast.application.DlnaTransportHost
@@ -98,12 +101,14 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
 import com.roy233.tvcast.platform.dlna.DlnaRenderer
 import com.roy233.tvcast.platform.player.MediaTrackFormat
 import com.roy233.tvcast.ui.model.CastPlaybackStateProjector
+import com.roy233.tvcast.ui.model.FocusRequest
 import com.roy233.tvcast.ui.model.LiveQualityOption
 import com.roy233.tvcast.ui.model.PanelKind
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvError
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.TvUiState
+import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.tv.DoubleBackExitGate
 import com.roy233.tvcast.ui.tv.HomeBackExitTiming
 import com.roy233.tvcast.ui.tv.TvActionDispatcher
@@ -125,7 +130,7 @@ import master.flame.danmaku.ui.widget.DanmakuView
  */
 @UnstableApi
 class MainActivity :
-    ComponentActivity(),
+    AppCompatActivity(),
     TvActionHost,
     VodPlaybackHost,
     LivePlaybackHost,
@@ -151,6 +156,7 @@ class MainActivity :
     private lateinit var viewportHost: VideoViewportHost
     private var resumePlaybackAfterCalibration = false
     private var startupLoginPending = false
+    private var restoreLanguageSettingsOnRecreation = false
     private val calibrationCoordinator: DisplayCalibrationCoordinator by lazy {
         DisplayCalibrationCoordinator(
             store = container.displayCalibrationPreferences,
@@ -577,6 +583,11 @@ class MainActivity :
         )
     }
 
+    override fun setAppLanguage(languageTag: String) {
+        restoreLanguageSettingsOnRecreation = true
+        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(languageTag))
+    }
+
     override fun setCrashTracking(enabled: Boolean) {
         uiPreferences.crashTrackingEnabled = enabled
         qualityTelemetry.applyCollection(enabled, uiPreferences.usageStatisticsEnabled)
@@ -753,7 +764,7 @@ class MainActivity :
     }
 
     override fun clearLoginUi() {
-        ui = ui.copy(loginQr = null, loginStatus = "")
+        ui = ui.copy(loginQr = null, loginStatus = LoginStatus.NONE)
     }
 
     /** 重新解析并播放指定 nva 内容。 */
@@ -1118,6 +1129,13 @@ class MainActivity :
     /** 初始化播放器、投屏服务、界面和账号状态。 */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState?.getBoolean(RESTORE_LANGUAGE_SETTINGS_KEY) == true) {
+            ui =
+                ui.copy(
+                    destination = TvDestination.SETTINGS,
+                    focusRequest = FocusRequest(UiFocusAnchor.SETTINGS_LANGUAGE_ENTRY),
+                )
+        }
         LogHub.start(this)
         PlaybackDiagnostics.install(this)
         DeviceDiagnostics.collectAsync(this)
@@ -1169,8 +1187,9 @@ class MainActivity :
 
         ui =
             ui.copy(
+                appLanguage = AppCompatDelegate.getApplicationLocales().toLanguageTags(),
                 deviceName = castDeviceName,
-                roomName = uiPreferences.roomName,
+                roomName = uiPreferences.roomName ?: getString(R.string.home_room_default),
                 network = deviceInfo.wifiName(),
                 ip = LogHub.localIp(),
                 version = deviceInfo.versionName(),
@@ -1495,7 +1514,7 @@ class MainActivity :
         if (homeBackExitGate.press(System.currentTimeMillis())) {
             super.finish()
         } else {
-            Toast.makeText(this, HomeBackExitTiming.PROMPT_TEXT, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.home_back_to_exit), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -2170,6 +2189,13 @@ class MainActivity :
             "video=${LogRedaction.host(v.url)}  audio=${LogRedaction.host(info.audio?.url)}"
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (restoreLanguageSettingsOnRecreation) {
+            outState.putBoolean(RESTORE_LANGUAGE_SETTINGS_KEY, true)
+        }
+    }
+
     /** 恢复界面焦点并刷新设备网络信息。 */
     override fun onResume() {
         super.onResume()
@@ -2223,6 +2249,7 @@ class MainActivity :
     companion object {
         /** 日志标签。 */
         private const val TAG = "SimpleBili"
+        private const val RESTORE_LANGUAGE_SETTINGS_KEY = "restore_language_settings"
         /** 首页双击返回退出计时窗口。 */
         private const val HOME_BACK_EXIT_WINDOW_MS = HomeBackExitTiming.EXIT_WINDOW_MS
         /** 直播备用线路评分刷新周期。 */

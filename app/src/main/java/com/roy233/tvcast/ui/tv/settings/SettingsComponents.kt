@@ -30,12 +30,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.R
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvType
 
@@ -210,7 +212,9 @@ internal fun SettingsToggleRow(
         }
         Spacer(Modifier.width(12.dp))
         BasicText(
-            text = if (checked) "开启" else "关闭",
+            text =
+                if (checked) stringResource(R.string.common_enabled)
+                else stringResource(R.string.common_off),
             style =
                 TvType.caption.copy(
                     color = if (checked) TvColors.textPrimary else TvColors.textSecondary,
