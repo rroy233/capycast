@@ -2,7 +2,10 @@ package com.roy233.tvcast.ui.tv.settings
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
@@ -21,6 +24,7 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.swipeUp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.update.AppUpdateInfo
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
@@ -267,8 +271,8 @@ class UpdateSettingsFocusTest {
             )
         }
 
-        composeRule.onNodeWithTag("platform-bilibili").assertIsFocused().assertIsSelected()
-        composeRule.onNodeWithTag("platform-bilibili").performKeyInput {
+        composeRule.onNodeWithTag("platform-domestic").assertIsFocused().assertIsSelected()
+        composeRule.onNodeWithTag("platform-domestic").performKeyInput {
             pressKey(Key.DirectionDown)
         }
         composeRule.onNodeWithText("tv-user").assertIsFocused()
@@ -288,9 +292,38 @@ class UpdateSettingsFocusTest {
             )
         }
 
-        composeRule.onNodeWithTag("platform-bilibili").assertIsFocused().assertIsSelected()
+        composeRule.onNodeWithTag("platform-domestic").assertIsFocused().assertIsSelected()
         composeRule.onNodeWithText("扫码登录").performClick()
         composeRule.runOnIdle { assertTrue(loginRequested) }
+    }
+
+    @Test
+    fun choosingPlatformSelectsCardAndShowsItsAccount() {
+        composeRule.setContent {
+            var selected by remember { mutableStateOf(AccountPlatform.DOMESTIC) }
+            SettingsScreen(
+                state =
+                    TvUiState(
+                        accountPlatform = selected,
+                        loggedIn = selected == AccountPlatform.INTERNATIONAL,
+                        accountName = "international-user",
+                        platformLoginStates = mapOf(AccountPlatform.INTERNATIONAL to true),
+                    ),
+                actions = TvActions(onSelectAccountPlatform = { selected = it }),
+            )
+        }
+        composeRule
+            .onNodeWithTag("platform-domestic")
+            .assertIsSelected()
+            .performSemanticsAction(SemanticsActions.RequestFocus)
+        composeRule.onNodeWithTag("platform-domestic").performKeyInput {
+            pressKey(Key.DirectionRight)
+        }
+        composeRule.onNodeWithTag("platform-international").assertIsFocused().performKeyInput {
+            pressKey(Key.DirectionCenter)
+        }
+        composeRule.onNodeWithTag("platform-international").assertIsSelected()
+        composeRule.onNodeWithText("international-user").assertExists()
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.roy233.tvcast.core.diagnostics.QualityTelemetry
 import com.roy233.tvcast.core.playback.PlaybackResolver
 import com.roy233.tvcast.data.auth.AuthTokenStore
 import com.roy233.tvcast.data.auth.CastAuth
+import com.roy233.tvcast.data.auth.InternationalWebAuth
 import com.roy233.tvcast.data.bili.BiliAccountNavigator
 import com.roy233.tvcast.data.bili.BiliLivePlaybackResolver
 import com.roy233.tvcast.data.bili.BiliPlaybackResolver
@@ -20,6 +21,7 @@ import com.roy233.tvcast.data.local.SubtitlePreferences
 import com.roy233.tvcast.data.local.UiPreferences
 import com.roy233.tvcast.feature.account.AccountLoginCoordinator
 import com.roy233.tvcast.feature.account.AccountUiState
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.feedback.FeedbackCoordinator
 import com.roy233.tvcast.feature.feedback.FeedbackMetadata
 import com.roy233.tvcast.feature.feedback.FeedbackMetadataProvider
@@ -43,7 +45,6 @@ import kotlinx.coroutines.CoroutineScope
 class CapyCastContainer(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val readAccountState: () -> AccountUiState,
     private val writeAccountState: (AccountUiState) -> Unit,
     private val readUpdateState: () -> UpdateUiState,
     private val writeUpdateState: (UpdateUiState) -> Unit,
@@ -117,10 +118,13 @@ class CapyCastContainer(
         AccountLoginCoordinator(
             context = context,
             scope = scope,
-            readState = readAccountState,
             writeState = writeAccountState,
             sessionStore = authTokenStore,
-            authService = CastAuth,
+            authServices =
+                mapOf(
+                    AccountPlatform.DOMESTIC to { CastAuth },
+                    AccountPlatform.INTERNATIONAL to { InternationalWebAuth() },
+                ),
             accountNavigator = BiliAccountNavigator(authTokenStore),
             qrCodeGenerator = QrCodeGenerator(),
             onTokenAvailable = {

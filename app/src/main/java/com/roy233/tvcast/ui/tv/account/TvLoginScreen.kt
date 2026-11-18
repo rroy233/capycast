@@ -145,28 +145,11 @@ internal fun LoginDialog(state: TvUiState, actions: TvActions) {
                     }
                     Spacer(Modifier.height(if (compact) 12.dp else 16.dp))
                     BasicText(
-                        text =
-                            when (state.loginStatus) {
-                                LoginStatus.NONE -> ""
-                                LoginStatus.FETCHING -> stringResource(R.string.login_fetching)
-                                LoginStatus.REQUEST_FAILED ->
-                                    stringResource(R.string.login_request_failed)
-                                LoginStatus.GENERATE_FAILED ->
-                                    stringResource(R.string.login_generate_failed)
-                                LoginStatus.WAITING -> stringResource(R.string.login_waiting)
-                                LoginStatus.EXPIRED -> stringResource(R.string.login_expired)
-                                LoginStatus.NETWORK_ERROR ->
-                                    stringResource(R.string.login_network_error)
-                            },
+                        text = loginStatusText(state.loginStatus),
                         style =
                             TvType.caption.copy(
                                 color =
-                                    if (
-                                        state.loginStatus == LoginStatus.REQUEST_FAILED ||
-                                            state.loginStatus == LoginStatus.GENERATE_FAILED ||
-                                            state.loginStatus == LoginStatus.NETWORK_ERROR
-                                    )
-                                        TvColors.warning
+                                    if (state.loginStatus.isWarning()) TvColors.warning
                                     else TvColors.textSecondary,
                                 fontSize = if (compact) 16.sp else 18.sp,
                                 textAlign = TextAlign.Center,
@@ -178,3 +161,34 @@ internal fun LoginDialog(state: TvUiState, actions: TvActions) {
         }
     }
 }
+
+/** 把登录流程状态映射为当前语言的提示文案。 */
+@Composable
+private fun loginStatusText(status: LoginStatus): String =
+    when (status) {
+        LoginStatus.NONE -> ""
+        LoginStatus.FETCHING -> stringResource(R.string.login_fetching)
+        LoginStatus.REQUEST_FAILED -> stringResource(R.string.login_request_failed)
+        LoginStatus.GENERATE_FAILED -> stringResource(R.string.login_generate_failed)
+        LoginStatus.WAITING -> stringResource(R.string.login_waiting)
+        LoginStatus.SCANNED -> stringResource(R.string.login_scanned)
+        LoginStatus.EXPIRED -> stringResource(R.string.login_expired)
+        LoginStatus.NETWORK_ERROR -> stringResource(R.string.login_network_error)
+        LoginStatus.REJECTED -> stringResource(R.string.login_rejected)
+        LoginStatus.PLATFORM_MISMATCH -> stringResource(R.string.login_platform_mismatch)
+    }
+
+/** 需要以警示色提示的状态；新增状态必须在此显式归类。 */
+private fun LoginStatus.isWarning(): Boolean =
+    when (this) {
+        LoginStatus.REQUEST_FAILED,
+        LoginStatus.GENERATE_FAILED,
+        LoginStatus.NETWORK_ERROR,
+        LoginStatus.REJECTED,
+        LoginStatus.PLATFORM_MISMATCH -> true
+        LoginStatus.NONE,
+        LoginStatus.FETCHING,
+        LoginStatus.WAITING,
+        LoginStatus.SCANNED,
+        LoginStatus.EXPIRED -> false
+    }

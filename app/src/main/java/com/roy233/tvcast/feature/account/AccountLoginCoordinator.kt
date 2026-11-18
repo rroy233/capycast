@@ -2,8 +2,10 @@ package com.roy233.tvcast.feature.account
 
 import android.content.Context
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.feature.account.model.AccountAuthService
 import com.roy233.tvcast.feature.account.model.AccountNavigator
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.account.model.AccountSessionStore
 import com.roy233.tvcast.feature.account.model.Poll
 import com.roy233.tvcast.feature.account.model.Token
@@ -22,14 +24,12 @@ class AccountLoginCoordinator(
     private val context: Context,
     /** 执行登录协程的作用域。 */
     private val scope: CoroutineScope,
-    /** 读取账号功能独占的状态切片。 */
-    private val readState: () -> AccountUiState,
     /** 写入账号功能独占的状态切片。 */
     private val writeState: (AccountUiState) -> Unit,
     /** 登录令牌存储。 */
     private val sessionStore: AccountSessionStore,
     /** 二维码登录服务。 */
-    private val authService: AccountAuthService,
+    private val authServices: Map<AccountPlatform, () -> AccountAuthService>,
     private val accountNavigator: AccountNavigator,
     /** 二维码生成器。 */
     private val qrCodeGenerator: QrCodeGenerator,
@@ -45,9 +45,33 @@ class AccountLoginCoordinator(
 
     /** 当前二维码登录任务。 */
     private var loginJob: Job? = null
+    private var generation = 0L
+    private var profileJob: Job? = null
+    private var activeAuth: AccountAuthService? = null
+    private var state = AccountUiState()
+
+    private fun platformState(): AccountUiState.() -> AccountUiState = {
+        copy(
+            platform = sessionStore.selectedPlatform(),
+            platformLoginStates = authServices.keys.associateWith { sessionStore.load(it) != null },
+        )
+    }
+
+    /** 选中卡片即切换当前平台，旧账号的任务不再更新界面。 */
+    fun selectPlatform(platform: AccountPlatform) {
+        if (platform == sessionStore.selectedPlatform()) return
+        cancel()
+        LogHub.setQrPending(false)
+        LogHub.setQrUrl("")
+        onLogout()
+        sessionStore.selectPlatform(platform)
+        update { it.copy(loginQr = null, loginStatus = LoginStatus.NONE, mid = 0L, vip = false) }
+        startOrLogin()
+    }
 
     /** 读取已有令牌；扫码任务由用户打开登录弹窗时启动。 */
     fun startOrLogin() {
+        update(platformState())
         val token = sessionStore.load()
         LogHub.i(TAG, "startOrLogin token=${token != null}")
         if (token != null) {
@@ -66,10 +90,13 @@ class AccountLoginCoordinator(
             fetchNav()
             return
         }
+        LogHub.setLogin(0L)
         update {
             it.copy(
                 loggedIn = false,
                 accountName = "",
+                mid = 0L,
+                vip = false,
                 loginQr = null,
                 loginStatus = LoginStatus.NONE,
                 loginSkipped = false,
@@ -80,6 +107,10 @@ class AccountLoginCoordinator(
     /** 启动二维码申请和状态轮询任务。 */
     fun startQrLogin() {
         if (loginJob?.isActive == true) return
+        val attempt = ++generation
+        val platform = sessionStore.selectedPlatform()
+        val authFactory =
+            checkNotNull(authServices[platform]) { "Missing account service for $platform" }
         update {
             it.copy(
                 loginQr = null,
@@ -88,96 +119,147 @@ class AccountLoginCoordinator(
             )
         }
         loginJob = scope.launch {
-            while (isActive) {
-                val qr =
-                    withContext(Dispatchers.IO) {
-                        runCatching { authService.requestQr(context) }
-                    }
-                if (qr.isFailure) {
-                    LogHub.e(TAG, "qr request failed: ${qr.exceptionOrNull()?.message}")
-                    update { it.copy(loginStatus = LoginStatus.REQUEST_FAILED) }
-                    delay(4000)
-                    continue
-                }
-
-                val code = qr.getOrThrow()
-                val bitmap = qrCodeGenerator.generate(code.url)
-                LogHub.setQrUrl(code.url)
-                LogHub.setQrPending(true)
-                update {
-                    it.copy(
-                        loginQr = bitmap,
-                        loginStatus =
-                            if (bitmap == null) LoginStatus.GENERATE_FAILED
-                            else LoginStatus.WAITING,
-                    )
-                }
-                if (bitmap == null) {
-                    delay(2000)
-                    continue
-                }
-
-                var age = 0
-                var expire = false
-                var lastPending = Int.MIN_VALUE
-                while (isActive && !expire && age < 170) {
-                    delay(2000)
-                    age += 2
-                    val poll =
+            try {
+                while (isActive) {
+                    activeAuth?.close()
+                    val authService = authFactory()
+                    activeAuth = authService
+                    val qr =
                         withContext(Dispatchers.IO) {
-                                runCatching {
-                                    authService.poll(context, code.authCode, code.sessionId)
-                                }
-                            }
-                            .getOrNull()
-
-                    when (poll) {
-                        is Poll.Success -> {
-                            sessionStore.save(poll.token)
-                            onTokenAvailable(poll.token)
-                            LogHub.setLogin(poll.token.mid)
-                            LogHub.setQrPending(false)
-                            LogHub.setQrUrl("")
-                            LogHub.i(TAG, "login ok mid=${poll.token.mid}")
-                            update {
-                                it.copy(
-                                    loggedIn = true,
-                                    mid = poll.token.mid,
-                                    accountName = "",
-                                    loginQr = null,
-                                    loginStatus = LoginStatus.NONE,
-                                    loginSkipped = false,
-                                )
-                            }
-                            fetchNav()
-                            return@launch
+                            runCatching { authService.requestQr(context) }
                         }
+                    if (
+                        !isActive ||
+                            generation != attempt ||
+                            sessionStore.selectedPlatform() != platform
+                    )
+                        return@launch
+                    if (qr.isFailure) {
+                        LogHub.e(
+                            TAG,
+                            "qr request failed: ${LogRedaction.reason(qr.exceptionOrNull())}",
+                        )
+                        update { it.copy(loginStatus = LoginStatus.REQUEST_FAILED) }
+                        delay(4000)
+                        continue
+                    }
 
-                        is Poll.Pending -> {
-                            if (poll.code != lastPending) {
-                                lastPending = poll.code
-                                LogHub.i(TAG, "qr poll ${poll.code} ${poll.message}")
-                            }
-                            when (poll.code) {
-                                86039 -> update { it.copy(loginStatus = LoginStatus.WAITING) }
-                                86038 -> {
+                    val code = qr.getOrThrow()
+                    val bitmap = qrCodeGenerator.generate(code.url)
+                    LogHub.setQrUrl(code.url)
+                    LogHub.setQrPending(true)
+                    update {
+                        it.copy(
+                            loginQr = bitmap,
+                            loginStatus =
+                                if (bitmap == null) LoginStatus.GENERATE_FAILED
+                                else LoginStatus.WAITING,
+                        )
+                    }
+                    if (bitmap == null) {
+                        delay(2000)
+                        continue
+                    }
+
+                    var age = 0
+                    var expire = false
+                    var lastPending = Int.MIN_VALUE
+                    while (isActive && !expire && age < 170) {
+                        delay(2000)
+                        age += 2
+                        val poll =
+                            withContext(Dispatchers.IO) {
+                                    runCatching {
+                                        authService.poll(context, code.authCode, code.sessionId)
+                                    }
+                                }
+                                .getOrNull()
+
+                        if (
+                            !isActive ||
+                                generation != attempt ||
+                                sessionStore.selectedPlatform() != platform
+                        )
+                            return@launch
+
+                        when (poll) {
+                            is Poll.Success -> {
+                                if (poll.token.platform != platform) {
+                                    LogHub.e(TAG, "login rejected: account platform mismatch")
                                     update {
                                         it.copy(
                                             loginQr = null,
-                                            loginStatus = LoginStatus.EXPIRED,
+                                            loginStatus = LoginStatus.PLATFORM_MISMATCH,
                                         )
                                     }
-                                    expire = true
+                                    LogHub.setQrPending(false)
+                                    LogHub.setQrUrl("")
+                                    return@launch
                                 }
-
-                                else -> update { it.copy(loginStatus = LoginStatus.WAITING) }
+                                sessionStore.save(poll.token)
+                                update(platformState())
+                                onTokenAvailable(poll.token)
+                                LogHub.setLogin(poll.token.mid)
+                                LogHub.setQrPending(false)
+                                LogHub.setQrUrl("")
+                                LogHub.i(TAG, "login ok mid=${poll.token.mid}")
+                                update {
+                                    it.copy(
+                                        loggedIn = true,
+                                        mid = poll.token.mid,
+                                        accountName = "",
+                                        loginQr = null,
+                                        loginStatus = LoginStatus.NONE,
+                                        loginSkipped = false,
+                                    )
+                                }
+                                fetchNav()
+                                return@launch
                             }
-                        }
 
-                        null -> update { it.copy(loginStatus = LoginStatus.NETWORK_ERROR) }
+                            is Poll.Pending -> {
+                                if (poll.code != lastPending) {
+                                    lastPending = poll.code
+                                    LogHub.i(TAG, "qr poll ${poll.code} ${poll.message}")
+                                }
+                                when (poll.code) {
+                                    86039 -> update { it.copy(loginStatus = LoginStatus.WAITING) }
+                                    86101 -> update { it.copy(loginStatus = LoginStatus.WAITING) }
+                                    86090 -> update { it.copy(loginStatus = LoginStatus.SCANNED) }
+                                    86038 -> {
+                                        update {
+                                            it.copy(
+                                                loginQr = null,
+                                                loginStatus = LoginStatus.EXPIRED,
+                                            )
+                                        }
+                                        expire = true
+                                    }
+
+                                    else -> update { it.copy(loginStatus = LoginStatus.WAITING) }
+                                }
+                            }
+
+                            is Poll.Failure -> {
+                                LogHub.w(TAG, "qr rejected code=${poll.code}")
+                                update {
+                                    it.copy(loginQr = null, loginStatus = LoginStatus.REJECTED)
+                                }
+                                LogHub.setQrPending(false)
+                                LogHub.setQrUrl("")
+                                return@launch
+                            }
+
+                            null -> update { it.copy(loginStatus = LoginStatus.NETWORK_ERROR) }
+                        }
                     }
+                    if (expire) delay(1000)
                 }
-                if (expire) delay(1000)
+            } finally {
+                if (generation == attempt) {
+                    activeAuth?.close()
+                    activeAuth = null
+                }
             }
         }
     }
@@ -187,8 +269,7 @@ class AccountLoginCoordinator(
         LogHub.i(TAG, "skip login (guest)")
         LogHub.setQrPending(false)
         LogHub.setQrUrl("")
-        loginJob?.cancel()
-        loginJob = null
+        cancel()
         update {
             it.copy(
                 loginQr = null,
@@ -210,10 +291,10 @@ class AccountLoginCoordinator(
 
     /** 清除登录凭据并重新进入登录准备状态。 */
     fun logout() {
-        loginJob?.cancel()
-        loginJob = null
-        sessionStore.clear()
+        cancel()
         onLogout()
+        sessionStore.clear()
+        update(platformState())
         LogHub.setLogin(0L)
         LogHub.setQrPending(false)
         LogHub.setQrUrl("")
@@ -234,18 +315,31 @@ class AccountLoginCoordinator(
 
     /** 取消当前登录协程。 */
     fun cancel() {
+        generation++
+        activeAuth?.close()
+        activeAuth = null
         loginJob?.cancel()
         loginJob = null
+        profileJob?.cancel()
+        profileJob = null
     }
 
     /** 异步读取账号导航信息并更新界面状态。 */
     private fun fetchNav() {
-        scope.launch {
+        profileJob?.cancel()
+        val attempt = generation
+        val platform = sessionStore.selectedPlatform()
+        profileJob = scope.launch {
             val nav =
                 withContext(Dispatchers.IO) {
                     runCatching { accountNavigator.currentProfile() }.getOrNull()
                 }
-            if (nav != null) {
+            if (
+                nav != null &&
+                    isActive &&
+                    generation == attempt &&
+                    sessionStore.selectedPlatform() == platform
+            ) {
                 update {
                     it.copy(
                         accountName = nav.name,
@@ -259,7 +353,8 @@ class AccountLoginCoordinator(
 
     /** 使用转换函数更新当前界面状态。 */
     private fun update(transform: (AccountUiState) -> AccountUiState) {
-        writeState(transform(readState()))
+        state = transform(state)
+        writeState(state)
     }
 
     private companion object {

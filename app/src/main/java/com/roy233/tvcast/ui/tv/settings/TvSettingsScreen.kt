@@ -28,9 +28,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.roy233.tvcast.R
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.ui.designsystem.BilibiliTvLogo
 import com.roy233.tvcast.ui.designsystem.FocusableRow
 import com.roy233.tvcast.ui.model.SettingsPage
@@ -63,10 +62,12 @@ import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.rememberFocusTarget
 
-/** 账号信息中可选的平台；保留枚举以便后续接入其他平台。 */
-private enum class AccountPlatform(val label: String) {
-    BILIBILI("Bilibili"),
-}
+private val AccountPlatform.labelRes: Int
+    get() =
+        when (this) {
+            AccountPlatform.DOMESTIC -> R.string.settings_platform_domestic
+            AccountPlatform.INTERNATIONAL -> R.string.settings_platform_international
+        }
 
 /** 显示由账号、软件与设备信息组成的设置首页。 */
 @Composable
@@ -74,7 +75,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
     val platformFocus = remember { FocusRequester() }
     val loginFocus = remember { FocusRequester() }
     val updateEntryFocus = remember { FocusRequester() }
-    var selectedPlatform by remember { mutableStateOf(AccountPlatform.BILIBILI) }
+    val selectedPlatform = state.accountPlatform
     val languageFocus = rememberFocusTarget()
     val listState = rememberLazyListState()
 
@@ -127,21 +128,18 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                 SettingsSection(stringResource(R.string.settings_section_account)) {
                     PlatformGallery(
                         selectedPlatform = selectedPlatform,
-                        loggedIn = state.loggedIn,
+                        platformLoginStates = state.platformLoginStates,
                         compact = compact,
                         focusRequester = platformFocus,
-                        onPlatformSelected = { selectedPlatform = it },
+                        onPlatformSelected = actions.onSelectAccountPlatform,
                     )
                     SettingsRowDivider()
-                    when (selectedPlatform) {
-                        AccountPlatform.BILIBILI ->
-                            BilibiliAccountSettings(
-                                state = state,
-                                actions = actions,
-                                loginFocus = loginFocus,
-                                compact = compact,
-                            )
-                    }
+                    BilibiliAccountSettings(
+                        state = state,
+                        actions = actions,
+                        loginFocus = loginFocus,
+                        compact = compact,
+                    )
                 }
             }
 
@@ -223,7 +221,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
 @Composable
 private fun PlatformGallery(
     selectedPlatform: AccountPlatform,
-    loggedIn: Boolean,
+    platformLoginStates: Map<AccountPlatform, Boolean>,
     compact: Boolean,
     focusRequester: FocusRequester,
     onPlatformSelected: (AccountPlatform) -> Unit,
@@ -247,10 +245,9 @@ private fun PlatformGallery(
                 PlatformTile(
                     platform = platform,
                     selected = platform == selectedPlatform,
-                    loggedIn = loggedIn,
+                    loggedIn = platformLoginStates[platform] == true,
                     compact = compact,
-                    focusRequester =
-                        if (platform == AccountPlatform.BILIBILI) focusRequester else null,
+                    focusRequester = if (platform == selectedPlatform) focusRequester else null,
                     onClick = { onPlatformSelected(platform) },
                 )
             }
@@ -288,6 +285,7 @@ private fun PlatformTile(
             else -> Color.White.copy(alpha = 0.10f)
         }
     val textColor = if (loggedIn) TvColors.textPrimary else TvColors.textDisabled
+    val label = stringResource(platform.labelRes)
     val selectionDescription =
         stringResource(if (selected) R.string.settings_selected else R.string.settings_unselected)
     val loginDescription =
@@ -303,7 +301,7 @@ private fun PlatformTile(
                     if (focusRequester != null) Modifier.focusRequester(focusRequester)
                     else Modifier,
                 )
-                .focusTrace("platform:${platform.label}")
+                .focusTrace("platform:${platform.name.lowercase()}")
                 .clip(shape)
                 .background(cardColor)
                 .border(if (focused) 2.dp else 1.dp, borderColor, shape)
@@ -316,14 +314,14 @@ private fun PlatformTile(
                 )
                 .semantics {
                     contentDescription = buildString {
-                        append(platform.label)
+                        append(label)
                         append(", ")
                         append(selectionDescription)
                         append(", ")
                         append(loginDescription)
                     }
                 }
-                .testTag("platform-bilibili"),
+                .testTag("platform-${platform.name.lowercase()}"),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -336,7 +334,7 @@ private fun PlatformTile(
             )
             Spacer(Modifier.height(if (compact) 5.dp else 7.dp))
             BasicText(
-                text = platform.label,
+                text = label,
                 style =
                     TvType.caption.copy(
                         color = textColor,

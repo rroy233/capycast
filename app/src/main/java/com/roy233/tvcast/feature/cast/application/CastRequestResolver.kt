@@ -8,6 +8,9 @@ import com.roy233.tvcast.feature.playback.model.LivePlayInfo
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.feature.playback.model.RankedVodPlayback
 
+/** 直播 TV 取流需要电视端凭据。 */
+class LiveTvCredentialRequired : IllegalStateException("TV login is required for live playback")
+
 /** 按 NVA 媒体身份选择既有直播、PGC 或普通视频解析路径。 */
 class CastRequestResolver(
     private val accessKey: () -> String?,
@@ -23,7 +26,7 @@ class CastRequestResolver(
     ): CastResolution =
         when {
             nva.hasLive -> {
-                val key = accessKey() ?: error("TV account login is required for live playback")
+                val key = accessKey() ?: throw LiveTvCredentialRequired()
                 val info = resolveLive(key, nva.roomId)
                 val routes = rankLive(info)
                 if (routes.isEmpty()) error("live response has no eligible CDN routes")

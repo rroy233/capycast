@@ -40,6 +40,8 @@
 
     <!-- Settings Screen -->
     <string name="settings_section_account">帳號資訊</string>
+    <string name="settings_platform_domestic">Bilibili 國內版</string>
+    <string name="settings_platform_international">Bilibili 國際版</string>
     <string name="settings_platform">平台</string>
     <string name="settings_scan_login">掃碼登入</string>
     <string name="settings_account">帳號</string>
@@ -168,6 +170,9 @@
     <string name="login_request_failed">取得 QR Code 失敗，正在重試…</string>
     <string name="login_generate_failed">產生 QR Code 失敗，正在重試…</string>
     <string name="login_waiting">等待掃碼…</string>
+    <string name="login_scanned">已掃碼，請在手機確認…</string>
+    <string name="login_rejected">登入失敗，請稍後重試或改用其他帳號。</string>
+    <string name="login_platform_mismatch">登入失敗：掃碼的帳號不屬於目前選擇的平台。</string>
     <string name="login_expired">QR Code 已失效，正在重新整理…</string>
     <string name="login_network_error">網路異常，重試中…</string>
     <string name="home_waiting_phone">等待手機投放</string>

@@ -1,5 +1,6 @@
 package com.roy233.tvcast.feature.history
 
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import java.io.IOException
 
 /** 一条待同步的历史记录快照；不包含 access_key、Cookie 或 CSRF。 */
@@ -26,6 +27,7 @@ data class PlaybackHistoryReport(
     val fromSpmid: String = "",
     val resourceFrom: String = "",
     val updatedAtMs: Long,
+    val accountPlatform: AccountPlatform = AccountPlatform.DOMESTIC,
 )
 
 /** 仅保留在内存中的 Web 登录态，不写入历史队列或日志。 */

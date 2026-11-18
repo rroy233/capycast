@@ -2,6 +2,7 @@ package com.roy233.tvcast.ui.model
 
 import android.graphics.Bitmap
 import com.roy233.tvcast.feature.account.LoginStatus
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationPhase
@@ -49,7 +50,7 @@ data class RecentCastFocus(val aid: Long, val cid: Long)
  * @property stopCastConfirm 是否显示停止投屏确认。
  * @property error 当前待展示的错误信息。
  * @property loginQr 登录二维码位图。
- * @property loginStatus 登录流程状态文本。
+ * @property loginStatus 登录流程状态。
  * @property loginDialogVisible 是否显示扫码登录弹窗。
  * @property loginSkipped 是否跳过登录。
  * @property helpVisible 是否显示投屏帮助。
@@ -71,6 +72,8 @@ data class RecentCastFocus(val aid: Long, val cid: Long)
  * @property update 应用更新页面的状态。
  */
 data class TvUiState(
+    val accountPlatform: AccountPlatform = AccountPlatform.DOMESTIC,
+    val platformLoginStates: Map<AccountPlatform, Boolean> = emptyMap(),
     val mode: TvMode = TvMode.IDLE,
     val destination: TvDestination = TvDestination.HOME,
     val settingsNavigation: SettingsNavigationState = SettingsNavigationState(),

@@ -1,5 +1,6 @@
 package com.roy233.tvcast.ui.model
 
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationDirection
@@ -59,6 +60,7 @@ import com.roy233.tvcast.feature.update.model.UpdateChannel
  * @property onHomeBack 处理首页返回操作。
  */
 class TvActions(
+    val onSelectAccountPlatform: (AccountPlatform) -> Unit = {},
     val onLogin: () -> Unit = {},
     val onCloseLogin: () -> Unit = {},
     val onSkipLogin: () -> Unit = {},

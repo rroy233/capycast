@@ -40,6 +40,8 @@
 
     <!-- Settings Screen -->
     <string name="settings_section_account">Account</string>
+    <string name="settings_platform_domestic">Bilibili (China)</string>
+    <string name="settings_platform_international">Bilibili (International)</string>
     <string name="settings_platform">Platform</string>
     <string name="settings_scan_login">Log In via QR Code</string>
     <string name="settings_account">Account</string>
@@ -168,6 +170,9 @@
     <string name="login_request_failed">Failed to get QR code; retrying…</string>
     <string name="login_generate_failed">Failed to generate QR code; retrying…</string>
     <string name="login_waiting">Waiting for scan…</string>
+    <string name="login_scanned">Scanned. Confirm on your phone…</string>
+    <string name="login_rejected">Login failed. Try again later or use another account.</string>
+    <string name="login_platform_mismatch">Login failed: the scanned account does not belong to the selected platform.</string>
     <string name="login_expired">QR code expired; refreshing…</string>
     <string name="login_network_error">Network error; retrying…</string>
     <string name="home_waiting_phone">Waiting for your phone</string>

@@ -2,6 +2,12 @@ package com.roy233.tvcast.feature.account.model
 
 /** 持久化电视端登录令牌的存储端口。 */
 interface AccountSessionStore {
+    fun selectedPlatform(): AccountPlatform
+
+    fun selectPlatform(platform: AccountPlatform)
+
+    fun load(platform: AccountPlatform): Token?
+
     /** 保存登录令牌及其关联的账号信息。 */
     fun save(token: Token)
 
