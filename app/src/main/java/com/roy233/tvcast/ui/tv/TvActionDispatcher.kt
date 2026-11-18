@@ -14,6 +14,7 @@ import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvDestination
 import com.roy233.tvcast.ui.model.TvMode
 import com.roy233.tvcast.ui.model.UiFocusAnchor
+import com.roy233.tvcast.ui.model.UiOverlay
 import com.roy233.tvcast.ui.model.menuEntryFor
 import com.roy233.tvcast.ui.model.menuEntryOf
 import com.roy233.tvcast.ui.model.moved
@@ -104,6 +105,8 @@ interface TvActionHost {
 
     fun setSyncPlaybackHistory(enabled: Boolean)
 
+    fun setAppLanguage(languageTag: String)
+
     fun setCrashTracking(enabled: Boolean)
 
     fun setUsageStatistics(enabled: Boolean)
@@ -186,6 +189,7 @@ class TvActionDispatcher(
                     state
                         .copy(
                             destination = TvDestination.HOME,
+                            languageDialogVisible = false,
                             settingsNavigation = state.settingsNavigation.reset(),
                             sidebarVisible = false,
                             hudVisible = state.mode == TvMode.PLAYING,
@@ -200,6 +204,7 @@ class TvActionDispatcher(
                     state
                         .copy(
                             destination = TvDestination.SETTINGS,
+                            languageDialogVisible = false,
                             settingsNavigation = state.settingsNavigation.reset(),
                             sidebarVisible = false,
                             hudVisible = false,
@@ -364,6 +369,28 @@ class TvActionDispatcher(
             },
             onSetRememberPlaybackContent = { enabled -> host.setRememberPlaybackContent(enabled) },
             onSetSyncPlaybackHistory = { enabled -> host.setSyncPlaybackHistory(enabled) },
+            onOpenLanguageSettings = {
+                val state = stateHolder.read()
+                if (
+                    state.mode == TvMode.IDLE &&
+                        state.destination == TvDestination.SETTINGS &&
+                        state.settingsPage == SettingsPage.ROOT &&
+                        state.topOverlay == null &&
+                        !state.sidebarVisible
+                ) {
+                    stateHolder.set(state.copy(languageDialogVisible = true))
+                }
+            },
+            onCloseLanguageSettings = {
+                stateHolder.set(stateHolder.read().copy(languageDialogVisible = false))
+            },
+            onSetAppLanguage = { languageTag ->
+                val state = stateHolder.read()
+                if (state.languageDialogVisible && state.topOverlay == UiOverlay.LANGUAGE) {
+                    stateHolder.set(state.copy(languageDialogVisible = false))
+                    if (state.appLanguage != languageTag) host.setAppLanguage(languageTag)
+                }
+            },
             onSetCrashTracking = { enabled -> host.setCrashTracking(enabled) },
             onSetUsageStatistics = { enabled -> host.setUsageStatistics(enabled) },
             onHomeBack = { host.handleHomeBack() },

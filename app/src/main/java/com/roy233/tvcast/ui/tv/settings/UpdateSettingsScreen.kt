@@ -43,12 +43,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.R
 import com.roy233.tvcast.feature.update.UpdateStatus
 import com.roy233.tvcast.feature.update.UpdateUiState
 import com.roy233.tvcast.feature.update.model.UpdateChannel
@@ -115,19 +117,22 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
         }
     val primaryActionText =
         when (update.status) {
-            UpdateStatus.CHECKING -> "检查中…"
-            UpdateStatus.AVAILABLE -> "下载"
-            UpdateStatus.DOWNLOADING -> "下载中 ${(progress * 100).toInt()}%"
-            UpdateStatus.VERIFYING -> "校验中…"
-            UpdateStatus.READY_TO_INSTALL -> "安装"
+            UpdateStatus.CHECKING -> stringResource(R.string.update_checking)
+            UpdateStatus.AVAILABLE -> stringResource(R.string.update_action_download)
+            UpdateStatus.DOWNLOADING ->
+                stringResource(R.string.update_downloading_progress, (progress * 100).toInt())
+            UpdateStatus.VERIFYING -> stringResource(R.string.update_verifying)
+            UpdateStatus.READY_TO_INSTALL -> stringResource(R.string.update_action_install)
             UpdateStatus.FAILED ->
                 when {
-                    update.availableUpdate == null -> "重试检查"
-                    update.downloadedApkPath != null -> "安装"
-                    else -> "重新下载"
+                    update.availableUpdate == null ->
+                        stringResource(R.string.update_action_retry_check)
+                    update.downloadedApkPath != null ->
+                        stringResource(R.string.update_action_install)
+                    else -> stringResource(R.string.update_action_redownload)
                 }
             UpdateStatus.IDLE,
-            UpdateStatus.UP_TO_DATE -> "检查更新"
+            UpdateStatus.UP_TO_DATE -> stringResource(R.string.settings_check_update)
         }
     val primaryAction: () -> Unit =
         when (update.status) {
@@ -171,12 +176,12 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                         )
                         Spacer(Modifier.width(14.dp))
                         BasicText(
-                            text = "应用更新",
+                            text = stringResource(R.string.update_title),
                             style = TvType.title.copy(fontSize = 48.sp),
                         )
                     }
                     WhiteButton(
-                        text = "返回",
+                        text = stringResource(R.string.common_back),
                         onClick = actions.onNavigateSettingsBack,
                         focusTarget = backFocus,
                         compact = true,
@@ -208,7 +213,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     BasicText(
-                        text = "当前版本 ${state.version}",
+                        text = stringResource(R.string.update_current_version, state.version),
                         style =
                             TvType.caption.copy(color = TvColors.textSecondary, fontSize = 18.sp),
                         modifier = Modifier.weight(1f),
@@ -223,17 +228,17 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
             }
 
             item {
-                UpdateChoiceGroup("更新通道") {
+                UpdateChoiceGroup(stringResource(R.string.update_channel)) {
                     UpdateOptionTile(
-                        title = "正式版",
-                        description = "推荐日常使用",
+                        title = stringResource(R.string.update_channel_release),
+                        description = stringResource(R.string.update_channel_release_desc),
                         selected = update.channel == UpdateChannel.STABLE,
                         onClick = { actions.onSelectUpdateChannel(UpdateChannel.STABLE) },
                         modifier = Modifier.weight(1f),
                     )
                     UpdateOptionTile(
-                        title = "Beta 版",
-                        description = "公开测试版本",
+                        title = stringResource(R.string.update_channel_beta),
+                        description = stringResource(R.string.update_channel_beta_desc),
                         selected = update.channel == UpdateChannel.BETA,
                         onClick = { actions.onSelectUpdateChannel(UpdateChannel.BETA) },
                         modifier = Modifier.weight(1f),
@@ -243,9 +248,9 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
             }
 
             item {
-                SettingsSection("自动检查更新") {
+                SettingsSection(stringResource(R.string.update_auto_check)) {
                     SettingsToggleRow(
-                        title = "启动应用时自动检查",
+                        title = stringResource(R.string.update_auto_check_desc),
                         checked = update.automaticCheck,
                         onCheckedChange = actions.onSetAutoUpdateCheck,
                     )
@@ -411,7 +416,8 @@ private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
                     style = TvType.title.copy(color = TvColors.textPrimary, fontSize = 34.sp),
                 )
                 BasicText(
-                    text = "${formatBytes(available.sizeBytes)} · 当前版本 $currentVersion",
+                    text =
+                        "${formatBytes(available.sizeBytes)} · ${stringResource(R.string.update_current_version, currentVersion)}",
                     style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 16.sp),
                     modifier = Modifier.padding(bottom = 5.dp),
                 )
@@ -419,17 +425,18 @@ private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
             BasicText(
                 text =
                     when (update.status) {
-                        UpdateStatus.DOWNLOADING -> "正在获取安装包；按主按钮可取消下载。"
-                        UpdateStatus.VERIFYING -> "正在校验安装包完整性…"
-                        UpdateStatus.READY_TO_INSTALL -> "安装包已校验，可以安装。"
-                        UpdateStatus.FAILED -> update.message ?: "上次操作失败，可重试下载。"
-                        else -> "新版本已就绪，查看更新内容并开始下载。"
+                        UpdateStatus.DOWNLOADING -> stringResource(R.string.update_getting_package)
+                        UpdateStatus.VERIFYING -> stringResource(R.string.update_verifying_package)
+                        UpdateStatus.READY_TO_INSTALL -> stringResource(R.string.update_verified)
+                        UpdateStatus.FAILED ->
+                            update.message ?: stringResource(R.string.update_retry_message)
+                        else -> stringResource(R.string.update_ready_message)
                     },
                 style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 16.sp),
             )
             if (available.releaseNotes.isBlank()) {
                 BasicText(
-                    text = "此版本未提供更新说明。",
+                    text = stringResource(R.string.update_notes_empty),
                     style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 17.sp),
                 )
             }
@@ -507,7 +514,7 @@ private fun ReleaseNotesEntry(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             BasicText(
-                text = "查看更新日志",
+                text = stringResource(R.string.update_view_notes),
                 style = TvType.body.copy(fontSize = 20.sp, fontWeight = FontWeight.Medium),
             )
             if (preview.isNotBlank()) {
@@ -550,16 +557,17 @@ private fun UpdateSection(title: String, content: @Composable () -> Unit) {
     }
 }
 
+@Composable
 private fun updateStatusTitle(status: UpdateStatus): String =
     when (status) {
-        UpdateStatus.IDLE -> "选择通道后检查更新"
-        UpdateStatus.CHECKING -> "正在检查更新"
-        UpdateStatus.UP_TO_DATE -> "当前已是最新版本"
-        UpdateStatus.AVAILABLE -> "发现可用更新"
-        UpdateStatus.DOWNLOADING -> "正在下载新版本"
-        UpdateStatus.VERIFYING -> "正在校验安装包"
-        UpdateStatus.READY_TO_INSTALL -> "安装包已准备就绪"
-        UpdateStatus.FAILED -> "更新操作未完成"
+        UpdateStatus.IDLE -> stringResource(R.string.update_status_idle)
+        UpdateStatus.CHECKING -> stringResource(R.string.update_status_checking)
+        UpdateStatus.UP_TO_DATE -> stringResource(R.string.update_status_latest)
+        UpdateStatus.AVAILABLE -> stringResource(R.string.update_status_available)
+        UpdateStatus.DOWNLOADING -> stringResource(R.string.update_status_downloading)
+        UpdateStatus.VERIFYING -> stringResource(R.string.update_status_verifying)
+        UpdateStatus.READY_TO_INSTALL -> stringResource(R.string.update_status_ready)
+        UpdateStatus.FAILED -> stringResource(R.string.update_status_failed)
     }
 
 /** 用颜色区分检查、下载、校验、就绪和失败阶段。 */

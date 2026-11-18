@@ -57,9 +57,9 @@ class AccountLoginCoordinator(
                 it.copy(
                     loggedIn = true,
                     mid = token.mid,
-                    accountName = "已登录",
+                    accountName = "",
                     loginQr = null,
-                    loginStatus = "",
+                    loginStatus = LoginStatus.NONE,
                     loginSkipped = false,
                 )
             }
@@ -69,9 +69,9 @@ class AccountLoginCoordinator(
         update {
             it.copy(
                 loggedIn = false,
-                accountName = "未登录",
+                accountName = "",
                 loginQr = null,
-                loginStatus = "",
+                loginStatus = LoginStatus.NONE,
                 loginSkipped = false,
             )
         }
@@ -83,7 +83,7 @@ class AccountLoginCoordinator(
         update {
             it.copy(
                 loginQr = null,
-                loginStatus = "正在获取二维码…",
+                loginStatus = LoginStatus.FETCHING,
                 loginSkipped = false,
             )
         }
@@ -95,7 +95,7 @@ class AccountLoginCoordinator(
                     }
                 if (qr.isFailure) {
                     LogHub.e(TAG, "qr request failed: ${qr.exceptionOrNull()?.message}")
-                    update { it.copy(loginStatus = "获取二维码失败，正在重试…") }
+                    update { it.copy(loginStatus = LoginStatus.REQUEST_FAILED) }
                     delay(4000)
                     continue
                 }
@@ -107,7 +107,9 @@ class AccountLoginCoordinator(
                 update {
                     it.copy(
                         loginQr = bitmap,
-                        loginStatus = if (bitmap == null) "二维码生成失败，正在重试…" else "等待扫码…",
+                        loginStatus =
+                            if (bitmap == null) LoginStatus.GENERATE_FAILED
+                            else LoginStatus.WAITING,
                     )
                 }
                 if (bitmap == null) {
@@ -141,9 +143,9 @@ class AccountLoginCoordinator(
                                 it.copy(
                                     loggedIn = true,
                                     mid = poll.token.mid,
-                                    accountName = "已登录",
+                                    accountName = "",
                                     loginQr = null,
-                                    loginStatus = "",
+                                    loginStatus = LoginStatus.NONE,
                                     loginSkipped = false,
                                 )
                             }
@@ -157,22 +159,22 @@ class AccountLoginCoordinator(
                                 LogHub.i(TAG, "qr poll ${poll.code} ${poll.message}")
                             }
                             when (poll.code) {
-                                86039 -> update { it.copy(loginStatus = "等待扫码…") }
+                                86039 -> update { it.copy(loginStatus = LoginStatus.WAITING) }
                                 86038 -> {
                                     update {
                                         it.copy(
                                             loginQr = null,
-                                            loginStatus = "二维码已失效，正在刷新…",
+                                            loginStatus = LoginStatus.EXPIRED,
                                         )
                                     }
                                     expire = true
                                 }
 
-                                else -> update { it.copy(loginStatus = "等待扫码…") }
+                                else -> update { it.copy(loginStatus = LoginStatus.WAITING) }
                             }
                         }
 
-                        null -> update { it.copy(loginStatus = "网络异常，重试中…") }
+                        null -> update { it.copy(loginStatus = LoginStatus.NETWORK_ERROR) }
                     }
                 }
                 if (expire) delay(1000)
@@ -190,10 +192,10 @@ class AccountLoginCoordinator(
         update {
             it.copy(
                 loginQr = null,
-                loginStatus = "",
+                loginStatus = LoginStatus.NONE,
                 loginSkipped = true,
                 loggedIn = false,
-                accountName = "未登录",
+                accountName = "",
             )
         }
     }
@@ -203,7 +205,7 @@ class AccountLoginCoordinator(
         cancel()
         LogHub.setQrPending(false)
         LogHub.setQrUrl("")
-        update { it.copy(loginQr = null, loginStatus = "") }
+        update { it.copy(loginQr = null, loginStatus = LoginStatus.NONE) }
     }
 
     /** 清除登录凭据并重新进入登录准备状态。 */
@@ -219,10 +221,10 @@ class AccountLoginCoordinator(
             it.copy(
                 loggedIn = false,
                 mid = 0L,
-                accountName = "未登录",
+                accountName = "",
                 vip = false,
                 loginQr = null,
-                loginStatus = "",
+                loginStatus = LoginStatus.NONE,
                 loginSkipped = false,
             )
         }
@@ -246,7 +248,7 @@ class AccountLoginCoordinator(
             if (nav != null) {
                 update {
                     it.copy(
-                        accountName = nav.name.ifBlank { "已登录" },
+                        accountName = nav.name,
                         vip = nav.vip,
                         mid = if (nav.mid > 0) nav.mid else it.mid,
                     )

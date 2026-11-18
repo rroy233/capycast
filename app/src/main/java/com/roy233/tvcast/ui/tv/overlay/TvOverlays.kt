@@ -32,16 +32,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.R
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.playback.presentation.PlaybackSpeed
 import com.roy233.tvcast.ui.designsystem.*
 import com.roy233.tvcast.ui.legal.UserAgreementPolicy
+import com.roy233.tvcast.ui.legal.UserAgreementPolicyTraditional
+import com.roy233.tvcast.ui.legal.userAgreementPolicyEnglish
 import com.roy233.tvcast.ui.model.PanelKind
+import com.roy233.tvcast.ui.model.SubtitleSummary
+import com.roy233.tvcast.ui.model.SubtitleSummaryKind
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.theme.TvColors
@@ -55,9 +62,6 @@ import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 import com.roy233.tvcast.ui.tv.rememberFocusTarget
 import kotlin.math.roundToInt
-
-private const val WELCOME_MESSAGE =
-    "CapyCast是一款为 Android TV 打造的极简 Bilibili 投屏播放器，使用过程遇到任何问题请向我们反馈。如果喜欢，麻烦点点Star (≧▽≦)"
 
 /** 首次安装时显示的欢迎提示。 */
 @Composable
@@ -77,15 +81,18 @@ internal fun PrivacyNoticeDialog(state: TvUiState, actions: TvActions) {
                 Modifier.padding(horizontal = 30.dp, vertical = 26.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                BasicText("欢迎", style = TvType.section.copy(fontSize = 30.sp))
                 BasicText(
-                    text = WELCOME_MESSAGE,
+                    stringResource(R.string.welcome_title),
+                    style = TvType.section.copy(fontSize = 30.sp),
+                )
+                BasicText(
+                    text = stringResource(R.string.welcome_message),
                     style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 19.sp),
                 )
                 PrivacyAgreementLink(onClick = actions.onOpenPrivacySettings)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     WhiteButton(
-                        text = "开始使用",
+                        text = stringResource(R.string.welcome_start),
                         onClick = actions.onAcknowledgePrivacyNotice,
                         focusTarget = focus,
                         compact = true,
@@ -103,7 +110,7 @@ private fun PrivacyAgreementLink(onClick: () -> Unit) {
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(8.dp)
     BasicText(
-        text = "《用户协议与隐私政策》",
+        text = stringResource(R.string.welcome_agreement_link),
         style =
             TvType.caption.copy(
                 color = if (focused) Color.White else TvColors.accent,
@@ -134,7 +141,18 @@ private fun PrivacyAgreementLink(onClick: () -> Unit) {
 /** 由欢迎弹窗或设置页进入的隐私协议模态层。 */
 @Composable
 internal fun PrivacyAgreementDialog(state: TvUiState, actions: TvActions) {
-    val blocks = remember { parseMarkdownDocument(UserAgreementPolicy.markdown) }
+    val locales = androidx.core.os.ConfigurationCompat.getLocales(LocalConfiguration.current)
+    val language = locales[0]?.language
+    val country = locales[0]?.country
+    val script = locales[0]?.script
+    val markdown =
+        when {
+            language == "en" -> userAgreementPolicyEnglish
+            language == "zh" && (script == "Hant" || country in setOf("TW", "HK", "MO")) ->
+                UserAgreementPolicyTraditional.markdown
+            else -> UserAgreementPolicy.markdown
+        }
+    val blocks = remember(markdown) { parseMarkdownDocument(markdown) }
     val initialFocus = rememberFocusTarget()
     val backFocus = rememberFocusTarget()
     val listState = rememberLazyListState()
@@ -154,7 +172,7 @@ internal fun PrivacyAgreementDialog(state: TvUiState, actions: TvActions) {
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 BasicText(
-                    "用户协议与隐私政策",
+                    stringResource(R.string.settings_user_agreement),
                     style = TvType.section.copy(fontSize = 30.sp),
                 )
                 LazyColumn(
@@ -173,7 +191,7 @@ internal fun PrivacyAgreementDialog(state: TvUiState, actions: TvActions) {
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     WhiteButton(
-                        text = "返回",
+                        text = stringResource(R.string.common_back),
                         onClick = actions.onClosePrivacyAgreement,
                         focusTarget = backFocus,
                         compact = true,
@@ -208,13 +226,16 @@ internal fun HelpSheet(state: TvUiState, actions: TvActions) {
                 Modifier.padding(horizontal = 30.dp, vertical = 26.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                BasicText("如何投屏", style = TvType.section.copy(fontSize = 30.sp))
-                HelpStep("1", "手机打开 B 站")
-                HelpStep("2", "播放页点右上角 TV")
-                HelpStep("3", "选择「${state.deviceName}」")
+                BasicText(
+                    stringResource(R.string.help_title),
+                    style = TvType.section.copy(fontSize = 30.sp),
+                )
+                HelpStep("1", stringResource(R.string.help_step_1))
+                HelpStep("2", stringResource(R.string.help_step_2))
+                HelpStep("3", stringResource(R.string.help_step_3, state.deviceName))
                 Spacer(Modifier.height(4.dp))
                 WhiteButton(
-                    text = "知道了",
+                    text = stringResource(R.string.common_got_it),
                     onClick = actions.onCloseHelp,
                     focusTarget = focus,
                     compact = true,
@@ -308,20 +329,21 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                     BasicText(
                         text =
                             when (panel) {
-                                PanelKind.ROOT -> "播放设置"
-                                PanelKind.QUALITY -> "清晰度"
-                                PanelKind.AUDIO -> "音轨"
-                                PanelKind.SUBTITLE -> "字幕"
-                                PanelKind.SPEED -> "播放速度"
-                                PanelKind.DANMAKU -> "弹幕设置"
-                                PanelKind.LIVE_QUALITY -> "直播画质"
+                                PanelKind.ROOT -> stringResource(R.string.panel_root_title)
+                                PanelKind.QUALITY -> stringResource(R.string.panel_quality_title)
+                                PanelKind.AUDIO -> stringResource(R.string.panel_audio_title)
+                                PanelKind.SUBTITLE -> stringResource(R.string.panel_subtitle_title)
+                                PanelKind.SPEED -> stringResource(R.string.panel_speed_title)
+                                PanelKind.DANMAKU -> stringResource(R.string.panel_danmaku_title)
+                                PanelKind.LIVE_QUALITY ->
+                                    stringResource(R.string.panel_live_quality_title)
                             },
                         style = TvType.section,
                         modifier = Modifier.weight(1f),
                     )
                     GlassIconButton(
                         icon = Icons.Rounded.Close,
-                        contentDescription = "关闭",
+                        contentDescription = stringResource(R.string.common_close),
                         onClick = actions.onClosePanel,
                         size = 48.dp,
                         focusTarget = closeFocus,
@@ -337,45 +359,56 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                         PanelKind.ROOT -> {
                             if (state.isLive) {
                                 FocusableRow(
-                                    title = "直播画质",
-                                    value = state.qualityLabel.ifBlank { "自动" },
+                                    title = stringResource(R.string.panel_live_quality_title),
+                                    value =
+                                        state.qualityLabel.ifBlank {
+                                            stringResource(R.string.common_auto)
+                                        },
                                     onClick = { actions.onOpenPanel(PanelKind.LIVE_QUALITY) },
                                     focusTarget = firstFocus,
                                 )
                                 FocusableRow(
-                                    title = "弹幕",
-                                    value = if (state.danmakuEnabled) "开" else "关",
+                                    title = stringResource(R.string.danmaku_toggle),
+                                    value =
+                                        if (state.danmakuEnabled) stringResource(R.string.common_on)
+                                        else stringResource(R.string.common_off),
                                     selected = state.danmakuEnabled,
                                     onClick = actions.onToggleDanmaku,
                                 )
                             } else {
                                 FocusableRow(
-                                    title = "清晰度",
-                                    value = state.qualityLabel.ifBlank { "自动" },
+                                    title = stringResource(R.string.panel_quality_title),
+                                    value =
+                                        state.qualityLabel.ifBlank {
+                                            stringResource(R.string.common_auto)
+                                        },
                                     onClick = { actions.onOpenPanel(PanelKind.QUALITY) },
                                     focusTarget = firstFocus,
                                 )
                                 FocusableRow(
-                                    title = "音轨",
-                                    value = state.audioLabel.ifBlank { "自动" },
+                                    title = stringResource(R.string.panel_audio_title),
+                                    value =
+                                        state.audioLabel.ifBlank {
+                                            stringResource(R.string.common_auto)
+                                        },
                                     onClick = { actions.onOpenPanel(PanelKind.AUDIO) },
                                 )
                                 FocusableRow(
-                                    title = "字幕",
-                                    value = state.subtitleSummary.ifBlank { "无字幕" },
+                                    title = stringResource(R.string.panel_subtitle_title),
+                                    value = subtitleSummaryText(state.subtitleSummary),
                                     enabled = state.subtitleTracks.isNotEmpty(),
                                     onClick = { actions.onOpenPanel(PanelKind.SUBTITLE) },
                                 )
                                 FocusableRow(
-                                    title = "播放速度",
+                                    title = stringResource(R.string.panel_speed_title),
                                     value = PlaybackSpeed.label(state.playbackSpeed),
                                     onClick = { actions.onOpenPanel(PanelKind.SPEED) },
                                 )
                                 FocusableRow(
-                                    title = "弹幕设置",
+                                    title = stringResource(R.string.panel_danmaku_title),
                                     value =
                                         if (!state.danmakuEnabled) {
-                                            "已关闭"
+                                            stringResource(R.string.subtitle_disabled)
                                         } else {
                                             aiShieldLabel(state.danmakuAiShield)
                                         },
@@ -400,7 +433,10 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                             state.liveQualities.forEachIndexed { index, option ->
                                 FocusableRow(
                                     title = option.label,
-                                    value = if (option.qn == state.selectedQn) "当前" else null,
+                                    value =
+                                        if (option.qn == state.selectedQn)
+                                            stringResource(R.string.common_current)
+                                        else null,
                                     selected = option.qn == state.selectedQn,
                                     onClick = { actions.onSelectQuality(option.qn) },
                                     focusTarget = if (index == 0) firstFocus else null,
@@ -424,7 +460,10 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                             state.audios.forEachIndexed { index, audio ->
                                 FocusableRow(
                                     title = audio.label,
-                                    value = if (audio.id == state.selectedAudioId) "当前" else null,
+                                    value =
+                                        if (audio.id == state.selectedAudioId)
+                                            stringResource(R.string.common_current)
+                                        else null,
                                     selected = audio.id == state.selectedAudioId,
                                     onClick = { actions.onSelectAudio(audio.id) },
                                     focusTarget = if (index == 0) firstFocus else null,
@@ -434,8 +473,11 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
 
                         PanelKind.SUBTITLE -> {
                             FocusableRow(
-                                title = "关闭字幕",
-                                value = if (state.selectedSubtitleKey == null) "当前" else null,
+                                title = stringResource(R.string.subtitle_turn_off),
+                                value =
+                                    if (state.selectedSubtitleKey == null)
+                                        stringResource(R.string.common_current)
+                                    else null,
                                 selected = state.selectedSubtitleKey == null,
                                 onClick = { actions.onSelectSubtitleTrack(null) },
                                 focusTarget = firstFocus,
@@ -443,7 +485,9 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                             state.subtitleTracks.forEach { option ->
                                 FocusableRow(
                                     title = option.label,
-                                    value = if (option.selected) "当前" else option.detail,
+                                    value =
+                                        if (option.selected) stringResource(R.string.common_current)
+                                        else option.detail,
                                     selected = option.selected,
                                     enabled = !option.locked,
                                     onClick = { actions.onSelectSubtitleTrack(option.key) },
@@ -456,7 +500,9 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                             PlaybackSpeed.options.forEachIndexed { index, speed ->
                                 FocusableRow(
                                     title = PlaybackSpeed.label(speed),
-                                    value = if (speed == 1f) "正常速度" else null,
+                                    value =
+                                        if (speed == 1f) stringResource(R.string.speed_normal)
+                                        else null,
                                     selected = speed == selectedSpeed,
                                     onClick = { actions.onSetPlaybackSpeed(speed) },
                                     focusTarget =
@@ -467,14 +513,16 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
 
                         PanelKind.DANMAKU -> {
                             FocusableRow(
-                                title = "弹幕",
-                                value = if (state.danmakuEnabled) "开" else "关",
+                                title = stringResource(R.string.danmaku_toggle),
+                                value =
+                                    if (state.danmakuEnabled) stringResource(R.string.common_on)
+                                    else stringResource(R.string.common_off),
                                 selected = state.danmakuEnabled,
                                 onClick = actions.onToggleDanmaku,
                                 focusTarget = firstFocus,
                             )
                             FocusableRow(
-                                title = "智能云屏蔽",
+                                title = stringResource(R.string.danmaku_ai_shield),
                                 value = aiShieldLabel(state.danmakuAiShield),
                                 onClick = {
                                     actions.onSetDanmakuAiShield(
@@ -483,7 +531,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                 },
                             )
                             FocusableRow(
-                                title = "显示区域",
+                                title = stringResource(R.string.danmaku_area),
                                 value = areaLabel(state.danmakuAreaRatio),
                                 onClick = {
                                     actions.onSetDanmakuArea(
@@ -492,7 +540,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                 },
                             )
                             FocusableRow(
-                                title = "同屏数量",
+                                title = stringResource(R.string.danmaku_max_on_screen),
                                 value = maxOnScreenLabel(state.danmakuMaxOnScreen),
                                 onClick = {
                                     actions.onSetDanmakuMaxOnScreen(
@@ -501,7 +549,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                 },
                             )
                             FocusableRow(
-                                title = "不透明度",
+                                title = stringResource(R.string.danmaku_opacity),
                                 value = opacityLabel(state.danmakuOpacity),
                                 onClick = {
                                     actions.onSetDanmakuOpacity(
@@ -510,7 +558,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                 },
                             )
                             FocusableRow(
-                                title = "字号",
+                                title = stringResource(R.string.danmaku_font_scale),
                                 value = fontScaleLabel(state.danmakuFontScale),
                                 onClick = {
                                     actions.onSetDanmakuFontScale(
@@ -519,7 +567,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
                                 },
                             )
                             FocusableRow(
-                                title = "速度",
+                                title = stringResource(R.string.danmaku_duration),
                                 value = durationLabel(state.danmakuDurationSec),
                                 onClick = {
                                     actions.onSetDanmakuDuration(
@@ -533,7 +581,7 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
 
                 Spacer(Modifier.height(8.dp))
                 GlassButton(
-                    text = "完成",
+                    text = stringResource(R.string.common_done),
                     onClick = actions.onClosePanel,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -544,12 +592,13 @@ internal fun QuickPanel(state: TvUiState, actions: TvActions) {
 
 private val QUICK_PANEL_ROW_PITCH = 62.dp
 
+@Composable
 private fun aiShieldLabel(level: AiShieldLevel): String =
     when (level) {
-        AiShieldLevel.OFF -> "关"
-        AiShieldLevel.LOW -> "低"
-        AiShieldLevel.MEDIUM -> "中"
-        AiShieldLevel.HIGH -> "高"
+        AiShieldLevel.OFF -> stringResource(R.string.common_off)
+        AiShieldLevel.LOW -> stringResource(R.string.danmaku_shield_low)
+        AiShieldLevel.MEDIUM -> stringResource(R.string.danmaku_shield_medium)
+        AiShieldLevel.HIGH -> stringResource(R.string.danmaku_shield_high)
     }
 
 private fun nextAiShield(level: AiShieldLevel): AiShieldLevel =
@@ -560,12 +609,13 @@ private fun nextAiShield(level: AiShieldLevel): AiShieldLevel =
         AiShieldLevel.HIGH -> AiShieldLevel.OFF
     }
 
+@Composable
 private fun areaLabel(ratio: Float): String =
     when {
-        ratio <= 0.30f -> "1/4 屏"
-        ratio <= 0.55f -> "半屏"
-        ratio <= 0.80f -> "3/4 屏"
-        else -> "全屏"
+        ratio <= 0.30f -> stringResource(R.string.danmaku_area_quarter)
+        ratio <= 0.55f -> stringResource(R.string.danmaku_area_half)
+        ratio <= 0.80f -> stringResource(R.string.danmaku_area_three_quarters)
+        else -> stringResource(R.string.danmaku_area_full)
     }
 
 private fun nextArea(ratio: Float): Float =
@@ -576,7 +626,9 @@ private fun nextArea(ratio: Float): Float =
         else -> 0.25f
     }
 
-private fun maxOnScreenLabel(max: Int): String = if (max <= 0) "不限" else max.toString()
+@Composable
+private fun maxOnScreenLabel(max: Int): String =
+    if (max <= 0) stringResource(R.string.danmaku_unlimited) else max.toString()
 
 private fun nextMaxOnScreen(max: Int): Int =
     when (max) {
@@ -593,12 +645,13 @@ private fun nextOpacity(opacity: Float): Float {
     return if (step > 100) 20f / 100f else step / 100f
 }
 
+@Composable
 private fun fontScaleLabel(scale: Float): String =
     when {
-        scale <= 0.80f -> "小"
-        scale <= 1.05f -> "标准"
-        scale <= 1.30f -> "大"
-        else -> "超大"
+        scale <= 0.80f -> stringResource(R.string.danmaku_font_small)
+        scale <= 1.05f -> stringResource(R.string.danmaku_font_normal)
+        scale <= 1.30f -> stringResource(R.string.danmaku_font_large)
+        else -> stringResource(R.string.danmaku_font_extra_large)
     }
 
 private fun nextFontScale(scale: Float): Float =
@@ -609,11 +662,12 @@ private fun nextFontScale(scale: Float): Float =
         else -> 0.75f
     }
 
+@Composable
 private fun durationLabel(seconds: Float): String =
     when {
-        seconds >= 10f -> "慢"
-        seconds >= 7f -> "适中"
-        else -> "快"
+        seconds >= 10f -> stringResource(R.string.danmaku_speed_slow)
+        seconds >= 7f -> stringResource(R.string.danmaku_speed_normal)
+        else -> stringResource(R.string.danmaku_speed_fast)
     }
 
 private fun nextDuration(seconds: Float): Float =
@@ -621,4 +675,16 @@ private fun nextDuration(seconds: Float): Float =
         seconds >= 10f -> 8f
         seconds >= 7f -> 5f
         else -> 12f
+    }
+
+@Composable
+private fun subtitleSummaryText(summary: SubtitleSummary): String =
+    when (summary.kind) {
+        SubtitleSummaryKind.SELECTED -> summary.label
+        SubtitleSummaryKind.DISABLED -> stringResource(R.string.subtitle_disabled)
+        SubtitleSummaryKind.LOADING -> stringResource(R.string.subtitle_loading)
+        SubtitleSummaryKind.UNAVAILABLE -> stringResource(R.string.subtitle_unavailable)
+        SubtitleSummaryKind.OFF -> stringResource(R.string.common_close)
+        SubtitleSummaryKind.NONE,
+        SubtitleSummaryKind.EMPTY -> stringResource(R.string.subtitle_none)
     }

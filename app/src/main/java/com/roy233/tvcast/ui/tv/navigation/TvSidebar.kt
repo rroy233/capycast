@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -47,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.R
 import com.roy233.tvcast.ui.designsystem.*
 import com.roy233.tvcast.ui.model.MENU_ENTRIES
 import com.roy233.tvcast.ui.model.MenuEntry
@@ -270,7 +272,10 @@ private fun SidebarItem(
         ) {
             MenuEntryIcon(entry, if (selected) Color.White else Color.White.copy(alpha = 0.78f))
             BasicText(
-                text = entry.title,
+                text =
+                    stringResource(
+                        if (entry == MenuEntry.HOME) R.string.menu_home else R.string.menu_settings,
+                    ),
                 style =
                     TvType.bodyMedium.copy(
                         color = if (selected || focused) Color.White else TvColors.textSecondary,
@@ -280,6 +285,7 @@ private fun SidebarItem(
                 overflow = TextOverflow.Ellipsis,
             )
             if (badge) {
+                val badgeDescription = stringResource(R.string.sidebar_badge_new_version)
                 Spacer(Modifier.weight(1f))
                 Box(
                     modifier =
@@ -287,7 +293,7 @@ private fun SidebarItem(
                             .clip(CircleShape)
                             .background(TvColors.error)
                             .border(1.dp, Color.White.copy(alpha = 0.9f), CircleShape)
-                            .semantics { contentDescription = "有新版本" },
+                            .semantics { contentDescription = badgeDescription },
                 )
             }
         }

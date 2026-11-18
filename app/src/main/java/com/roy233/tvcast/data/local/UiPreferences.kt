@@ -17,8 +17,8 @@ class UiPreferences(context: Context) {
         get() = prefs.getString("device_name", "CapyCast") ?: "CapyCast"
 
     /** 配置的房间名称，未配置时使用默认名称。 */
-    val roomName: String
-        get() = prefs.getString("room_name", "客厅") ?: "客厅"
+    val roomName: String?
+        get() = prefs.getString("room_name", null)
 
     /** 是否保留最近一次投屏内容，默认开启以兼容已有使用习惯。 */
     var rememberPlaybackContent: Boolean

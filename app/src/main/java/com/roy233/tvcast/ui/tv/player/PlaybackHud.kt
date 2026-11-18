@@ -18,6 +18,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,6 +43,7 @@ internal fun PlaybackHud(
     playFocus: FocusTarget,
     seekAccelerator: PlaybackSeekAccelerator,
 ) {
+    val liveLabel = stringResource(R.string.player_live)
     AnimatedVisibility(
         visible = state.hudVisible,
         enter = fadeIn(tween(220)),
@@ -62,7 +64,7 @@ internal fun PlaybackHud(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BasicText(
-                    text = state.castTitle.ifBlank { "正在播放" },
+                    text = state.castTitle.ifBlank { stringResource(R.string.player_playing) },
                     style = TvType.bodyMedium.copy(fontSize = 24.sp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -129,7 +131,7 @@ internal fun PlaybackHud(
                                 text =
                                     if (state.isLive) {
                                         buildString {
-                                            append("直播")
+                                            append(liveLabel)
                                             if (state.qualityLabel.isNotBlank())
                                                 append(" · ${state.qualityLabel}")
                                         }
@@ -163,7 +165,7 @@ internal fun PlaybackHud(
                                 GlassIconButton(
                                     icon = ImageVector.vectorResource(R.drawable.ic_speed),
                                     contentDescription =
-                                        "播放速度 ${PlaybackSpeed.label(state.playbackSpeed)}",
+                                        "${stringResource(R.string.panel_speed_title)} ${PlaybackSpeed.label(state.playbackSpeed)}",
                                     onClick = { actions.onOpenPanel(PanelKind.SPEED) },
                                     enabled = enabled,
                                     selected = state.playbackSpeed != 1f,
@@ -178,8 +180,10 @@ internal fun PlaybackHud(
                                 GlassIconButton(
                                     icon = Icons.Rounded.HighQuality,
                                     contentDescription =
-                                        if (state.isLive) "直播画质 ${state.qualityLabel}"
-                                        else "清晰度 ${state.qualityLabel}",
+                                        if (state.isLive)
+                                            "${stringResource(R.string.panel_live_quality_title)} ${state.qualityLabel}"
+                                        else
+                                            "${stringResource(R.string.panel_quality_title)} ${state.qualityLabel}",
                                     onClick = {
                                         actions.onOpenPanel(
                                             if (state.isLive) PanelKind.LIVE_QUALITY
@@ -193,7 +197,9 @@ internal fun PlaybackHud(
                                     GlassIconButton(
                                         icon = ImageVector.vectorResource(R.drawable.ic_subtitle),
                                         contentDescription =
-                                            if (state.subtitleEnabled) "关闭字幕" else "开启字幕",
+                                            if (state.subtitleEnabled)
+                                                stringResource(R.string.subtitle_turn_off)
+                                            else stringResource(R.string.player_enable_subtitles),
                                         onClick = actions.onToggleSubtitle,
                                         enabled = enabled && state.subtitleAvailable,
                                         selected = state.subtitleEnabled,
@@ -203,7 +209,9 @@ internal fun PlaybackHud(
                                 GlassIconButton(
                                     icon = ImageVector.vectorResource(R.drawable.ic_danmu),
                                     contentDescription =
-                                        if (state.danmakuEnabled) "关闭弹幕" else "开启弹幕",
+                                        if (state.danmakuEnabled)
+                                            stringResource(R.string.player_disable_danmaku)
+                                        else stringResource(R.string.player_enable_danmaku),
                                     onClick = actions.onToggleDanmaku,
                                     enabled = enabled,
                                     selected = state.danmakuEnabled,
@@ -211,7 +219,7 @@ internal fun PlaybackHud(
                                 )
                                 GlassIconButton(
                                     icon = Icons.Rounded.Settings,
-                                    contentDescription = "播放设置",
+                                    contentDescription = stringResource(R.string.panel_root_title),
                                     onClick = { actions.onOpenPanel(PanelKind.ROOT) },
                                     enabled = enabled,
                                     size = 56.dp,

@@ -16,6 +16,95 @@ import org.junit.Test
 class TvActionDispatcherTest {
 
     @Test
+    fun languageChoiceIsForwardedToHost() {
+        var language: String? = null
+        val host =
+            Proxy.newProxyInstance(
+                TvActionHost::class.java.classLoader,
+                arrayOf(TvActionHost::class.java),
+            ) { _, method, args ->
+                if (method.name == "setAppLanguage") language = args[0] as String
+                null
+            } as TvActionHost
+
+        val holder = TvStateHolder(TvUiState(destination = TvDestination.SETTINGS))
+        val actions = TvActionDispatcher(holder, host).actions
+        actions.onOpenLanguageSettings()
+        assertTrue(holder.read().languageDialogVisible)
+        actions.onSetAppLanguage("zh-TW")
+
+        assertEquals("zh-TW", language)
+        assertFalse(holder.read().languageDialogVisible)
+    }
+
+    @Test
+    fun selectingCurrentLanguageClosesDialogWithoutChangingLocale() {
+        var calls = 0
+        val host =
+            Proxy.newProxyInstance(
+                TvActionHost::class.java.classLoader,
+                arrayOf(TvActionHost::class.java),
+            ) { _, method, _ ->
+                if (method.name == "setAppLanguage") calls++
+                null
+            } as TvActionHost
+        val holder =
+            TvStateHolder(TvUiState(destination = TvDestination.SETTINGS, appLanguage = "en"))
+        val actions = TvActionDispatcher(holder, host).actions
+        actions.onOpenLanguageSettings()
+        actions.onSetAppLanguage("en")
+        assertFalse(holder.read().languageDialogVisible)
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun dismissingLanguageDialogRetainsSettingsAndFocus() {
+        val initial =
+            TvUiState(
+                destination = TvDestination.SETTINGS,
+                focusRequest =
+                    com.roy233.tvcast.ui.model.FocusRequest(UiFocusAnchor.SETTINGS_LANGUAGE_ENTRY),
+            )
+        val holder = TvStateHolder(initial)
+        val actions = TvActionDispatcher(holder, noOpHost()).actions
+        actions.onOpenLanguageSettings()
+        actions.onCloseLanguageSettings()
+        assertFalse(holder.read().languageDialogVisible)
+        assertEquals(initial.destination, holder.read().destination)
+        assertEquals(initial.focusRequest, holder.read().focusRequest)
+    }
+
+    @Test
+    fun languageDialogCannotOpenOutsideSettingsRoot() {
+        val holder = TvStateHolder(TvUiState())
+        val actions = TvActionDispatcher(holder, noOpHost()).actions
+        actions.onOpenLanguageSettings()
+        assertFalse(holder.read().languageDialogVisible)
+    }
+
+    @Test
+    fun backClosesLanguageDialogBeforeNavigating() {
+        val holder = TvStateHolder(TvUiState(destination = TvDestination.SETTINGS))
+        val actions = TvActionDispatcher(holder, noOpHost()).actions
+        actions.onOpenLanguageSettings()
+
+        TvKeyHandler.dispatchBack(holder.read(), actions)
+
+        assertFalse(holder.read().languageDialogVisible)
+        assertFalse(holder.read().sidebarVisible)
+        assertEquals(TvDestination.SETTINGS, holder.read().destination)
+    }
+
+    @Test
+    fun newCastDismissesTheLanguageDialog() {
+        val state = TvUiState(destination = TvDestination.SETTINGS, languageDialogVisible = true)
+        val incoming =
+            com.roy233.tvcast.ui.model.CastPlaybackStateProjector.incomingCast(state, "video")
+        assertFalse(incoming.languageDialogVisible)
+        assertEquals(null, incoming.topOverlay)
+    }
+
+    @Test
     fun navigatingToSettingsClosesTheSidebar() {
         val stateHolder = TvStateHolder(TvUiState(sidebarVisible = true))
 

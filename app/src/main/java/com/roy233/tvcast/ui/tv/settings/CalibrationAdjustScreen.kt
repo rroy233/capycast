@@ -24,10 +24,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.R
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.tv.TvKeyHandler
@@ -62,7 +64,7 @@ internal fun CalibrationAdjustScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             BasicText(
-                text = "画面校准",
+                text = stringResource(R.string.settings_calibration),
                 style =
                     androidx.compose.ui.text.TextStyle(
                         color = Color.White,
@@ -83,7 +85,7 @@ internal fun CalibrationAdjustScreen(
             }
             Spacer(Modifier.height(22.dp))
             BasicText(
-                text = "方向键移动当前角，让角上的两条标记线刚好贴住可见边缘",
+                text = stringResource(R.string.calibration_hint_move),
                 style =
                     androidx.compose.ui.text.TextStyle(
                         color = Color.White,
@@ -93,7 +95,7 @@ internal fun CalibrationAdjustScreen(
             )
             Spacer(Modifier.height(8.dp))
             BasicText(
-                text = "确认键切换下一个角 · 返回键取消",
+                text = stringResource(R.string.calibration_hint_next),
                 style =
                     androidx.compose.ui.text.TextStyle(
                         color = Color.LightGray,

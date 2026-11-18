@@ -12,9 +12,9 @@ class AccountUiStateTest {
         val state = AccountUiState()
 
         assertFalse(state.loggedIn)
-        assertEquals("未登录", state.accountName)
+        assertEquals("", state.accountName)
         assertEquals(0L, state.mid)
-        assertEquals("", state.loginStatus)
+        assertEquals(LoginStatus.NONE, state.loginStatus)
         assertFalse(state.loginSkipped)
     }
 }

@@ -1,6 +1,7 @@
 package com.roy233.tvcast.ui.model
 
 import android.graphics.Bitmap
+import com.roy233.tvcast.feature.account.LoginStatus
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationPhase
@@ -72,10 +73,11 @@ data class TvUiState(
     val mode: TvMode = TvMode.IDLE,
     val destination: TvDestination = TvDestination.HOME,
     val settingsNavigation: SettingsNavigationState = SettingsNavigationState(),
+    val appLanguage: String = "",
     val sidebarVisible: Boolean = false,
     val focusRequest: FocusRequest = FocusRequest(UiFocusAnchor.HOME_PRIMARY),
     val loggedIn: Boolean = false,
-    val accountName: String = "未登录",
+    val accountName: String = "",
     val mid: Long = 0L,
     val vip: Boolean = false,
     val deviceName: String = "CapyCast",
@@ -120,10 +122,11 @@ data class TvUiState(
     val stopCastConfirm: Boolean = false,
     val error: TvError? = null,
     val loginQr: Bitmap? = null,
-    val loginStatus: String = "",
+    val loginStatus: LoginStatus = LoginStatus.NONE,
     val loginDialogVisible: Boolean = false,
     val loginSkipped: Boolean = false,
     val helpVisible: Boolean = false,
+    val languageDialogVisible: Boolean = false,
     val privacyNoticeVisible: Boolean = false,
     val privacyAgreementVisible: Boolean = false,
     /** 欢迎弹窗经协议链接打开协议模态层后，关闭时恢复欢迎弹窗。 */
@@ -134,7 +137,7 @@ data class TvUiState(
     val selectedSubtitleKey: SubtitleTrackKey? = null,
     val subtitleEnabled: Boolean = false,
     val subtitleAvailable: Boolean = false,
-    val subtitleSummary: String = "",
+    val subtitleSummary: SubtitleSummary = SubtitleSummary(),
     val subtitleLines: List<String> = emptyList(),
     val subtitleFontScale: Float = 1f,
     val subtitleBottomMarginRatio: Float = SubtitleSettings.DEFAULT_BOTTOM_MARGIN,
@@ -165,6 +168,13 @@ data class TvUiState(
             if (stopCastConfirm) add(UiOverlay.STOP_CAST_CONFIRM)
             if (error != null) add(UiOverlay.ERROR)
             if (panel != null) add(UiOverlay.PANEL)
+            if (
+                languageDialogVisible &&
+                    mode == TvMode.IDLE &&
+                    destination == TvDestination.SETTINGS &&
+                    settingsPage == SettingsPage.ROOT
+            )
+                add(UiOverlay.LANGUAGE)
             if (helpVisible) add(UiOverlay.HELP)
             if (loginDialogVisible) add(UiOverlay.LOGIN_DIALOG)
         }
