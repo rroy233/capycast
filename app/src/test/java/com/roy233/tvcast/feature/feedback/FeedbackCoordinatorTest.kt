@@ -22,7 +22,7 @@ class FeedbackCoordinatorTest {
         assertEquals(FeedbackChannel.GITHUB, fixture.state.channel)
         assertEquals("0.2.1 (19)", fixture.state.versionLabel)
         assertFalse(fixture.state.isGenerating)
-        assertEquals("二维码生成失败，请重试。", fixture.state.errorMessage)
+        assertTrue(fixture.state.generationFailed)
     }
 
     @Test

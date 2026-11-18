@@ -120,6 +120,16 @@
     <string name="login_scan_hint">Scan QR code with Bilibili app</string>
     <string name="login_close">Close</string>
 
+    <!-- Feedback Dialog -->
+    <string name="feedback_title">Feedback</string>
+    <string name="feedback_close">Close feedback</string>
+    <string name="feedback_prompt_github">Found a problem or have a suggestion? Please open an issue on GitHub.</string>
+    <string name="feedback_prompt_email">Found a problem or have a suggestion? Please contact the developer by Email.</string>
+    <string name="feedback_version_value">Version: %1$s</string>
+    <string name="feedback_channel_description">Feedback channel: %1$s</string>
+    <string name="feedback_qr_description">%1$s feedback QR code</string>
+    <string name="feedback_qr_failed">Failed to generate the QR code. Please try again.</string>
+
     <!-- Player HUD & Quick Panel -->
     <string name="panel_root_title">Playback Settings</string>
     <string name="panel_quality_title">Quality</string>

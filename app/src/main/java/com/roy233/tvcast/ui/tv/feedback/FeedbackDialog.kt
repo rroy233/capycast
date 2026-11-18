@@ -44,6 +44,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -51,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.R
 import com.roy233.tvcast.feature.feedback.FeedbackChannel
 import com.roy233.tvcast.feature.feedback.FeedbackUiState
 import com.roy233.tvcast.ui.designsystem.GlassIconButton
@@ -129,13 +131,13 @@ private fun FeedbackHeader(
 ) {
     Box(modifier = modifier.fillMaxWidth().height(62.dp)) {
         androidx.compose.foundation.text.BasicText(
-            text = "问题反馈",
+            text = stringResource(R.string.feedback_title),
             style = TvType.section.copy(fontSize = 29.sp),
             modifier = Modifier.align(Alignment.Center),
         )
         GlassIconButton(
             icon = Icons.Rounded.Close,
-            contentDescription = "关闭反馈",
+            contentDescription = stringResource(R.string.feedback_close),
             onClick = onClose,
             size = 40.dp,
             focusTarget = closeFocus,
@@ -173,6 +175,7 @@ private fun FeedbackChannelSlider(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val reduceMotion = rememberReduceMotion()
+    val channelDescription = stringResource(R.string.feedback_channel_description, selected.label)
     val thumbOffset by
         animateDpAsState(
             targetValue = if (selected == FeedbackChannel.GITHUB) 3.dp else 111.dp,
@@ -185,7 +188,7 @@ private fun FeedbackChannelSlider(
         modifier =
             Modifier.width(FeedbackChannelRowWidth)
                 .height(50.dp)
-                .semantics { contentDescription = "反馈渠道：${selected.label}" }
+                .semantics { contentDescription = channelDescription }
                 .focusTarget(focusTarget)
                 .focusable(interactionSource = interaction)
                 .onPreviewKeyEvent { event ->
@@ -302,7 +305,8 @@ private fun AnimatedFeedbackQr(feedback: FeedbackUiState, size: Dp) {
                     bitmap != null ->
                         Image(
                             bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "${channel.label} 问题反馈二维码",
+                            contentDescription =
+                                stringResource(R.string.feedback_qr_description, channel.label),
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit,
                         )
@@ -311,7 +315,12 @@ private fun AnimatedFeedbackQr(feedback: FeedbackUiState, size: Dp) {
 
                     else ->
                         androidx.compose.foundation.text.BasicText(
-                            text = feedback.errorMessage.orEmpty(),
+                            text =
+                                if (feedback.generationFailed) {
+                                    stringResource(R.string.feedback_qr_failed)
+                                } else {
+                                    ""
+                                },
                             style =
                                 TvType.caption.copy(
                                     color = TvColors.error,
@@ -344,7 +353,7 @@ private fun FeedbackDetails(feedback: FeedbackUiState, modifier: Modifier = Modi
             label = "feedback-prompt",
         ) { channel ->
             androidx.compose.foundation.text.BasicText(
-                text = channel.prompt,
+                text = feedbackPrompt(channel),
                 style = TvType.bodyMedium.copy(fontSize = 23.sp, lineHeight = 33.sp),
                 modifier = Modifier.padding(top = 42.dp),
             )
@@ -353,15 +362,25 @@ private fun FeedbackDetails(feedback: FeedbackUiState, modifier: Modifier = Modi
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.End,
         ) {
-            FeedbackInfoRow(label = "软件版本", value = feedback.versionLabel)
+            FeedbackInfoRow(
+                text = stringResource(R.string.feedback_version_value, feedback.versionLabel),
+            )
         }
     }
 }
 
+/** 把反馈渠道映射为当前语言的提示文案。 */
 @Composable
-private fun FeedbackInfoRow(label: String, value: String) {
+private fun feedbackPrompt(channel: FeedbackChannel): String =
+    when (channel) {
+        FeedbackChannel.GITHUB -> stringResource(R.string.feedback_prompt_github)
+        FeedbackChannel.EMAIL -> stringResource(R.string.feedback_prompt_email)
+    }
+
+@Composable
+private fun FeedbackInfoRow(text: String) {
     androidx.compose.foundation.text.BasicText(
-        text = "$label：$value",
+        text = text,
         style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 16.sp),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,

@@ -171,7 +171,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                     )
                     SettingsRowDivider()
                     FocusableRow(
-                        title = "问题反馈",
+                        title = stringResource(R.string.feedback_title),
                         onClick = actions.onShowFeedback,
                         rowHeight = if (compact) 56.dp else 64.dp,
                     )

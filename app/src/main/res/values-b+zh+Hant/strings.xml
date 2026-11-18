@@ -120,6 +120,16 @@
     <string name="login_scan_hint">打開bilibili客戶端掃碼</string>
     <string name="login_close">關閉登入</string>
 
+    <!-- Feedback Dialog -->
+    <string name="feedback_title">問題回饋</string>
+    <string name="feedback_close">關閉問題回饋</string>
+    <string name="feedback_prompt_github">遇到問題或有改進建議，歡迎在 GitHub 提交 Issue。</string>
+    <string name="feedback_prompt_email">遇到問題或有改進建議，歡迎透過 Email 聯絡開發者。</string>
+    <string name="feedback_version_value">軟體版本：%1$s</string>
+    <string name="feedback_channel_description">回饋管道：%1$s</string>
+    <string name="feedback_qr_description">%1$s 問題回饋 QR Code</string>
+    <string name="feedback_qr_failed">QR Code 產生失敗，請重試。</string>
+
     <!-- Player HUD & Quick Panel -->
     <string name="panel_root_title">播放設定</string>
     <string name="panel_quality_title">畫質解析度</string>
