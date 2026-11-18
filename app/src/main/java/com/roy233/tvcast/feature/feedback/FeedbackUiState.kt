@@ -3,20 +3,17 @@ package com.roy233.tvcast.feature.feedback
 import android.graphics.Bitmap
 import com.roy233.tvcast.core.diagnostics.SupportLinks
 
-/** 用户选择的反馈渠道。 */
+/** 用户选择的反馈渠道；标签是品牌名，不随界面语言变化。 */
 enum class FeedbackChannel(
     val label: String,
-    val prompt: String,
     val qrPayload: String,
 ) {
     GITHUB(
         label = "GitHub",
-        prompt = "遇到问题或有改进建议，欢迎在 GitHub 提交 Issue。",
         qrPayload = SupportLinks.GITHUB_ISSUES_URL,
     ),
     EMAIL(
         label = "Email",
-        prompt = "遇到问题或有改进建议，欢迎通过 Email 联系开发者。",
         qrPayload = "mailto:${SupportLinks.FEEDBACK_EMAIL}",
     ),
 }
@@ -27,7 +24,7 @@ data class FeedbackUiState(
     val channel: FeedbackChannel = FeedbackChannel.GITHUB,
     val qrCodes: Map<FeedbackChannel, Bitmap> = emptyMap(),
     val isGenerating: Boolean = false,
-    val errorMessage: String? = null,
+    val generationFailed: Boolean = false,
     val versionLabel: String = "",
 ) {
     /** 当前渠道的二维码位图；若未生成成功则为 null。 */

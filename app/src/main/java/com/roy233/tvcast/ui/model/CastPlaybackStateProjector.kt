@@ -10,6 +10,7 @@ object CastPlaybackStateProjector {
     fun recentLoading(state: TvUiState, title: String): TvUiState =
         state.copy(
             mode = TvMode.LOADING,
+            languageDialogVisible = false,
             castTitle = title,
             destination = TvDestination.HOME,
             sidebarVisible = false,
@@ -20,6 +21,7 @@ object CastPlaybackStateProjector {
     fun incomingCast(state: TvUiState, title: String): TvUiState =
         state.copy(
             mode = TvMode.LOADING,
+            languageDialogVisible = false,
             showContinue = state.rememberPlaybackContent,
             castTitle = title.ifBlank { "正在投屏" },
             qualityLabel = "",
@@ -47,6 +49,7 @@ object CastPlaybackStateProjector {
     fun resolving(state: TvUiState, title: String): TvUiState =
         state.copy(
             mode = TvMode.LOADING,
+            languageDialogVisible = false,
             showContinue = state.rememberPlaybackContent,
             castTitle = title.ifBlank { "正在投屏" },
             error = null,

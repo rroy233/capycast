@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CapyCast</string>
+
+    <!-- Navigation & Menu -->
+    <string name="menu_home">Bilibili Cast</string>
+    <string name="menu_settings">Settings</string>
+    <string name="sidebar_badge_new_version">New</string>
+
+    <!-- Common Actions & Labels -->
+    <string name="common_close">Close</string>
+    <string name="common_done">Done</string>
+    <string name="common_back">Back</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_auto">Auto</string>
+    <string name="common_on">On</string>
+    <string name="common_off">Off</string>
+    <string name="common_current">Current</string>
+    <string name="common_got_it">Got It</string>
+    <string name="common_retry">Retry</string>
+
+    <!-- Home Screen -->
+    <string name="home_waiting_cast">Waiting for cast...</string>
+    <string name="home_cast_instruction">Cast from the Bilibili app on your phone and select this device</string>
+    <string name="home_recent_cast">Recent Casts</string>
+    <string name="home_clear_recent">Clear</string>
+    <string name="home_help">Cast Help</string>
+    <string name="home_continue_watch">Continue</string>
+    <string name="home_recast">Cast Again</string>
+    <string name="home_no_recents">No recent cast history</string>
+    <string name="home_room_default">Living Room</string>
+
+    <!-- Relative Time -->
+    <string name="time_just_now">Just now</string>
+    <string name="time_minutes_ago">%d min ago</string>
+    <string name="time_hours_ago">%d hr ago</string>
+    <string name="time_yesterday">Yesterday</string>
+    <string name="time_days_ago">%d days ago</string>
+    <string name="time_long_ago">Long ago</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_section_account">Account</string>
+    <string name="settings_platform_domestic">Bilibili (China)</string>
+    <string name="settings_platform_international">Bilibili (International)</string>
+    <string name="settings_platform">Platform</string>
+    <string name="settings_scan_login">Log In via QR Code</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_logged_in">Logged In</string>
+    <string name="settings_not_logged_in">Not Logged In</string>
+    <string name="settings_vip">Membership</string>
+    <string name="settings_vip_active">Premium VIP</string>
+    <string name="settings_vip_normal">Standard</string>
+    <string name="settings_remember_content">Remember Cast Content</string>
+    <string name="settings_sync_history">Sync History to Bilibili</string>
+    <string name="settings_logout">Log Out</string>
+    <string name="settings_section_software">Software</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_check_update">Check for Updates</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_dialog_title">Select Language</string>
+    <string name="settings_language_dialog_hint">The app will reload to apply the new language</string>
+    <string name="language_system">Follow System / 跟随系统</string>
+    <string name="language_zh_cn">简体中文</string>
+    <string name="language_zh_tw">繁體中文</string>
+    <string name="language_en">English</string>
+    <string name="settings_section_device">Device</string>
+    <string name="settings_device_name">Device Name</string>
+    <string name="settings_network">Network</string>
+    <string name="settings_ip">IP Address</string>
+    <string name="settings_calibration">Screen Calibration</string>
+    <string name="settings_section_privacy">Privacy &amp; Data</string>
+    <string name="settings_crash_tracking">Crash Tracking</string>
+    <string name="settings_usage_stats">Usage Statistics</string>
+    <string name="settings_user_agreement">User Agreement &amp; Privacy Policy</string>
+    <string name="settings_unknown_version">Unknown</string>
+
+    <!-- Update Settings Screen -->
+    <string name="update_title">App Update</string>
+    <string name="update_notes_title">Release Notes</string>
+    <string name="update_auto_check">Auto-check for Updates</string>
+    <string name="update_auto_check_desc">Check for updates when app launches</string>
+    <string name="update_channel">Update Channel</string>
+    <string name="update_channel_release">Release</string>
+    <string name="update_channel_release_desc">Recommended for everyday use</string>
+    <string name="update_channel_beta">Beta</string>
+    <string name="update_channel_beta_desc">Public preview versions</string>
+    <string name="update_check_now">Check Now</string>
+    <string name="update_action_download">Download</string>
+    <string name="update_action_install">Install</string>
+    <string name="update_action_redownload">Re-download</string>
+    <string name="update_action_retry_check">Retry</string>
+    <string name="update_view_notes">View Release Notes</string>
+    <string name="update_status_latest">Up to date</string>
+    <string name="update_status_available">Update available</string>
+    <string name="update_notes_empty">No release notes provided for this version.</string>
+    <string name="update_press_back_hint">Press Back to return</string>
+
+    <!-- Overlays & Dialogs -->
+    <string name="welcome_title">Welcome</string>
+    <string name="welcome_message">CapyCast is a minimal Bilibili cast player designed for Android TV. Please give us feedback if you encounter any issues. Star on GitHub if you like it! (≧▽≦)</string>
+    <string name="welcome_agreement_link">User Agreement &amp; Privacy Policy</string>
+    <string name="welcome_start">Get Started</string>
+    <string name="help_title">How to Cast</string>
+    <string name="help_step_1">Open Bilibili app on phone</string>
+    <string name="help_step_2">Tap the TV icon on the video player</string>
+    <string name="help_step_3">Select \"%s\"</string>
+    <string name="dialog_stop_cast_title">Stop casting?</string>
+    <string name="dialog_stop_cast_message">Playback will stop and return to the home screen.</string>
+    <string name="dialog_stop_cast_confirm">Stop Cast</string>
+    <string name="dialog_stop_cast_cancel">Keep Watching</string>
+    <string name="dialog_calibration_title">Calibrate Screen?</string>
+    <string name="dialog_calibration_message">If video edges are cut off, adjust borders with your remote. You can also open this later from Settings.</string>
+    <string name="dialog_calibration_start">Calibrate</string>
+    <string name="dialog_calibration_skip">Skip</string>
+
+    <!-- Screen Calibration -->
+    <string name="calibration_title">Screen Calibration</string>
+    <string name="calibration_hint_move">Use D-pad arrows to align markers with the screen edges</string>
+    <string name="calibration_hint_next">OK to next corner · Back to cancel</string>
+
+    <!-- Login Dialog -->
+    <string name="login_scan_hint">Scan QR code with Bilibili app</string>
+    <string name="login_close">Close</string>
+
+    <!-- Feedback Dialog -->
+    <string name="feedback_title">Feedback</string>
+    <string name="feedback_close">Close feedback</string>
+    <string name="feedback_prompt_github">Found a problem or have a suggestion? Please open an issue on GitHub.</string>
+    <string name="feedback_prompt_email">Found a problem or have a suggestion? Please contact the developer by Email.</string>
+    <string name="feedback_version_value">Version: %1$s</string>
+    <string name="feedback_channel_description">Feedback channel: %1$s</string>
+    <string name="feedback_qr_description">%1$s feedback QR code</string>
+    <string name="feedback_qr_failed">Failed to generate the QR code. Please try again.</string>
+
+    <!-- Player HUD & Quick Panel -->
+    <string name="panel_root_title">Playback Settings</string>
+    <string name="panel_quality_title">Quality</string>
+    <string name="panel_audio_title">Audio Track</string>
+    <string name="panel_subtitle_title">Subtitles</string>
+    <string name="panel_speed_title">Speed</string>
+    <string name="panel_danmaku_title">Danmaku Settings</string>
+    <string name="panel_live_quality_title">Live Stream Quality</string>
+    <string name="danmaku_toggle">Danmaku</string>
+    <string name="danmaku_ai_shield">AI Shield</string>
+    <string name="danmaku_area">Display Area</string>
+    <string name="danmaku_max_on_screen">Max On Screen</string>
+    <string name="danmaku_opacity">Opacity</string>
+    <string name="danmaku_font_scale">Font Size</string>
+    <string name="danmaku_duration">Speed</string>
+    <string name="danmaku_unlimited">Unlimited</string>
+    <string name="danmaku_shield_off">Off</string>
+    <string name="danmaku_shield_low">Low</string>
+    <string name="danmaku_shield_medium">Medium</string>
+    <string name="danmaku_shield_high">High</string>
+    <string name="danmaku_area_quarter">1/4 Screen</string>
+    <string name="danmaku_area_half">Half Screen</string>
+    <string name="danmaku_area_three_quarters">3/4 Screen</string>
+    <string name="danmaku_area_full">Full Screen</string>
+    <string name="danmaku_font_small">Small</string>
+    <string name="danmaku_font_normal">Normal</string>
+    <string name="danmaku_font_large">Large</string>
+    <string name="danmaku_font_extra_large">Extra Large</string>
+    <string name="danmaku_speed_slow">Slow</string>
+    <string name="danmaku_speed_normal">Normal</string>
+    <string name="danmaku_speed_fast">Fast</string>
+    <string name="subtitle_turn_off">Turn Off</string>
+    <string name="subtitle_none">No subtitles</string>
+    <string name="speed_normal">Normal speed</string>
+    <string name="login_fetching">Requesting QR code…</string>
+    <string name="login_request_failed">Failed to get QR code; retrying…</string>
+    <string name="login_generate_failed">Failed to generate QR code; retrying…</string>
+    <string name="login_waiting">Waiting for scan…</string>
+    <string name="login_scanned">Scanned. Confirm on your phone…</string>
+    <string name="login_rejected">Login failed. Try again later or use another account.</string>
+    <string name="login_platform_mismatch">Login failed: the scanned account does not belong to the selected platform.</string>
+    <string name="login_expired">QR code expired; refreshing…</string>
+    <string name="login_network_error">Network error; retrying…</string>
+    <string name="home_waiting_phone">Waiting for your phone</string>
+    <string name="home_guest">Guest mode</string>
+    <string name="home_continue_play">Continue playback</string>
+    <string name="player_preparing">Preparing cast…</string>
+    <string name="player_playing">Now playing</string>
+    <string name="player_live">Live</string>
+    <string name="player_enable_subtitles">Enable subtitles</string>
+    <string name="player_enable_danmaku">Enable danmaku</string>
+    <string name="player_disable_danmaku">Disable danmaku</string>
+    <string name="calibration_confirm_title">Finish screen calibration?</string>
+    <string name="calibration_confirm_message">All four corners have been adjusted. Save to use these bounds for future videos.</string>
+    <string name="calibration_confirm_done">Done</string>
+    <string name="calibration_review">Review</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_downloading_progress">Downloading %1$d%%</string>
+    <string name="update_verifying">Verifying…</string>
+    <string name="update_current_version">Current version %1$s</string>
+    <string name="update_getting_package">Downloading the package; press the main button to cancel.</string>
+    <string name="update_verifying_package">Verifying the package…</string>
+    <string name="update_verified">The package is verified and ready to install.</string>
+    <string name="update_retry_message">The previous operation failed; retry the download.</string>
+    <string name="update_ready_message">A new version is available. Review the release notes and download it.</string>
+    <string name="update_status_idle">Select a channel and check for updates</string>
+    <string name="update_status_checking">Checking for updates</string>
+    <string name="update_status_downloading">Downloading update</string>
+    <string name="update_status_verifying">Verifying package</string>
+    <string name="update_status_ready">Package ready</string>
+    <string name="update_status_failed">Update did not complete</string>
+    <string name="settings_selected">Selected</string>
+    <string name="settings_unselected">Not selected</string>
+    <string name="common_enabled">On</string>
+    <string name="subtitle_disabled">Off</string>
+    <plurals name="time_days_ago_plural">
+        <item quantity="one">%d day ago</item>
+        <item quantity="other">%d days ago</item>
+    </plurals>
+    <string name="home_back_to_exit">Press Back again to exit</string>
+    <string name="subtitle_loading">Loading</string>
+    <string name="subtitle_unavailable">Unavailable</string>
+</resources>

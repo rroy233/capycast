@@ -23,7 +23,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.roy233.tvcast.R
 import com.roy233.tvcast.ui.designsystem.*
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
@@ -53,7 +55,7 @@ internal fun LoadingScreen() {
             ) {
                 LoadingSpinner()
                 BasicText(
-                    text = "正在准备投屏…",
+                    text = stringResource(R.string.player_preparing),
                     style = TvType.caption.copy(color = TvColors.textSecondary),
                 )
             }

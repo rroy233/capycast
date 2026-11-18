@@ -38,7 +38,7 @@ class FeedbackCoordinator(
                 current.copy(
                     channel = channel,
                     isGenerating = false,
-                    errorMessage = null,
+                    generationFailed = false,
                 ),
             )
             return
@@ -67,7 +67,7 @@ class FeedbackCoordinator(
                 visible = true,
                 channel = channel,
                 isGenerating = true,
-                errorMessage = null,
+                generationFailed = false,
                 versionLabel = metadata?.versionLabel ?: current.versionLabel,
             ),
         )
@@ -85,13 +85,9 @@ class FeedbackCoordinator(
                         if (bitmap != null) latest.qrCodes + (channel to bitmap)
                         else latest.qrCodes,
                     isGenerating = false,
-                    errorMessage = if (bitmap == null) QR_GENERATION_FAILED_MESSAGE else null,
+                    generationFailed = bitmap == null,
                 ),
             )
         }
-    }
-
-    private companion object {
-        const val QR_GENERATION_FAILED_MESSAGE = "二维码生成失败，请重试。"
     }
 }

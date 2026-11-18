@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -28,7 +29,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +37,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -44,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.R
 import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.ui.designsystem.BilibiliTvLogo
 import com.roy233.tvcast.ui.designsystem.FocusableRow
@@ -54,14 +56,17 @@ import com.roy233.tvcast.ui.model.UiFocusAnchor
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.theme.TvDimens
 import com.roy233.tvcast.ui.theme.TvType
+import com.roy233.tvcast.ui.tv.FocusBinding
+import com.roy233.tvcast.ui.tv.RestoreFocus
 import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.home.WhiteButton
+import com.roy233.tvcast.ui.tv.rememberFocusTarget
 
-private val AccountPlatform.label: String
+private val AccountPlatform.labelRes: Int
     get() =
         when (this) {
-            AccountPlatform.DOMESTIC -> "Bilibili国内版"
-            AccountPlatform.INTERNATIONAL -> "Bilibili国际版"
+            AccountPlatform.DOMESTIC -> R.string.settings_platform_domestic
+            AccountPlatform.INTERNATIONAL -> R.string.settings_platform_international
         }
 
 /** 显示由账号、软件与设备信息组成的设置首页。 */
@@ -71,6 +76,8 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
     val loginFocus = remember { FocusRequester() }
     val updateEntryFocus = remember { FocusRequester() }
     val selectedPlatform = state.accountPlatform
+    val languageFocus = rememberFocusTarget()
+    val listState = rememberLazyListState()
 
     when (state.settingsPage) {
         SettingsPage.UPDATE -> {
@@ -89,9 +96,15 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
     LaunchedEffect(Unit) {
         when (state.focusRequest.anchor) {
             UiFocusAnchor.SETTINGS_UPDATE_ENTRY -> updateEntryFocus.requestFocus()
+            UiFocusAnchor.SETTINGS_LANGUAGE_ENTRY -> Unit
             else -> platformFocus.requestFocus()
         }
     }
+    RestoreFocus(
+        request = state.focusRequest,
+        bindings = listOf(FocusBinding(UiFocusAnchor.SETTINGS_LANGUAGE_ENTRY, languageFocus, 1)),
+        listState = listState,
+    )
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < 500.dp
         val horizontalPadding = if (compact) 32.dp else 80.dp
@@ -99,6 +112,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
         val sectionGap = if (compact) 14.dp else 20.dp
 
         LazyColumn(
+            state = listState,
             modifier =
                 Modifier.width(
                         (maxWidth - horizontalPadding * 2).coerceAtMost(TvDimens.pageMaxWidth),
@@ -111,7 +125,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
             verticalArrangement = Arrangement.spacedBy(sectionGap),
         ) {
             item {
-                SettingsSection("账号信息") {
+                SettingsSection(stringResource(R.string.settings_section_account)) {
                     PlatformGallery(
                         selectedPlatform = selectedPlatform,
                         platformLoginStates = state.platformLoginStates,
@@ -130,18 +144,32 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
             }
 
             item {
-                SettingsSection("软件信息") {
-                    SettingsInfoRow("软件版本", versionDisplay(state))
+                SettingsSection(stringResource(R.string.settings_section_software)) {
+                    SettingsInfoRow(
+                        stringResource(R.string.settings_version),
+                        versionDisplay(state),
+                    )
                     SettingsRowDivider()
                     FocusableRow(
-                        title = "检查更新",
+                        title = stringResource(R.string.settings_check_update),
                         onClick = actions.onOpenUpdateSettings,
                         focusRequester = updateEntryFocus,
                         rowHeight = if (compact) 56.dp else 64.dp,
                     )
                     SettingsRowDivider()
+                    val language =
+                        LanguageOption.entries.firstOrNull { it.tag == state.appLanguage }
                     FocusableRow(
-                        title = "问题反馈",
+                        title = stringResource(R.string.settings_language),
+                        value = language?.let { stringResource(it.label) } ?: state.appLanguage,
+                        onClick = actions.onOpenLanguageSettings,
+                        focusTarget = languageFocus,
+                        modifier = Modifier.testTag("language-settings-entry"),
+                        rowHeight = if (compact) 56.dp else 64.dp,
+                    )
+                    SettingsRowDivider()
+                    FocusableRow(
+                        title = stringResource(R.string.feedback_title),
                         onClick = actions.onShowFeedback,
                         rowHeight = if (compact) 56.dp else 64.dp,
                     )
@@ -149,15 +177,15 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
             }
 
             item {
-                SettingsSection("设备信息") {
-                    SettingsInfoRow("设备名称", state.deviceName)
+                SettingsSection(stringResource(R.string.settings_section_device)) {
+                    SettingsInfoRow(stringResource(R.string.settings_device_name), state.deviceName)
                     SettingsRowDivider()
-                    SettingsInfoRow("网络", state.network)
+                    SettingsInfoRow(stringResource(R.string.settings_network), state.network)
                     SettingsRowDivider()
-                    SettingsInfoRow("IP 地址", state.ip)
+                    SettingsInfoRow(stringResource(R.string.settings_ip), state.ip)
                     SettingsRowDivider()
                     FocusableRow(
-                        title = "画面校准",
+                        title = stringResource(R.string.settings_calibration),
                         onClick = actions.onStartCalibration,
                         rowHeight = if (compact) 56.dp else 64.dp,
                     )
@@ -165,21 +193,21 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
             }
 
             item {
-                SettingsSection("隐私与数据") {
+                SettingsSection(stringResource(R.string.settings_section_privacy)) {
                     SettingsToggleRow(
-                        title = "崩溃跟踪",
+                        title = stringResource(R.string.settings_crash_tracking),
                         checked = state.crashTrackingEnabled,
                         onCheckedChange = actions.onSetCrashTracking,
                     )
                     SettingsRowDivider()
                     SettingsToggleRow(
-                        title = "使用情况统计",
+                        title = stringResource(R.string.settings_usage_stats),
                         checked = state.usageStatisticsEnabled,
                         onCheckedChange = actions.onSetUsageStatistics,
                     )
                     SettingsRowDivider()
                     FocusableRow(
-                        title = "用户协议与隐私政策",
+                        title = stringResource(R.string.settings_user_agreement),
                         onClick = actions.onOpenPrivacySettings,
                         rowHeight = if (compact) 56.dp else 64.dp,
                     )
@@ -200,7 +228,7 @@ private fun PlatformGallery(
 ) {
     Column(Modifier.padding(start = 20.dp, top = if (compact) 12.dp else 16.dp, bottom = 14.dp)) {
         BasicText(
-            text = "平台",
+            text = stringResource(R.string.settings_platform),
             style =
                 TvType.caption.copy(
                     color = TvColors.textSecondary,
@@ -257,6 +285,13 @@ private fun PlatformTile(
             else -> Color.White.copy(alpha = 0.10f)
         }
     val textColor = if (loggedIn) TvColors.textPrimary else TvColors.textDisabled
+    val label = stringResource(platform.labelRes)
+    val selectionDescription =
+        stringResource(if (selected) R.string.settings_selected else R.string.settings_unselected)
+    val loginDescription =
+        stringResource(
+            if (loggedIn) R.string.settings_logged_in else R.string.settings_not_logged_in,
+        )
 
     Box(
         modifier =
@@ -266,7 +301,7 @@ private fun PlatformTile(
                     if (focusRequester != null) Modifier.focusRequester(focusRequester)
                     else Modifier,
                 )
-                .focusTrace("platform:${platform.label}")
+                .focusTrace("platform:${platform.name.lowercase()}")
                 .clip(shape)
                 .background(cardColor)
                 .border(if (focused) 2.dp else 1.dp, borderColor, shape)
@@ -279,9 +314,11 @@ private fun PlatformTile(
                 )
                 .semantics {
                     contentDescription = buildString {
-                        append(platform.label)
-                        append(if (selected) "，已选择" else "，未选择")
-                        append(if (loggedIn) "，已登录" else "，未登录")
+                        append(label)
+                        append(", ")
+                        append(selectionDescription)
+                        append(", ")
+                        append(loginDescription)
                     }
                 }
                 .testTag("platform-${platform.name.lowercase()}"),
@@ -297,7 +334,7 @@ private fun PlatformTile(
             )
             Spacer(Modifier.height(if (compact) 5.dp else 7.dp))
             BasicText(
-                text = platform.label,
+                text = label,
                 style =
                     TvType.caption.copy(
                         color = textColor,
@@ -338,7 +375,7 @@ private fun BilibiliAccountSettings(
             contentAlignment = Alignment.CenterStart,
         ) {
             WhiteButton(
-                text = "扫码登录",
+                text = stringResource(R.string.settings_scan_login),
                 onClick = actions.onLogin,
                 focusRequester = loginFocus,
                 compact = compact,
@@ -347,24 +384,31 @@ private fun BilibiliAccountSettings(
         return
     }
 
-    SettingsInfoRow("账号", state.accountName.ifBlank { "已登录" })
+    SettingsInfoRow(
+        stringResource(R.string.settings_account),
+        state.accountName.ifBlank { stringResource(R.string.settings_logged_in) },
+    )
     SettingsRowDivider()
-    SettingsInfoRow("会员", if (state.vip) "大会员" else "普通账号")
+    SettingsInfoRow(
+        stringResource(R.string.settings_vip),
+        if (state.vip) stringResource(R.string.settings_vip_active)
+        else stringResource(R.string.settings_vip_normal),
+    )
     SettingsRowDivider()
     SettingsToggleRow(
-        title = "记忆播放内容",
+        title = stringResource(R.string.settings_remember_content),
         checked = state.rememberPlaybackContent,
         onCheckedChange = actions.onSetRememberPlaybackContent,
     )
     SettingsRowDivider()
     SettingsToggleRow(
-        title = "同步播放记录到 B 站",
+        title = stringResource(R.string.settings_sync_history),
         checked = state.syncPlaybackHistory,
         onCheckedChange = actions.onSetSyncPlaybackHistory,
     )
     SettingsRowDivider()
     FocusableRow(
-        title = "退出登录",
+        title = stringResource(R.string.settings_logout),
         onClick = actions.onLogout,
         destructive = true,
         showChevron = false,
@@ -373,5 +417,6 @@ private fun BilibiliAccountSettings(
 }
 
 /** 将语义版本与 Android version code 作为同一条软件版本信息呈现。 */
+@Composable
 private fun versionDisplay(state: TvUiState): String =
-    "${state.version.ifBlank { "未知版本" }} (${state.versionCode})"
+    "${state.version.ifBlank { stringResource(R.string.settings_unknown_version) }} (${state.versionCode})"

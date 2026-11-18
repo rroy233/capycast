@@ -1,6 +1,7 @@
 package com.roy233.tvcast.ui.model
 
 import android.graphics.Bitmap
+import com.roy233.tvcast.feature.account.LoginStatus
 import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
@@ -49,7 +50,7 @@ data class RecentCastFocus(val aid: Long, val cid: Long)
  * @property stopCastConfirm 是否显示停止投屏确认。
  * @property error 当前待展示的错误信息。
  * @property loginQr 登录二维码位图。
- * @property loginStatus 登录流程状态文本。
+ * @property loginStatus 登录流程状态。
  * @property loginDialogVisible 是否显示扫码登录弹窗。
  * @property loginSkipped 是否跳过登录。
  * @property helpVisible 是否显示投屏帮助。
@@ -76,10 +77,11 @@ data class TvUiState(
     val mode: TvMode = TvMode.IDLE,
     val destination: TvDestination = TvDestination.HOME,
     val settingsNavigation: SettingsNavigationState = SettingsNavigationState(),
+    val appLanguage: String = "",
     val sidebarVisible: Boolean = false,
     val focusRequest: FocusRequest = FocusRequest(UiFocusAnchor.HOME_PRIMARY),
     val loggedIn: Boolean = false,
-    val accountName: String = "未登录",
+    val accountName: String = "",
     val mid: Long = 0L,
     val vip: Boolean = false,
     val deviceName: String = "CapyCast",
@@ -124,10 +126,11 @@ data class TvUiState(
     val stopCastConfirm: Boolean = false,
     val error: TvError? = null,
     val loginQr: Bitmap? = null,
-    val loginStatus: String = "",
+    val loginStatus: LoginStatus = LoginStatus.NONE,
     val loginDialogVisible: Boolean = false,
     val loginSkipped: Boolean = false,
     val helpVisible: Boolean = false,
+    val languageDialogVisible: Boolean = false,
     /** 用户反馈弹窗的瞬时投影。 */
     val feedback: FeedbackUiState = FeedbackUiState(),
     val privacyNoticeVisible: Boolean = false,
@@ -140,7 +143,7 @@ data class TvUiState(
     val selectedSubtitleKey: SubtitleTrackKey? = null,
     val subtitleEnabled: Boolean = false,
     val subtitleAvailable: Boolean = false,
-    val subtitleSummary: String = "",
+    val subtitleSummary: SubtitleSummary = SubtitleSummary(),
     val subtitleLines: List<String> = emptyList(),
     val subtitleFontScale: Float = 1f,
     val subtitleBottomMarginRatio: Float = SubtitleSettings.DEFAULT_BOTTOM_MARGIN,
@@ -171,6 +174,13 @@ data class TvUiState(
             if (stopCastConfirm) add(UiOverlay.STOP_CAST_CONFIRM)
             if (error != null) add(UiOverlay.ERROR)
             if (panel != null) add(UiOverlay.PANEL)
+            if (
+                languageDialogVisible &&
+                    mode == TvMode.IDLE &&
+                    destination == TvDestination.SETTINGS &&
+                    settingsPage == SettingsPage.ROOT
+            )
+                add(UiOverlay.LANGUAGE)
             if (helpVisible) add(UiOverlay.HELP)
             if (feedback.visible) add(UiOverlay.FEEDBACK)
             if (loginDialogVisible) add(UiOverlay.LOGIN_DIALOG)

@@ -21,8 +21,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.R
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.model.UiFocusAnchor
@@ -79,7 +81,7 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
                 ) {
                     Column(Modifier.weight(1f)) {
                         BasicText(
-                            text = "更新日志",
+                            text = stringResource(R.string.update_notes_title),
                             style = TvType.title.copy(fontSize = 48.sp),
                         )
                         available?.let {
@@ -94,7 +96,7 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
                         }
                     }
                     WhiteButton(
-                        text = "返回",
+                        text = stringResource(R.string.common_back),
                         onClick = actions.onNavigateSettingsBack,
                         focusTarget = backFocus,
                         compact = true,
@@ -105,7 +107,7 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
             if (blocks.isEmpty()) {
                 item {
                     BasicText(
-                        text = "此版本未提供更新说明。",
+                        text = stringResource(R.string.update_notes_empty),
                         style = TvType.body.copy(color = TvColors.textSecondary),
                     )
                 }
@@ -122,7 +124,7 @@ internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
             item {
                 Spacer(Modifier.height(20.dp))
                 BasicText(
-                    text = "按返回键回到更新页面",
+                    text = stringResource(R.string.update_press_back_hint),
                     style = TvType.caption.copy(color = TvColors.textTertiary, fontSize = 15.sp),
                 )
             }

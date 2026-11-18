@@ -91,3 +91,19 @@ data class AudioOption(
     val id: Int,
     val label: String,
 )
+
+/** 展示字幕摘要所需的语义状态。 */
+enum class SubtitleSummaryKind {
+    NONE,
+    SELECTED,
+    DISABLED,
+    LOADING,
+    UNAVAILABLE,
+    EMPTY,
+    OFF,
+}
+
+data class SubtitleSummary(
+    val kind: SubtitleSummaryKind = SubtitleSummaryKind.NONE,
+    val label: String = "",
+)

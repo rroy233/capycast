@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -36,6 +37,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.R
+import com.roy233.tvcast.feature.account.LoginStatus
 import com.roy233.tvcast.ui.designsystem.*
 import com.roy233.tvcast.ui.model.TvActions
 import com.roy233.tvcast.ui.model.TvUiState
@@ -53,6 +56,7 @@ import com.roy233.tvcast.ui.tv.rememberFocusTarget
  */
 @Composable
 internal fun LoginDialog(state: TvUiState, actions: TvActions) {
+    val closeDescription = stringResource(R.string.login_close)
     val closeFocus = rememberFocusTarget()
     val closeInteraction = remember { MutableInteractionSource() }
     val closeFocused by closeInteraction.collectIsFocusedAsState()
@@ -88,7 +92,7 @@ internal fun LoginDialog(state: TvUiState, actions: TvActions) {
                         )
                         Spacer(Modifier.width(10.dp))
                         BasicText(
-                            text = "打开bilibili客户端扫码",
+                            text = stringResource(R.string.login_scan_hint),
                             style =
                                 TvType.bodyMedium.copy(fontSize = if (compact) 18.sp else 22.sp),
                             modifier = Modifier.weight(1f),
@@ -113,7 +117,7 @@ internal fun LoginDialog(state: TvUiState, actions: TvActions) {
                                         CircleShape,
                                     )
                                     .focusTarget(closeFocus)
-                                    .semantics { contentDescription = "关闭登录" }
+                                    .semantics { contentDescription = closeDescription }
                                     .clickable(
                                         interactionSource = closeInteraction,
                                         indication = null,
@@ -141,15 +145,11 @@ internal fun LoginDialog(state: TvUiState, actions: TvActions) {
                     }
                     Spacer(Modifier.height(if (compact) 12.dp else 16.dp))
                     BasicText(
-                        text = state.loginStatus,
+                        text = loginStatusText(state.loginStatus),
                         style =
                             TvType.caption.copy(
                                 color =
-                                    if (
-                                        state.loginStatus.contains("失败") ||
-                                            state.loginStatus.contains("异常")
-                                    )
-                                        TvColors.warning
+                                    if (state.loginStatus.isWarning()) TvColors.warning
                                     else TvColors.textSecondary,
                                 fontSize = if (compact) 16.sp else 18.sp,
                                 textAlign = TextAlign.Center,
@@ -161,3 +161,34 @@ internal fun LoginDialog(state: TvUiState, actions: TvActions) {
         }
     }
 }
+
+/** 把登录流程状态映射为当前语言的提示文案。 */
+@Composable
+private fun loginStatusText(status: LoginStatus): String =
+    when (status) {
+        LoginStatus.NONE -> ""
+        LoginStatus.FETCHING -> stringResource(R.string.login_fetching)
+        LoginStatus.REQUEST_FAILED -> stringResource(R.string.login_request_failed)
+        LoginStatus.GENERATE_FAILED -> stringResource(R.string.login_generate_failed)
+        LoginStatus.WAITING -> stringResource(R.string.login_waiting)
+        LoginStatus.SCANNED -> stringResource(R.string.login_scanned)
+        LoginStatus.EXPIRED -> stringResource(R.string.login_expired)
+        LoginStatus.NETWORK_ERROR -> stringResource(R.string.login_network_error)
+        LoginStatus.REJECTED -> stringResource(R.string.login_rejected)
+        LoginStatus.PLATFORM_MISMATCH -> stringResource(R.string.login_platform_mismatch)
+    }
+
+/** 需要以警示色提示的状态；新增状态必须在此显式归类。 */
+private fun LoginStatus.isWarning(): Boolean =
+    when (this) {
+        LoginStatus.REQUEST_FAILED,
+        LoginStatus.GENERATE_FAILED,
+        LoginStatus.NETWORK_ERROR,
+        LoginStatus.REJECTED,
+        LoginStatus.PLATFORM_MISMATCH -> true
+        LoginStatus.NONE,
+        LoginStatus.FETCHING,
+        LoginStatus.WAITING,
+        LoginStatus.SCANNED,
+        LoginStatus.EXPIRED -> false
+    }

@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CapyCast</string>
+
+    <!-- Navigation & Menu -->
+    <string name="menu_home">Bilibili 投屏</string>
+    <string name="menu_settings">設定</string>
+    <string name="sidebar_badge_new_version">有新版本</string>
+
+    <!-- Common Actions & Labels -->
+    <string name="common_close">關閉</string>
+    <string name="common_done">完成</string>
+    <string name="common_back">返回</string>
+    <string name="common_cancel">取消</string>
+    <string name="common_auto">自動</string>
+    <string name="common_on">開</string>
+    <string name="common_off">關</string>
+    <string name="common_current">目前</string>
+    <string name="common_got_it">知道了</string>
+    <string name="common_retry">重試</string>
+
+    <!-- Home Screen -->
+    <string name="home_waiting_cast">等待投屏...</string>
+    <string name="home_cast_instruction">請在手機 B 站 App 點擊投屏選擇本設備</string>
+    <string name="home_recent_cast">最近投屏</string>
+    <string name="home_clear_recent">清除</string>
+    <string name="home_help">投屏說明</string>
+    <string name="home_continue_watch">繼續觀看</string>
+    <string name="home_recast">重新投屏</string>
+    <string name="home_no_recents">暫無投屏記錄</string>
+    <string name="home_room_default">客廳</string>
+
+    <!-- Relative Time -->
+    <string name="time_just_now">剛剛</string>
+    <string name="time_minutes_ago">%d分鐘前</string>
+    <string name="time_hours_ago">%d小時前</string>
+    <string name="time_yesterday">昨天</string>
+    <string name="time_days_ago">%d天前</string>
+    <string name="time_long_ago">很久以前</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_section_account">帳號資訊</string>
+    <string name="settings_platform_domestic">Bilibili 國內版</string>
+    <string name="settings_platform_international">Bilibili 國際版</string>
+    <string name="settings_platform">平台</string>
+    <string name="settings_scan_login">掃碼登入</string>
+    <string name="settings_account">帳號</string>
+    <string name="settings_logged_in">已登入</string>
+    <string name="settings_not_logged_in">未登入</string>
+    <string name="settings_vip">會員</string>
+    <string name="settings_vip_active">大會員</string>
+    <string name="settings_vip_normal">一般帳號</string>
+    <string name="settings_remember_content">記憶播放內容</string>
+    <string name="settings_sync_history">同步播放記錄至 B 站</string>
+    <string name="settings_logout">登出帳號</string>
+    <string name="settings_section_software">軟體資訊</string>
+    <string name="settings_version">軟體版本</string>
+    <string name="settings_check_update">檢查更新</string>
+    <string name="settings_language">語言設定</string>
+    <string name="settings_language_dialog_title">選擇語言</string>
+    <string name="settings_language_dialog_hint">選擇後將重新載入介面以套用新語言</string>
+    <string name="language_system">跟隨系統 / System</string>
+    <string name="language_zh_cn">簡體中文</string>
+    <string name="language_zh_tw">繁體中文</string>
+    <string name="language_en">English</string>
+    <string name="settings_section_device">裝置資訊</string>
+    <string name="settings_device_name">裝置名稱</string>
+    <string name="settings_network">網路</string>
+    <string name="settings_ip">IP 位址</string>
+    <string name="settings_calibration">畫面校準</string>
+    <string name="settings_section_privacy">隱私與數據</string>
+    <string name="settings_crash_tracking">崩潰追蹤</string>
+    <string name="settings_usage_stats">使用情況統計</string>
+    <string name="settings_user_agreement">使用者協議與隱私政策</string>
+    <string name="settings_unknown_version">未知版本</string>
+
+    <!-- Update Settings Screen -->
+    <string name="update_title">應用程式更新</string>
+    <string name="update_notes_title">更新日誌</string>
+    <string name="update_auto_check">自動檢查更新</string>
+    <string name="update_auto_check_desc">啟動應用程式時自動檢查</string>
+    <string name="update_channel">更新通道</string>
+    <string name="update_channel_release">正式版</string>
+    <string name="update_channel_release_desc">推薦日常使用</string>
+    <string name="update_channel_beta">Beta 版</string>
+    <string name="update_channel_beta_desc">公開測試版本</string>
+    <string name="update_check_now">檢查更新</string>
+    <string name="update_action_download">下載</string>
+    <string name="update_action_install">安裝</string>
+    <string name="update_action_redownload">重新下載</string>
+    <string name="update_action_retry_check">重試檢查</string>
+    <string name="update_view_notes">查看更新日誌</string>
+    <string name="update_status_latest">目前已是最新版本</string>
+    <string name="update_status_available">發現可用更新</string>
+    <string name="update_notes_empty">此版本未提供更新說明。</string>
+    <string name="update_press_back_hint">按返回鍵回到更新頁面</string>
+
+    <!-- Overlays & Dialogs -->
+    <string name="welcome_title">歡迎</string>
+    <string name="welcome_message">CapyCast是一款專為 Android TV 打造的極簡 Bilibili 投屏播放器，使用過程遇到任何問題請向我們回報。如果喜歡，歡迎點點Star (≧▽≦)</string>
+    <string name="welcome_agreement_link">《使用者協議與隱私政策》</string>
+    <string name="welcome_start">開始使用</string>
+    <string name="help_title">如何投屏</string>
+    <string name="help_step_1">手機打開 B 站</string>
+    <string name="help_step_2">播放頁點右上角 TV</string>
+    <string name="help_step_3">選擇「%s」</string>
+    <string name="dialog_stop_cast_title">停止當前投屏？</string>
+    <string name="dialog_stop_cast_message">電視將停止當前播放並返回首頁。</string>
+    <string name="dialog_stop_cast_confirm">停止投屏</string>
+    <string name="dialog_stop_cast_cancel">繼續觀看</string>
+    <string name="dialog_calibration_title">校準電視畫面？</string>
+    <string name="dialog_calibration_message">如果影片超出螢幕邊緣，可以用遙控器調整四邊。跳過後不會再次自動提示，仍可從設定中開啟。</string>
+    <string name="dialog_calibration_start">開始校準</string>
+    <string name="dialog_calibration_skip">跳過</string>
+
+    <!-- Screen Calibration -->
+    <string name="calibration_title">畫面校準</string>
+    <string name="calibration_hint_move">方向鍵移動當前角，讓角上的兩條標記線剛好貼住可見邊緣</string>
+    <string name="calibration_hint_next">確認鍵切換下一個角 · 返回鍵取消</string>
+
+    <!-- Login Dialog -->
+    <string name="login_scan_hint">打開bilibili客戶端掃碼</string>
+    <string name="login_close">關閉登入</string>
+
+    <!-- Feedback Dialog -->
+    <string name="feedback_title">問題回饋</string>
+    <string name="feedback_close">關閉問題回饋</string>
+    <string name="feedback_prompt_github">遇到問題或有改進建議，歡迎在 GitHub 提交 Issue。</string>
+    <string name="feedback_prompt_email">遇到問題或有改進建議，歡迎透過 Email 聯絡開發者。</string>
+    <string name="feedback_version_value">軟體版本：%1$s</string>
+    <string name="feedback_channel_description">回饋管道：%1$s</string>
+    <string name="feedback_qr_description">%1$s 問題回饋 QR Code</string>
+    <string name="feedback_qr_failed">QR Code 產生失敗，請重試。</string>
+
+    <!-- Player HUD & Quick Panel -->
+    <string name="panel_root_title">播放設定</string>
+    <string name="panel_quality_title">畫質解析度</string>
+    <string name="panel_audio_title">音軌</string>
+    <string name="panel_subtitle_title">字幕</string>
+    <string name="panel_speed_title">播放速度</string>
+    <string name="panel_danmaku_title">彈幕設定</string>
+    <string name="panel_live_quality_title">直播畫質</string>
+    <string name="danmaku_toggle">彈幕</string>
+    <string name="danmaku_ai_shield">智慧雲屏蔽</string>
+    <string name="danmaku_area">顯示區域</string>
+    <string name="danmaku_max_on_screen">同螢幕數量</string>
+    <string name="danmaku_opacity">不透明度</string>
+    <string name="danmaku_font_scale">字體大小</string>
+    <string name="danmaku_duration">速度</string>
+    <string name="danmaku_unlimited">不限</string>
+    <string name="danmaku_shield_off">關</string>
+    <string name="danmaku_shield_low">低</string>
+    <string name="danmaku_shield_medium">中</string>
+    <string name="danmaku_shield_high">高</string>
+    <string name="danmaku_area_quarter">1/4 螢幕</string>
+    <string name="danmaku_area_half">半螢幕</string>
+    <string name="danmaku_area_three_quarters">3/4 螢幕</string>
+    <string name="danmaku_area_full">全螢幕</string>
+    <string name="danmaku_font_small">小</string>
+    <string name="danmaku_font_normal">標準</string>
+    <string name="danmaku_font_large">大</string>
+    <string name="danmaku_font_extra_large">特大</string>
+    <string name="danmaku_speed_slow">慢</string>
+    <string name="danmaku_speed_normal">適中</string>
+    <string name="danmaku_speed_fast">快</string>
+    <string name="subtitle_turn_off">關閉字幕</string>
+    <string name="subtitle_none">無字幕</string>
+    <string name="speed_normal">正常速度</string>
+    <string name="login_fetching">正在取得 QR Code…</string>
+    <string name="login_request_failed">取得 QR Code 失敗，正在重試…</string>
+    <string name="login_generate_failed">產生 QR Code 失敗，正在重試…</string>
+    <string name="login_waiting">等待掃碼…</string>
+    <string name="login_scanned">已掃碼，請在手機確認…</string>
+    <string name="login_rejected">登入失敗，請稍後重試或改用其他帳號。</string>
+    <string name="login_platform_mismatch">登入失敗：掃碼的帳號不屬於目前選擇的平台。</string>
+    <string name="login_expired">QR Code 已失效，正在重新整理…</string>
+    <string name="login_network_error">網路異常，重試中…</string>
+    <string name="home_waiting_phone">等待手機投放</string>
+    <string name="home_guest">訪客模式</string>
+    <string name="home_continue_play">繼續播放</string>
+    <string name="player_preparing">正在準備投放…</string>
+    <string name="player_playing">正在播放</string>
+    <string name="player_live">直播</string>
+    <string name="player_enable_subtitles">開啟字幕</string>
+    <string name="player_enable_danmaku">開啟彈幕</string>
+    <string name="player_disable_danmaku">關閉彈幕</string>
+    <string name="calibration_confirm_title">完成畫面校準？</string>
+    <string name="calibration_confirm_message">已調整四個角。確認後儲存，之後播放的影片都會使用這個畫面範圍。</string>
+    <string name="calibration_confirm_done">已完成</string>
+    <string name="calibration_review">再看看</string>
+    <string name="update_checking">檢查中…</string>
+    <string name="update_downloading_progress">下載中 %1$d%%</string>
+    <string name="update_verifying">驗證中…</string>
+    <string name="update_current_version">目前版本 %1$s</string>
+    <string name="update_getting_package">正在取得安裝套件；按主按鈕可取消下載。</string>
+    <string name="update_verifying_package">正在驗證安裝套件完整性…</string>
+    <string name="update_verified">安裝套件已驗證，可以安裝。</string>
+    <string name="update_retry_message">上次操作失敗，可重試下載。</string>
+    <string name="update_ready_message">新版本已就緒，查看更新內容並開始下載。</string>
+    <string name="update_status_idle">選擇通道後檢查更新</string>
+    <string name="update_status_checking">正在檢查更新</string>
+    <string name="update_status_downloading">正在下載新版本</string>
+    <string name="update_status_verifying">正在驗證安裝套件</string>
+    <string name="update_status_ready">安裝套件已準備就緒</string>
+    <string name="update_status_failed">更新操作未完成</string>
+    <string name="settings_selected">已選擇</string>
+    <string name="settings_unselected">未選擇</string>
+    <string name="common_enabled">開啟</string>
+    <string name="subtitle_disabled">已關閉</string>
+    <plurals name="time_days_ago_plural">
+        <item quantity="one">%d天前</item>
+        <item quantity="other">%d天前</item>
+    </plurals>
+    <string name="home_back_to_exit">再按一次返回鍵離開</string>
+    <string name="subtitle_loading">載入中</string>
+    <string name="subtitle_unavailable">無法使用</string>
+</resources>

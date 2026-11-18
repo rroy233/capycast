@@ -10,17 +10,35 @@ class RecentCastTimeTest {
 
     @Test
     fun formatsRelativeCastTimeAcrossTheRequestedRanges() {
-        assertEquals("刚刚", recent(at = now - 30_000L).relativeTimeLabel(now))
-        assertEquals("12分钟前", recent(at = now - 12 * 60_000L).relativeTimeLabel(now))
-        assertEquals("3小时前", recent(at = now - 3 * 60 * 60_000L).relativeTimeLabel(now))
-        assertEquals("昨天", recent(at = now - 24 * 60 * 60_000L).relativeTimeLabel(now))
-        assertEquals("3天前", recent(at = now - 3 * 24 * 60 * 60_000L).relativeTimeLabel(now))
-        assertEquals("好久之前", recent(at = now - 8 * 24 * 60 * 60_000L).relativeTimeLabel(now))
+        assertEquals(
+            RelativeCastTime(RelativeTimeUnit.JUST_NOW),
+            recent(at = now - 30_000L).relativeTime(now),
+        )
+        assertEquals(
+            RelativeCastTime(RelativeTimeUnit.MINUTES, 12),
+            recent(at = now - 12 * 60_000L).relativeTime(now),
+        )
+        assertEquals(
+            RelativeCastTime(RelativeTimeUnit.HOURS, 3),
+            recent(at = now - 3 * 60 * 60_000L).relativeTime(now),
+        )
+        assertEquals(
+            RelativeCastTime(RelativeTimeUnit.YESTERDAY),
+            recent(at = now - 24 * 60 * 60_000L).relativeTime(now),
+        )
+        assertEquals(
+            RelativeCastTime(RelativeTimeUnit.DAYS, 3),
+            recent(at = now - 3 * 24 * 60 * 60_000L).relativeTime(now),
+        )
+        assertEquals(
+            RelativeCastTime(RelativeTimeUnit.LONG_AGO),
+            recent(at = now - 8 * 24 * 60 * 60_000L).relativeTime(now),
+        )
     }
 
     @Test
     fun treatsMissingTimestampsAsLongAgo() {
-        assertEquals("好久之前", recent(at = 0L).relativeTimeLabel(now))
+        assertEquals(RelativeCastTime(RelativeTimeUnit.LONG_AGO), recent(at = 0L).relativeTime(now))
     }
 
     private fun recent(at: Long) = RecentCast(aid = 1L, cid = 10L, title = "测试", at = at)
