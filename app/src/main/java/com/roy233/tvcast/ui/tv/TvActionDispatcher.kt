@@ -2,6 +2,7 @@ package com.roy233.tvcast.ui.tv
 
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.Screen
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationDirection
@@ -25,6 +26,8 @@ import com.roy233.tvcast.ui.model.moved
  * 界面的纯状态切换由 [TvActionDispatcher] 完成；涉及播放、账号、更新、弹幕与 持久化的动作通过本接口交给宿主执行。
  */
 interface TvActionHost {
+    fun selectAccountPlatform(platform: AccountPlatform)
+
     fun startCalibration()
 
     fun cancelCalibration()
@@ -135,6 +138,7 @@ class TvActionDispatcher(
     /** 提供给电视界面的操作回调集合；实例在构造期固定，避免重组时重建。 */
     val actions: TvActions =
         TvActions(
+            onSelectAccountPlatform = host::selectAccountPlatform,
             onLogin = {
                 val state = stateHolder.read()
                 if (state.mode == TvMode.IDLE && !state.loggedIn) {

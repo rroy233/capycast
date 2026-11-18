@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.history.PlaybackHistoryOutbox
 import com.roy233.tvcast.feature.history.PlaybackHistoryReport
 
@@ -15,9 +16,14 @@ class PersistentPlaybackHistoryOutbox(context: Context) : PlaybackHistoryOutbox 
     private val lock = Any()
 
     /** 返回指定账号的待上报快照，按更新时间从旧到新排列。 */
-    override fun pendingForAccount(mid: Long): List<PlaybackHistoryReport> =
+    override fun pendingForAccount(
+        platform: AccountPlatform,
+        mid: Long,
+    ): List<PlaybackHistoryReport> =
         synchronized(lock) {
-            loadLocked().filter { it.accountMid == mid }.sortedBy { it.updatedAtMs }
+            loadLocked()
+                .filter { it.accountMid == mid && it.accountPlatform == platform }
+                .sortedBy { it.updatedAtMs }
         }
 
     /** 保存或更新同一播放会话的最新进度。 */
@@ -80,6 +86,8 @@ class PersistentPlaybackHistoryOutbox(context: Context) : PlaybackHistoryOutbox 
         PlaybackHistoryReport(
             sessionId = report.sessionId,
             accountMid = report.accountMid,
+            accountPlatform =
+                (report.accountPlatform as AccountPlatform?) ?: AccountPlatform.DOMESTIC,
             aid = report.aid,
             cid = report.cid,
             sid = report.sid,

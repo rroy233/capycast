@@ -1,9 +1,12 @@
 package com.roy233.tvcast.feature.account
 
 import android.graphics.Bitmap
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 
 /** 账号登录功能独占的界面状态切片。 */
 data class AccountUiState(
+    val platform: AccountPlatform = AccountPlatform.DOMESTIC,
+    val platformLoginStates: Map<AccountPlatform, Boolean> = emptyMap(),
     val loggedIn: Boolean = false,
     val accountName: String = "未登录",
     val mid: Long = 0L,

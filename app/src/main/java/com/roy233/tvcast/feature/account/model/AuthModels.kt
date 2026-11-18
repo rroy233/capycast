@@ -1,20 +1,34 @@
 package com.roy233.tvcast.feature.account.model
 
+/** 账号及其会话所属的平台。 */
+enum class AccountPlatform {
+    DOMESTIC,
+    INTERNATIONAL,
+}
+
+enum class CredentialKind {
+    TV,
+    WEB,
+}
+
 /**
- * 保存电视账号认证信息。
+ * 保存账号认证信息。
  *
- * @property accessKey 电视端访问令牌。
+ * @property accessKey 电视端访问令牌；网页账号没有该令牌。
  * @property mid 账号标识。
  * @property cookie 登录后获得的 Cookie 集合。
  * @property refreshToken 刷新令牌。
  * @property expiresIn 令牌有效期。
  */
 data class Token(
-    val accessKey: String,
+    val accessKey: String?,
     val mid: Long,
     val cookie: String,
     val refreshToken: String,
     val expiresIn: Long,
+    val platform: AccountPlatform = AccountPlatform.DOMESTIC,
+    val credentialKind: CredentialKind =
+        if (accessKey == null) CredentialKind.WEB else CredentialKind.TV,
 )
 
 /**
@@ -33,4 +47,7 @@ sealed class Poll {
 
     /** 表示登录成功并返回认证令牌。 */
     data class Success(val token: Token) : Poll()
+
+    /** 服务端明确拒绝或认证结果无效。 */
+    data class Failure(val code: Int, val message: String) : Poll()
 }

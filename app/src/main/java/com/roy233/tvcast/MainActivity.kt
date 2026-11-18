@@ -46,7 +46,7 @@ import com.roy233.tvcast.data.bili.danmaku.BiliLiveDanmakuClient
 import com.roy233.tvcast.data.bili.danmaku.DanmakuApi
 import com.roy233.tvcast.data.bili.routing.OkHttpLiveRouteProbe
 import com.roy233.tvcast.data.bili.routing.OkHttpVodRouteProbe
-import com.roy233.tvcast.feature.account.AccountUiState
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.account.model.Token
 import com.roy233.tvcast.feature.cast.application.DlnaTransportCoordinator
 import com.roy233.tvcast.feature.cast.application.DlnaTransportHost
@@ -273,20 +273,11 @@ class MainActivity :
         CapyCastContainer(
             context = this,
             scope = scope,
-            readAccountState = {
-                AccountUiState(
-                    loggedIn = ui.loggedIn,
-                    accountName = ui.accountName,
-                    mid = ui.mid,
-                    vip = ui.vip,
-                    loginQr = ui.loginQr,
-                    loginStatus = ui.loginStatus,
-                    loginSkipped = ui.loginSkipped,
-                )
-            },
             writeAccountState = { account ->
                 ui =
                     ui.copy(
+                        accountPlatform = account.platform,
+                        platformLoginStates = account.platformLoginStates,
                         loggedIn = account.loggedIn,
                         accountName = account.accountName,
                         mid = account.mid,
@@ -423,6 +414,9 @@ class MainActivity :
     private val actions = actionDispatcher.actions
 
     override fun requestLogin() = startQrLogin()
+
+    override fun selectAccountPlatform(platform: AccountPlatform) =
+        loginCoordinator.selectPlatform(platform)
 
     override fun startCalibration() {
         if (::playbackEngineHost.isInitialized && currentRequest != null && playerIsPlaying()) {
@@ -753,7 +747,7 @@ class MainActivity :
     }
 
     override fun clearLoginUi() {
-        ui = ui.copy(loginQr = null, loginStatus = "")
+        loginCoordinator.dismissQrLogin()
     }
 
     /** 重新解析并播放指定 nva 内容。 */

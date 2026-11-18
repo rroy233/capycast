@@ -3,6 +3,7 @@ package com.roy233.tvcast.feature.history
 import android.os.SystemClock
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.account.model.AccountSessionStore
 import com.roy233.tvcast.feature.account.model.Token
 import java.util.UUID
@@ -33,7 +34,7 @@ class PlaybackHistoryCoordinator(
     private var lastDurationMs = 0L
     private var flushJob: Job? = null
     private var heartbeatJob: Job? = null
-    private var authBlockedMid: Long? = null
+    private var authBlockedAccount: Pair<AccountPlatform, Long>? = null
     private var retryJob: Job? = scope.launch {
         while (isActive) {
             delay(RETRY_INTERVAL_MS)
@@ -145,7 +146,8 @@ class PlaybackHistoryCoordinator(
 
     /** 令牌就绪后重试该账号的队列，并接管当前仍在播放的媒体。 */
     fun onAccountAvailable(mid: Long) {
-        if (authBlockedMid == mid) authBlockedMid = null
+        if (authBlockedAccount == (sessionStore.selectedPlatform() to mid))
+            authBlockedAccount = null
         retryPendingForAccount(mid)
         if (isPlaying) currentContent?.let(::ensureSession)
     }
@@ -154,13 +156,22 @@ class PlaybackHistoryCoordinator(
     fun onAccountLoggedOut(playing: Boolean, positionMs: Long, durationMs: Long) {
         updatePosition(positionMs, durationMs)
         finish("logout")
+        flushJob?.cancel()
+        flushJob = null
         isPlaying = playing
         if (playing) activeSession = null
     }
 
     /** 登录或启动时只重试与当前账号匹配的快照。 */
     fun retryPendingForAccount(mid: Long) {
-        if (!isEnabled() || mid <= 0L || authBlockedMid == mid || flushJob?.isActive == true) return
+        val platform = sessionStore.selectedPlatform()
+        if (
+            !isEnabled() ||
+                mid <= 0L ||
+                authBlockedAccount == (platform to mid) ||
+                flushJob?.isActive == true
+        )
+            return
         val token = sessionStore.load() ?: return
         if (token.mid != mid) {
             LogHub.w(
@@ -171,9 +182,13 @@ class PlaybackHistoryCoordinator(
         }
         flushJob = scope.launch {
             while (isActive && isEnabled()) {
-                val report = outbox.pendingForAccount(mid).firstOrNull() ?: break
+                val report = outbox.pendingForAccount(platform, mid).firstOrNull() ?: break
                 val currentToken = sessionStore.load()
-                if (currentToken == null || currentToken.mid != report.accountMid) {
+                if (
+                    currentToken == null ||
+                        currentToken.mid != report.accountMid ||
+                        currentToken.platform != platform
+                ) {
                     LogHub.w(
                         TAG,
                         "history retry stopped: no matching account for snapshot=${report.sessionId}",
@@ -182,7 +197,7 @@ class PlaybackHistoryCoordinator(
                 }
                 val auth = currentToken.toWebHistoryAuth()
                 if (auth == null) {
-                    authBlockedMid = mid
+                    authBlockedAccount = platform to mid
                     LogHub.e(
                         TAG,
                         "history sync blocked: Web session cookie or CSRF missing account=$mid",
@@ -236,7 +251,7 @@ class PlaybackHistoryCoordinator(
                 } catch (error: Throwable) {
                     val apiError = error as? PlaybackHistoryApiException
                     if (apiError != null && apiError.code in AUTH_ERROR_CODES) {
-                        authBlockedMid = mid
+                        authBlockedAccount = platform to mid
                     }
                     LogHub.e(
                         TAG,
@@ -274,7 +289,8 @@ class PlaybackHistoryCoordinator(
         if (
             current != null &&
                 current.stableKey == content.stableKey &&
-                current.accountMid == token.mid
+                current.accountMid == token.mid &&
+                current.accountPlatform == token.platform
         ) {
             current.content = content
             return
@@ -287,6 +303,7 @@ class PlaybackHistoryCoordinator(
                 id = UUID.randomUUID().toString(),
                 stableKey = content.stableKey,
                 accountMid = token.mid,
+                accountPlatform = token.platform,
                 content = content,
                 lastReportedAtMs = SystemClock.elapsedRealtime(),
                 segmentStartedAtMs = if (isPlaying) SystemClock.elapsedRealtime() else null,
@@ -316,7 +333,11 @@ class PlaybackHistoryCoordinator(
         if (!isEnabled()) return
         if (session.content.isLive) return
         val token = sessionStore.load()
-        if (token == null || token.mid != session.accountMid) {
+        if (
+            token == null ||
+                token.mid != session.accountMid ||
+                token.platform != session.accountPlatform
+        ) {
             LogHub.w(
                 TAG,
                 "history snapshot queued without matching token reason=$reason account=${session.accountMid}",
@@ -335,6 +356,7 @@ class PlaybackHistoryCoordinator(
             PlaybackHistoryReport(
                 sessionId = session.id,
                 accountMid = session.accountMid,
+                accountPlatform = session.accountPlatform,
                 aid = content.aid,
                 cid = content.cid,
                 sid = content.sid,
@@ -374,6 +396,7 @@ class PlaybackHistoryCoordinator(
             PlaybackHistoryReport(
                 sessionId = session.id,
                 accountMid = session.accountMid,
+                accountPlatform = session.accountPlatform,
                 aid = 0L,
                 cid = content.roomId,
                 sid = 0L,
@@ -419,11 +442,20 @@ class PlaybackHistoryCoordinator(
             while (isActive && isPlaying && activeSession?.id == session.id && isEnabled()) {
                 val content = currentContent ?: session.content
                 val token = sessionStore.load()
-                if (token == null || token.mid != session.accountMid) {
+                if (
+                    token == null ||
+                        token.mid != session.accountMid ||
+                        token.platform != session.accountPlatform
+                ) {
                     LogHub.w(
                         TAG,
                         "live heartbeat stopped: no matching login account=${session.accountMid}",
                     )
+                    break
+                }
+                val accessKey = token.accessKey
+                if (accessKey == null) {
+                    LogHub.i(TAG, "live heartbeat unavailable for web account")
                     break
                 }
                 val sequence = session.heartbeatSequence
@@ -443,7 +475,7 @@ class PlaybackHistoryCoordinator(
                 try {
                     val response =
                         withContext(Dispatchers.IO) {
-                            api.reportLiveHeartbeat(token.accessKey, request)
+                            api.reportLiveHeartbeat(accessKey, request)
                         }
                     applyHeartbeatResponse(session, response)
                     val interval =
@@ -506,6 +538,7 @@ class PlaybackHistoryCoordinator(
         val id: String,
         val stableKey: String,
         val accountMid: Long,
+        val accountPlatform: AccountPlatform,
         var content: PlaybackHistoryContent,
         var lastReportedAtMs: Long,
         var segmentStartedAtMs: Long?,

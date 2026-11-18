@@ -7,6 +7,7 @@ import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.feature.cast.application.CastRequestResolver
+import com.roy233.tvcast.feature.cast.application.LiveTvCredentialRequired
 import com.roy233.tvcast.feature.cast.application.RecentCastCoordinator
 import com.roy233.tvcast.feature.cast.application.RecentCastHost
 import com.roy233.tvcast.feature.cast.domain.CastContent
@@ -333,8 +334,8 @@ class CastSessionCoordinator(
                                 },
                             message =
                                 when {
-                                    live && message.contains("login", ignoreCase = true) ->
-                                        "请先在电视端登录 B 站账号后重试。"
+                                    live && t is LiveTvCredentialRequired ->
+                                        "直播需要 TV 登录凭据，请切换到已登录的国内版账号后重试。"
                                     live -> "未能获取当前账号可播放的直播源，请稍后重试。"
                                     pgcError != null -> pgcError.userMessage
                                     pgc -> "请检查电视端 B 站登录状态、网络和内容授权，再重试。"

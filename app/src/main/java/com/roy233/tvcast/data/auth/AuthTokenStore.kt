@@ -1,59 +1,116 @@
 package com.roy233.tvcast.data.auth
 
 import android.content.Context
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.account.model.AccountSessionStore
+import com.roy233.tvcast.feature.account.model.CredentialKind
 import com.roy233.tvcast.feature.account.model.Token
 
-/**
- * 持久化电视端登录令牌。
- *
- * @param context 用于访问应用偏好的上下文。
- */
+/** 按平台保存会话；当前平台同时决定播放器使用的凭据。 */
 class AuthTokenStore(context: Context) : BiliSessionReader, AccountSessionStore {
-
-    /** 保存登录令牌的偏好存储。 */
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    /** 保存登录令牌及其关联的账号信息。 */
-    override fun save(token: Token) {
-        prefs
-            .edit()
-            .putString("access_key", token.accessKey)
-            .putLong("mid", token.mid)
-            .putString("cookie", token.cookie)
-            .putString("refresh_token", token.refreshToken)
-            .putLong("expires_in", token.expiresIn)
-            .putLong("login_at", System.currentTimeMillis() / 1000L)
-            .apply()
+    init {
+        migrateLegacy()
     }
 
-    /**
-     * 读取已保存的登录令牌。
-     *
-     * @return 完整且有效的令牌；没有可用令牌时返回 null。
-     */
-    override fun load(): Token? {
-        val access = prefs.getString("access_key", null) ?: return null
-        val mid = prefs.getLong("mid", 0L)
-        if (access.isEmpty() || mid <= 0) return null
+    private fun prefix(platform: AccountPlatform) = "account_${platform.name.lowercase()}_"
+
+    @Synchronized
+    private fun migrateLegacy() {
+        if (prefs.getBoolean(MIGRATED, false)) return
+        val editor = prefs.edit()
+        val prefix = prefix(AccountPlatform.DOMESTIC)
+        if (prefs.contains("access_key"))
+            editor.putString(prefix + "credential_kind", CredentialKind.TV.name)
+        for (key in listOf("access_key", "cookie", "refresh_token")) {
+            prefs.getString(key, null)?.let { editor.putString(prefix + key, it) }
+        }
+        for (key in listOf("mid", "expires_in", "login_at")) {
+            if (prefs.contains(key)) editor.putLong(prefix + key, prefs.getLong(key, 0))
+        }
+        listOf("access_key", "cookie", "refresh_token", "mid", "expires_in", "login_at")
+            .forEach(editor::remove)
+        check(editor.putBoolean(MIGRATED, true).commit()) { "Account migration failed" }
+    }
+
+    override fun selectedPlatform(): AccountPlatform = runCatching {
+        AccountPlatform.valueOf(prefs.getString(PLATFORM, null).orEmpty())
+    }
+        .getOrDefault(AccountPlatform.DOMESTIC)
+
+    override fun selectPlatform(platform: AccountPlatform) {
+        check(prefs.edit().putString(PLATFORM, platform.name).commit()) { "Platform save failed" }
+    }
+
+    override fun save(token: Token) {
+        val key = prefix(token.platform)
+        check(
+            prefs
+                .edit()
+                .putString(key + "access_key", token.accessKey)
+                .putLong(key + "mid", token.mid)
+                .putString(key + "cookie", token.cookie)
+                .putString(key + "credential_kind", token.credentialKind.name)
+                .putString(key + "refresh_token", token.refreshToken)
+                .putLong(key + "expires_in", token.expiresIn)
+                .putLong(key + "login_at", System.currentTimeMillis() / 1000L)
+                .commit(),
+        ) {
+            "Account save failed"
+        }
+    }
+
+    override fun load(): Token? = load(selectedPlatform())
+
+    override fun load(platform: AccountPlatform): Token? {
+        val key = prefix(platform)
+        val access = prefs.getString(key + "access_key", null)?.takeIf { it.isNotBlank() }
+        val mid = prefs.getLong(key + "mid", 0L)
+        val cookie = prefs.getString(key + "cookie", "").orEmpty()
+        val kind =
+            runCatching {
+                CredentialKind.valueOf(prefs.getString(key + "credential_kind", null).orEmpty())
+            }
+                .getOrNull() ?: return null
+        if (
+            mid <= 0 ||
+                (kind == CredentialKind.TV && access == null) ||
+                (kind == CredentialKind.WEB && cookie.isBlank())
+        )
+            return null
         return Token(
-            accessKey = access,
-            mid = mid,
-            cookie = prefs.getString("cookie", "").orEmpty(),
-            refreshToken = prefs.getString("refresh_token", "").orEmpty(),
-            expiresIn = prefs.getLong("expires_in", 0L),
+            access,
+            mid,
+            cookie,
+            prefs.getString(key + "refresh_token", "").orEmpty(),
+            prefs.getLong(key + "expires_in", 0L),
+            platform,
+            kind,
         )
     }
 
     override fun cookie(): String = load()?.cookie.orEmpty()
 
-    /** 清除已保存的登录令牌。 */
     override fun clear() {
-        prefs.edit().clear().apply()
+        val key = prefix(selectedPlatform())
+        val editor = prefs.edit()
+        listOf(
+                "access_key",
+                "mid",
+                "cookie",
+                "refresh_token",
+                "expires_in",
+                "login_at",
+                "credential_kind",
+            )
+            .forEach { editor.remove(key + it) }
+        check(editor.commit()) { "Account clear failed" }
     }
 
     private companion object {
-        /** 登录令牌使用的偏好文件名。 */
         const val PREFS = "bili_cast_auth"
+        const val PLATFORM = "selected_platform"
+        const val MIGRATED = "account_platform_migrated"
     }
 }

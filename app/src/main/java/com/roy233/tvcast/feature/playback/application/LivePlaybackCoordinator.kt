@@ -549,12 +549,12 @@ class LivePlaybackCoordinator(
         forceAvc: Boolean,
         reason: String,
     ) {
-        val token = playback.authToken() ?: error("TV login expired during live route fallback")
+        val accessKey = playback.authToken()?.accessKey ?: error("当前平台账号不支持 TV 直播")
         val resolved =
             withContext(Dispatchers.IO) {
                 val live =
                     playback.resolveLivePlayback(
-                        token.accessKey,
+                        accessKey,
                         session.stream.roomId,
                         quality,
                         forceAvc,

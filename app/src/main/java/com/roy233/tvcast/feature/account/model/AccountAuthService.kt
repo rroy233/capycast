@@ -9,4 +9,7 @@ interface AccountAuthService {
 
     /** 轮询二维码登录状态并返回当前登录结果。 */
     fun poll(context: Context, authCode: String, sessionId: String): Poll
+
+    /** 取消当前请求并清理该次登录使用的临时资源。 */
+    fun close() = Unit
 }

@@ -27,7 +27,6 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.ui.designsystem.BilibiliTvLogo
 import com.roy233.tvcast.ui.designsystem.FocusableRow
 import com.roy233.tvcast.ui.model.SettingsPage
@@ -57,10 +57,12 @@ import com.roy233.tvcast.ui.theme.TvType
 import com.roy233.tvcast.ui.tv.focusTrace
 import com.roy233.tvcast.ui.tv.home.WhiteButton
 
-/** 账号信息中可选的平台；保留枚举以便后续接入其他平台。 */
-private enum class AccountPlatform(val label: String) {
-    BILIBILI("Bilibili"),
-}
+private val AccountPlatform.label: String
+    get() =
+        when (this) {
+            AccountPlatform.DOMESTIC -> "Bilibili国内版"
+            AccountPlatform.INTERNATIONAL -> "Bilibili国际版"
+        }
 
 /** 显示由账号、软件与设备信息组成的设置首页。 */
 @Composable
@@ -68,7 +70,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
     val platformFocus = remember { FocusRequester() }
     val loginFocus = remember { FocusRequester() }
     val updateEntryFocus = remember { FocusRequester() }
-    var selectedPlatform by remember { mutableStateOf(AccountPlatform.BILIBILI) }
+    val selectedPlatform = state.accountPlatform
 
     when (state.settingsPage) {
         SettingsPage.UPDATE -> {
@@ -112,21 +114,18 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                 SettingsSection("账号信息") {
                     PlatformGallery(
                         selectedPlatform = selectedPlatform,
-                        loggedIn = state.loggedIn,
+                        platformLoginStates = state.platformLoginStates,
                         compact = compact,
                         focusRequester = platformFocus,
-                        onPlatformSelected = { selectedPlatform = it },
+                        onPlatformSelected = actions.onSelectAccountPlatform,
                     )
                     SettingsRowDivider()
-                    when (selectedPlatform) {
-                        AccountPlatform.BILIBILI ->
-                            BilibiliAccountSettings(
-                                state = state,
-                                actions = actions,
-                                loginFocus = loginFocus,
-                                compact = compact,
-                            )
-                    }
+                    BilibiliAccountSettings(
+                        state = state,
+                        actions = actions,
+                        loginFocus = loginFocus,
+                        compact = compact,
+                    )
                 }
             }
 
@@ -194,7 +193,7 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
 @Composable
 private fun PlatformGallery(
     selectedPlatform: AccountPlatform,
-    loggedIn: Boolean,
+    platformLoginStates: Map<AccountPlatform, Boolean>,
     compact: Boolean,
     focusRequester: FocusRequester,
     onPlatformSelected: (AccountPlatform) -> Unit,
@@ -218,10 +217,9 @@ private fun PlatformGallery(
                 PlatformTile(
                     platform = platform,
                     selected = platform == selectedPlatform,
-                    loggedIn = loggedIn,
+                    loggedIn = platformLoginStates[platform] == true,
                     compact = compact,
-                    focusRequester =
-                        if (platform == AccountPlatform.BILIBILI) focusRequester else null,
+                    focusRequester = if (platform == selectedPlatform) focusRequester else null,
                     onClick = { onPlatformSelected(platform) },
                 )
             }
@@ -286,7 +284,7 @@ private fun PlatformTile(
                         append(if (loggedIn) "，已登录" else "，未登录")
                     }
                 }
-                .testTag("platform-bilibili"),
+                .testTag("platform-${platform.name.lowercase()}"),
         contentAlignment = Alignment.Center,
     ) {
         Column(
