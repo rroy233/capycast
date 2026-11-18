@@ -169,6 +169,12 @@ internal fun SettingsScreen(state: TvUiState, actions: TvActions) {
                         modifier = Modifier.testTag("language-settings-entry"),
                         rowHeight = if (compact) 56.dp else 64.dp,
                     )
+                    SettingsRowDivider()
+                    FocusableRow(
+                        title = "问题反馈",
+                        onClick = actions.onShowFeedback,
+                        rowHeight = if (compact) 56.dp else 64.dp,
+                    )
                 }
             }
 

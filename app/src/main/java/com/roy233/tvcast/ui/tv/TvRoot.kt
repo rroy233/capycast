@@ -60,6 +60,7 @@ import com.roy233.tvcast.ui.model.TvUiState
 import com.roy233.tvcast.ui.model.UiOverlay
 import com.roy233.tvcast.ui.theme.TvColors
 import com.roy233.tvcast.ui.tv.account.LoginDialog
+import com.roy233.tvcast.ui.tv.feedback.FeedbackDialog
 import com.roy233.tvcast.ui.tv.home.HomeScreen
 import com.roy233.tvcast.ui.tv.navigation.Sidebar
 import com.roy233.tvcast.ui.tv.overlay.HelpSheet
@@ -348,6 +349,7 @@ fun TvRoot(state: TvUiState, actions: TvActions) {
                 UiOverlay.PANEL -> QuickPanel(state, actions)
                 UiOverlay.LANGUAGE -> LanguageDialog(state, actions)
                 UiOverlay.HELP -> HelpSheet(state, actions)
+                UiOverlay.FEEDBACK -> FeedbackDialog(state, actions)
                 UiOverlay.LOGIN_DIALOG -> LoginDialog(state, actions)
                 null -> Unit
             }

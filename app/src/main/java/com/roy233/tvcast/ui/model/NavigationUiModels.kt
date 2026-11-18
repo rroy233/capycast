@@ -63,6 +63,7 @@ enum class UiOverlay {
     PANEL,
     LANGUAGE,
     HELP,
+    FEEDBACK,
     LOGIN_DIALOG,
 }
 

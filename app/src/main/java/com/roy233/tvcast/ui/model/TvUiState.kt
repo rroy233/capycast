@@ -6,6 +6,7 @@ import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationPhase
 import com.roy233.tvcast.feature.display.CalibrationState
+import com.roy233.tvcast.feature.feedback.FeedbackUiState
 import com.roy233.tvcast.feature.subtitle.domain.SubtitleSettings
 import com.roy233.tvcast.feature.subtitle.domain.SubtitleTrackKey
 import com.roy233.tvcast.feature.update.UpdateUiState
@@ -127,6 +128,8 @@ data class TvUiState(
     val loginSkipped: Boolean = false,
     val helpVisible: Boolean = false,
     val languageDialogVisible: Boolean = false,
+    /** 用户反馈弹窗的瞬时投影。 */
+    val feedback: FeedbackUiState = FeedbackUiState(),
     val privacyNoticeVisible: Boolean = false,
     val privacyAgreementVisible: Boolean = false,
     /** 欢迎弹窗经协议链接打开协议模态层后，关闭时恢复欢迎弹窗。 */
@@ -176,6 +179,7 @@ data class TvUiState(
             )
                 add(UiOverlay.LANGUAGE)
             if (helpVisible) add(UiOverlay.HELP)
+            if (feedback.visible) add(UiOverlay.FEEDBACK)
             if (loginDialogVisible) add(UiOverlay.LOGIN_DIALOG)
         }
 

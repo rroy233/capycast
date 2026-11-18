@@ -180,10 +180,11 @@ object LogHub {
     /** 构造当前设备和投屏状态的 JSON 文本。 */
     fun stateJson(): String {
         val j = JSONObject()
+        val diagnosticUrl = diagnosticUrl()
         j.put("app", "CapyCast")
         j.put("ip", localIp())
-        j.put("logUrl", "http://${localIp()}:$PORT/log")
-        j.put("stateUrl", "http://${localIp()}:$PORT/state")
+        j.put("logUrl", "$diagnosticUrl/log")
+        j.put("stateUrl", "$diagnosticUrl/state")
         j.put("model", Build.MODEL)
         j.put("brand", Build.BRAND)
         j.put("android", Build.VERSION.RELEASE)
@@ -197,8 +198,8 @@ object LogHub {
         j.put("play", playInfo)
         j.put("uiStack", uiStack)
         j.put("playback", PlaybackDiagnostics.summary())
-        j.put("playbackUrl", "http://${localIp()}:$PORT/playback")
-        j.put("deviceUrl", "http://${localIp()}:$PORT/device")
+        j.put("playbackUrl", "$diagnosticUrl/playback")
+        j.put("deviceUrl", "$diagnosticUrl/device")
         appContext?.let { ctx ->
             val dm = ctx.resources.displayMetrics
             j.put("widthPx", dm.widthPixels)
@@ -231,6 +232,9 @@ object LogHub {
             "127.0.0.1"
         }
     }
+
+    /** 返回当前设备的局域网诊断首页地址。 */
+    fun diagnosticUrl(): String = "http://${localIp()}:$PORT"
 
     /** 为诊断页面提供日志、状态和登录链接。 */
     private class Server(port: Int) : NanoHTTPD(port) {
@@ -287,6 +291,7 @@ object LogHub {
                             "<pre>${LogHub.stateJson()}</pre>$link" +
                             "<p><a href=\"/log\">/log</a> | <a href=\"/state\">/state</a> | " +
                             "<a href=\"/playback\">/playback</a> | <a href=\"/device\">/device</a></p>" +
+                            "<p><a href=\"${SupportLinks.GITHUB_ISSUES_URL}\">提交 GitHub Issue</a></p>" +
                             "</body></html>"
                     newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", html)
                 }

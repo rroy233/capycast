@@ -3,6 +3,7 @@ package com.roy233.tvcast.ui.model
 import com.roy233.tvcast.feature.cast.domain.RecentCast
 import com.roy233.tvcast.feature.danmaku.domain.AiShieldLevel
 import com.roy233.tvcast.feature.display.CalibrationDirection
+import com.roy233.tvcast.feature.feedback.FeedbackChannel
 import com.roy233.tvcast.feature.subtitle.domain.SubtitleTrackKey
 import com.roy233.tvcast.feature.update.model.UpdateChannel
 
@@ -88,6 +89,9 @@ class TvActions(
     val onInstallUpdate: () -> Unit = {},
     val onShowHelp: () -> Unit = {},
     val onCloseHelp: () -> Unit = {},
+    val onShowFeedback: () -> Unit = {},
+    val onCloseFeedback: () -> Unit = {},
+    val onSelectFeedbackChannel: (FeedbackChannel) -> Unit = {},
     val onLogout: () -> Unit = {},
     val onPlayPause: () -> Unit = {},
     val onSeekBy: (Long) -> Unit = {},
