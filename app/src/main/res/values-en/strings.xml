@@ -214,4 +214,8 @@
     <string name="home_back_to_exit">Press Back again to exit</string>
     <string name="subtitle_loading">Loading</string>
     <string name="subtitle_unavailable">Unavailable</string>
+    <string name="cast_collection_prompt">This video is part of a collection</string>
+    <string name="cast_enable_autoplay">Enable autoplay</string>
+    <string name="cast_autoplay_enabled">Autoplay enabled</string>
+    <string name="cast_autoplay_upcoming">The next video will play soon</string>
 </resources>

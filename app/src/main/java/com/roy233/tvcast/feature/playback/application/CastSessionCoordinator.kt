@@ -6,6 +6,7 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.feature.cast.application.CastAutoplaySession
 import com.roy233.tvcast.feature.cast.application.CastRequestResolver
 import com.roy233.tvcast.feature.cast.application.LiveTvCredentialRequired
 import com.roy233.tvcast.feature.cast.application.RecentCastCoordinator
@@ -98,6 +99,7 @@ interface CastSessionHost : RecentCastHost {
  */
 class CastSessionCoordinator(
     private val playback: CastSessionHost,
+    private val autoplay: CastAutoplaySession? = null,
 ) {
     private data class VodResume(
         val request: PlaybackRequest,
@@ -120,10 +122,14 @@ class CastSessionCoordinator(
     fun recordRecent(request: PlaybackRequest) = recent.record(request)
 
     /** 根据最近投屏记录重新解析并开始播放。 */
-    fun recast(recent: RecentCast) = this.recent.recast(recent)
+    fun recast(recent: RecentCast) {
+        autoplay?.clear()
+        this.recent.recast(recent)
+    }
 
     /** 处理 DLNA 投屏请求并解析其媒体身份。 */
     fun handleCast(uri: String, title: String, longDescription: String) {
+        autoplay?.clear()
         // 新的 SetAVTransportURI 具有更高优先级，旧播放器事件不应污染新会话。
         playback.cancelResolve()
         playback.setCurrentForCast(null)
@@ -173,6 +179,7 @@ class CastSessionCoordinator(
             return
         }
         playback.setLastNva(nva)
+        autoplay?.start(nva)
         val desiredSpeed = nva.userDesireSpeed?.toFloatOrNull()?.let(PlaybackSpeed::normalize) ?: 1f
         LogHub.i(
             TAG,
@@ -193,6 +200,34 @@ class CastSessionCoordinator(
         playback.setDesiredPlaybackSpeed(desiredSpeed)
         resolve(nva, title)
     }
+
+    /** The current cast alone owns the opt-in and its lookup work. */
+    fun onPlaybackStarted() = autoplay?.onPlaybackStarted()
+
+    fun onHudHidden() = autoplay?.onFirstHudHidden()
+
+    fun answerAutoplay(accept: Boolean): Boolean = autoplay?.answer(accept) ?: false
+
+    fun clearAutoplay() = autoplay?.clear()
+
+    fun onVodProgress(positionMs: Long, durationMs: Long, playing: Boolean) {
+        val request = playback.currentRequest() ?: return
+        autoplay?.onProgress(request.aid, request.cid, positionMs, durationMs, playing)
+    }
+
+    fun onNaturalEnd(request: PlaybackRequest, onFinished: () -> Unit): Boolean =
+        autoplay?.onEnded(request.aid, request.cid) { next ->
+            if (next == null) {
+                autoplay.clear()
+                onFinished()
+            } else {
+                autoplay.advanced(next)
+                playback.newHistorySession()
+                playback.setCastActive(true)
+                val content = CastContent(aid = next.aid, cid = next.cid, bvid = next.bvid)
+                resolve(content, next.title)
+            }
+        } ?: false
 
     /** 根据 nva 内容解析播放地址并开始播放。 */
     fun resolve(nva: CastContent, title: String) = resolve(nva, title, vodResume = null)

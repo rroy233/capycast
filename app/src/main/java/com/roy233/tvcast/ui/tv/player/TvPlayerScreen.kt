@@ -1,6 +1,8 @@
 package com.roy233.tvcast.ui.tv.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,8 +15,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -81,14 +85,24 @@ internal fun PlayingScreen(
     val progressFocus = rememberFocusTarget()
     val videoFocus = rememberFocusTarget()
     val modal = state.panel != null || state.error != null || state.stopCastConfirm
+    val promptVisible = state.castAutoplayPrompt && !state.hudVisible && !modal && enabled
+    val promptFocus = rememberFocusTarget()
     val displayedPositionMs = state.seekPreviewPositionMs ?: state.positionMs
     val seekingState = rememberUpdatedState(state.seekPreviewPositionMs != null)
     val actionsState = rememberUpdatedState(actions)
 
     if (enabled && !modal) {
         RequestFocusWhenReady(
-            activation = listOf(state.hudVisible, state.panel, state.error, state.stopCastConfirm),
-            target = if (state.hudVisible) playFocus else videoFocus,
+            activation =
+                listOf(
+                    state.hudVisible,
+                    state.panel,
+                    state.error,
+                    state.stopCastConfirm,
+                    promptVisible,
+                ),
+            target =
+                if (promptVisible) promptFocus else if (state.hudVisible) playFocus else videoFocus,
         )
     }
 
@@ -138,6 +152,14 @@ internal fun PlayingScreen(
             seekAccelerator = seekAccelerator,
         )
 
+        if (promptVisible) {
+            AutoplayPrompt(
+                focusTarget = promptFocus,
+                onAnswer = actions.onAutoplayAnswer,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = 40.dp),
+            )
+        }
+
         AnimatedVisibility(
             visible = !state.isLive && state.seekPreviewPositionMs != null && !state.hudVisible,
             enter = fadeIn(tween(160)) + slideInVertically(tween(180)) { it / 2 },
@@ -147,6 +169,39 @@ internal fun PlayingScreen(
             SeekPreviewOverlay(
                 positionMs = displayedPositionMs,
                 durationMs = state.durationMs,
+            )
+        }
+    }
+}
+
+private const val AUTOPLAY_PROMPT_DURATION_MS = 5_000
+
+@Composable
+private fun AutoplayPrompt(
+    focusTarget: com.roy233.tvcast.ui.tv.FocusTarget,
+    onAnswer: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val remaining = remember { Animatable(1f) }
+    val answer = rememberUpdatedState(onAnswer)
+    LaunchedEffect(Unit) {
+        remaining.animateTo(0f, tween(AUTOPLAY_PROMPT_DURATION_MS, easing = LinearEasing))
+        answer.value(false)
+    }
+    DisposableEffect(Unit) {
+        onDispose { answer.value(false) }
+    }
+    GlassSurface(modifier = modifier.widthIn(min = 260.dp), material = GlassMaterial.Hud) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            BasicText(
+                stringResource(R.string.cast_collection_prompt),
+                style = TvType.body.copy(color = TvColors.textPrimary),
+            )
+            CountdownGlassButton(
+                text = stringResource(R.string.cast_enable_autoplay),
+                remaining = remaining.value,
+                onClick = { answer.value(true) },
+                focusTarget = focusTarget,
             )
         }
     }

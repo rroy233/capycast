@@ -115,6 +115,7 @@ data class TvUiState(
     val videoHeight: Int = 0,
     val volume: Int = 50,
     val hudVisible: Boolean = false,
+    val castAutoplayPrompt: Boolean = false,
     val panel: PanelKind? = null,
     val danmakuEnabled: Boolean = true,
     val danmakuAiShield: AiShieldLevel = AiShieldLevel.OFF,

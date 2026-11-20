@@ -50,6 +50,7 @@ import com.roy233.tvcast.data.bili.routing.OkHttpLiveRouteProbe
 import com.roy233.tvcast.data.bili.routing.OkHttpVodRouteProbe
 import com.roy233.tvcast.feature.account.model.AccountPlatform
 import com.roy233.tvcast.feature.account.model.Token
+import com.roy233.tvcast.feature.cast.application.CastAutoplaySession
 import com.roy233.tvcast.feature.cast.application.DlnaTransportCoordinator
 import com.roy233.tvcast.feature.cast.application.DlnaTransportHost
 import com.roy233.tvcast.feature.cast.domain.CastContent
@@ -261,7 +262,18 @@ class MainActivity :
     /** 播放轮询协调器。 */
     private val playbackTicker by lazy { PlaybackTicker(this) }
     /** 投屏会话协调器。 */
-    private val castCoordinator by lazy { CastSessionCoordinator(this) }
+    private val castCoordinator by lazy {
+        CastSessionCoordinator(
+            this,
+            CastAutoplaySession(
+                scope,
+                container.castCollectionRepository,
+                onUpcoming = { ui = ui.copy(toast = getString(R.string.cast_autoplay_upcoming)) },
+            ) { visible ->
+                ui = ui.copy(castAutoplayPrompt = visible)
+            },
+        )
+    }
     private val playbackSelectionCoordinator by lazy { PlaybackSelectionCoordinator(this) }
     private val playbackSessionLifecycle by lazy { PlaybackSessionLifecycle(this) }
 
@@ -541,6 +553,16 @@ class MainActivity :
     override fun requestRetry() = retryLastAction()
 
     override fun requestDismissError() = dismissError()
+
+    override fun onPlaybackHudHidden() {
+        castCoordinator.onHudHidden()
+    }
+
+    override fun answerCastAutoplay(accept: Boolean) {
+        if (castCoordinator.answerAutoplay(accept)) {
+            ui = ui.copy(toast = getString(R.string.cast_autoplay_enabled))
+        }
+    }
 
     override fun requestConfirmStopCast() = stopCasting()
 
@@ -844,8 +866,10 @@ class MainActivity :
     }
 
     /** 将轮询进度交给点播恢复状态机。 */
-    override fun onVodProgress(positionMs: Long, activelyPlaying: Boolean) =
+    override fun onVodProgress(positionMs: Long, durationMs: Long, activelyPlaying: Boolean) {
         observeVodProgress(positionMs, activelyPlaying)
+        castCoordinator.onVodProgress(positionMs, durationMs, activelyPlaying)
+    }
 
     /** 上报播放进度到观看历史。 */
     override fun onHistoryPosition(positionMs: Long, durationMs: Long, playing: Boolean) =
@@ -1087,7 +1111,10 @@ class MainActivity :
 
     override fun setPaused(paused: Boolean, reason: String) = setPlayerPaused(paused, reason)
 
-    override fun stopCastFromDlna() = playbackSessionLifecycle.stopFromDlna()
+    override fun stopCastFromDlna() {
+        castCoordinator.clearAutoplay()
+        playbackSessionLifecycle.stopFromDlna()
+    }
 
     override fun currentIsLive(): Boolean = currentRequest?.isLive == true
 
@@ -1301,8 +1328,10 @@ class MainActivity :
         event: PlaybackEvent,
     ): Boolean = playbackSessionLifecycle.acceptEvent(token, event)
 
-    override fun finishPlaybackSession(reason: String) =
+    override fun finishPlaybackSession(reason: String) {
+        if (reason == "media3-stopped" || reason == "media3-error") castCoordinator.clearAutoplay()
         playbackSessionLifecycle.finishCurrent(reason)
+    }
 
     override fun currentPlaybackRequest(): PlaybackRequest? = currentRequest
 
@@ -1312,6 +1341,10 @@ class MainActivity :
 
     override fun runOnMain(action: () -> Unit) {
         runOnUiThread { action() }
+    }
+
+    override fun castOnPlaying() {
+        castCoordinator.onPlaybackStarted()
     }
 
     override fun vodOnPlaying() = vodCoordinator.onPlaying()
@@ -1401,7 +1434,11 @@ class MainActivity :
         ui = ui.copy(isBuffering = buffering)
     }
 
+    override fun continueAfterNaturalEnd(request: PlaybackRequest): Boolean =
+        castCoordinator.onNaturalEnd(request, ::updateEnded)
+
     override fun updateEnded() {
+        castCoordinator.clearAutoplay()
         ui =
             ui.copy(
                     mode = TvMode.IDLE,
@@ -1778,9 +1815,15 @@ class MainActivity :
 
     private fun retryLastAction() = playbackSessionLifecycle.retry()
 
-    private fun dismissError() = playbackSessionLifecycle.dismissError()
+    private fun dismissError() {
+        castCoordinator.clearAutoplay()
+        playbackSessionLifecycle.dismissError()
+    }
 
-    private fun stopCasting() = playbackSessionLifecycle.stopCasting()
+    private fun stopCasting() {
+        castCoordinator.clearAutoplay()
+        playbackSessionLifecycle.stopCasting()
+    }
 
     private fun showError(
         title: String,
@@ -1788,7 +1831,10 @@ class MainActivity :
         code: String,
         canRetry: Boolean,
         keepVideo: Boolean = false,
-    ) = playbackSessionLifecycle.showError(title, message, code, canRetry, keepVideo)
+    ) {
+        castCoordinator.clearAutoplay()
+        playbackSessionLifecycle.showError(title, message, code, canRetry, keepVideo)
+    }
 
     override fun modeForLog(): String = ui.mode.toString()
 
@@ -2222,6 +2268,7 @@ class MainActivity :
         }
         super.onDestroy()
         LogHub.i(TAG, "activity destroy")
+        castCoordinator.clearAutoplay()
         playbackSessionLifecycle.destroy()
         runCatching { dlna.stop() }
         loginCoordinator.cancel()
