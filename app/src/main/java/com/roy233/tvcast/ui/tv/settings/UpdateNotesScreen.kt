@@ -44,7 +44,7 @@ import com.roy233.tvcast.ui.tv.tvFocusRegion
 @Composable
 internal fun UpdateNotesScreen(state: TvUiState, actions: TvActions) {
     val available = state.update.availableUpdate
-    val notes = available?.releaseNotes.orEmpty()
+    val notes = releaseNotesText(available?.releaseNotes.orEmpty())
     val blocks = remember(notes) { parseMarkdownDocument(notes) }
     val firstFocus = rememberFocusTarget()
     val backFocus = rememberFocusTarget()

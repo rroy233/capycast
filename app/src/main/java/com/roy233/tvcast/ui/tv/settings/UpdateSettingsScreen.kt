@@ -79,7 +79,7 @@ import com.roy233.tvcast.ui.tv.tvFocusRegion
 @Composable
 internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
     val update = state.update
-    val releaseNotes = update.availableUpdate?.releaseNotes.orEmpty()
+    val releaseNotes = releaseNotesText(update.availableUpdate?.releaseNotes.orEmpty())
     val backFocus = rememberFocusTarget()
     val releaseNotesFocus = rememberFocusTarget()
     val primaryActionFocus = remember { FocusRequester() }
@@ -191,7 +191,7 @@ internal fun UpdateSettingsScreen(state: TvUiState, actions: TvActions) {
             }
 
             item {
-                UpdateStatusCard(update, state.version)
+                UpdateStatusCard(update, state.version, releaseNotes)
                 Spacer(Modifier.height(22.dp))
             }
 
@@ -355,7 +355,7 @@ private fun UpdateOptionTile(
 
 /** 在统一信息卡中呈现更新阶段、版本摘要、更新日志和下载进度。 */
 @Composable
-private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
+private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String, releaseNotes: String) {
     val interaction = remember { MutableInteractionSource() }
     val focused = interaction.collectIsFocusedAsState().value
     val accent = updateAccent(update.status)
@@ -434,7 +434,7 @@ private fun UpdateStatusCard(update: UpdateUiState, currentVersion: String) {
                     },
                 style = TvType.caption.copy(color = TvColors.textSecondary, fontSize = 16.sp),
             )
-            if (available.releaseNotes.isBlank()) {
+            if (releaseNotes.isBlank()) {
                 BasicText(
                     text = stringResource(R.string.update_notes_empty),
                     style = TvType.body.copy(color = TvColors.textSecondary, fontSize = 17.sp),

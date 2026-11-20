@@ -64,6 +64,12 @@ jobs:
           fi
           git ls-remote --exit-code --tags origin "refs/tags/v$VERSION_NAME" && exit 1 || true
 
+      - name: Prepare release notes
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          python3 .github/scripts/generate_release_notes.py "$VERSION_NAME" > "$RUNNER_TEMP/capycast-release-notes.md"
+
       - name: Ensure versionCode is newer than published APKs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -136,8 +142,8 @@ jobs:
           if [ "$CHANNEL" = "beta" ]; then
             release_options+=(--prerelease)
           fi
-          notes_file="release-notes/$VERSION_NAME.md"
-          if [ -f "$notes_file" ]; then
+          notes_file="$RUNNER_TEMP/capycast-release-notes.md"
+          if [ -s "$notes_file" ]; then
             release_options+=(--notes-file "$notes_file")
           else
             release_options+=(--generate-notes)
