@@ -184,6 +184,7 @@ fun GlassSurface(
     accentColor: Color? = null,
     emphasized: Boolean = false,
     contentAlignment: Alignment = Alignment.TopStart,
+    showBorder: Boolean = true,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val noise = rememberNoiseBitmap()
@@ -223,7 +224,7 @@ fun GlassSurface(
                 highlight = {
                     Highlight(
                         width = 0.7.dp,
-                        alpha = highlightAlpha,
+                        alpha = if (showBorder) highlightAlpha else 0f,
                         style = HighlightStyle.Ambient,
                     )
                 },
@@ -252,7 +253,7 @@ fun GlassSurface(
                 }
                 if (accentColor != null) drawRect(tint)
                 drawContent()
-                drawGlassBorder(shape, borderAlpha)
+                if (showBorder) drawGlassBorder(shape, borderAlpha)
             }
         }
 

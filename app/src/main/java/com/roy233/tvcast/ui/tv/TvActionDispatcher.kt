@@ -67,6 +67,10 @@ interface TvActionHost {
 
     fun installUpdate()
 
+    fun onPlaybackHudHidden()
+
+    fun answerCastAutoplay(accept: Boolean)
+
     fun requestPlayPause()
 
     fun requestSeekBy(deltaMs: Long)
@@ -340,8 +344,10 @@ class TvActionDispatcher(
                         !state.stopCastConfirm
                 ) {
                     stateHolder.set(state.copy(hudVisible = false))
+                    if (state.hudVisible) host.onPlaybackHudHidden()
                 }
             },
+            onAutoplayAnswer = { host.answerCastAutoplay(it) },
             onOpenPanel = { kind ->
                 val state = stateHolder.read()
                 if (state.isLive && kind != PanelKind.ROOT && kind != PanelKind.LIVE_QUALITY) {

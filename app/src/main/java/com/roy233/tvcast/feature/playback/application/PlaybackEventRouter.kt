@@ -30,6 +30,8 @@ interface PlaybackEventHost {
 
     fun runOnMain(action: () -> Unit)
 
+    fun castOnPlaying() = Unit
+
     fun vodOnPlaying()
 
     fun observeVodBuffering(buffering: Boolean)
@@ -63,6 +65,8 @@ interface PlaybackEventHost {
     fun updateStopped()
 
     fun updateBuffering(buffering: Boolean)
+
+    fun continueAfterNaturalEnd(request: PlaybackRequest): Boolean = false
 
     fun updateEnded()
 
@@ -127,6 +131,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
         host.runOnMain {
             val live = host.currentPlaybackRequest()?.isLive == true
             host.updatePlaying(seek)
+            host.castOnPlaying()
             if (live) host.onLivePlaying()
             else {
                 host.vodOnPlaying()
@@ -176,12 +181,13 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
     }
 
     private fun end() {
+        val request = host.currentPlaybackRequest()
         host.finishHistory("media3-ended", ended = true)
         host.setCastEnded()
         host.finishUsage(PlaybackEndReason.COMPLETED)
         host.runOnMain {
             host.finishPlaybackSession("media3-ended")
-            host.updateEnded()
+            if (request == null || !host.continueAfterNaturalEnd(request)) host.updateEnded()
         }
     }
 

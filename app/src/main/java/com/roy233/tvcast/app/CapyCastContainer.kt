@@ -7,6 +7,7 @@ import com.roy233.tvcast.data.auth.AuthTokenStore
 import com.roy233.tvcast.data.auth.CastAuth
 import com.roy233.tvcast.data.auth.InternationalWebAuth
 import com.roy233.tvcast.data.bili.BiliAccountNavigator
+import com.roy233.tvcast.data.bili.BiliCastCollectionRepository
 import com.roy233.tvcast.data.bili.BiliLivePlaybackResolver
 import com.roy233.tvcast.data.bili.BiliPlaybackResolver
 import com.roy233.tvcast.data.bili.PlaybackHistoryApi
@@ -91,6 +92,7 @@ class CapyCastContainer(
 
     /** 将 B 站协议响应适配为播放器无关的请求。 */
     val playbackResolver: PlaybackResolver by lazy { BiliPlaybackResolver(authTokenStore) }
+    val castCollectionRepository by lazy { BiliCastCollectionRepository(authTokenStore) }
     val livePlaybackResolver: LivePlaybackResolver by lazy { BiliLivePlaybackResolver(context) }
 
     /** 设备信息读取器。 */

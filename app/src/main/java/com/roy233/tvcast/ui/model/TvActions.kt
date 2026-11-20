@@ -110,6 +110,7 @@ class TvActions(
     val onSetVolume: (Int) -> Unit = {},
     val onShowHud: () -> Unit = {},
     val onHideHud: () -> Unit = {},
+    val onAutoplayAnswer: (Boolean) -> Unit = {},
     val onOpenPanel: (PanelKind) -> Unit = {},
     val onClosePanel: () -> Unit = {},
     val onSelectQuality: (Int) -> Unit = {},

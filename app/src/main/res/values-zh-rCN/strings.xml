@@ -214,4 +214,8 @@
     <string name="home_back_to_exit">再按一次返回键退出</string>
     <string name="subtitle_loading">加载中</string>
     <string name="subtitle_unavailable">不可用</string>
+    <string name="cast_collection_prompt">当前视频来自一个合集</string>
+    <string name="cast_enable_autoplay">开启自动连播</string>
+    <string name="cast_autoplay_enabled">已开启自动连播</string>
+    <string name="cast_autoplay_upcoming">即将播放下一个视频</string>
 </resources>

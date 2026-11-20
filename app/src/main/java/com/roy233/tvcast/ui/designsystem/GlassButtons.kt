@@ -34,12 +34,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -71,6 +75,7 @@ fun GlassButton(
     focusRequester: FocusRequester? = null,
     focusTarget: FocusTarget? = null,
     onFocused: (() -> Unit)? = null,
+    countdownProgress: Float? = null,
 ) {
     val reduceMotion = rememberReduceMotion()
     val interaction = remember { MutableInteractionSource() }
@@ -95,6 +100,40 @@ fun GlassButton(
     GlassSurface(
         modifier =
             modifier
+                .then(
+                    if (countdownProgress != null)
+                        Modifier.drawWithContent {
+                            drawContent()
+                            val stroke = 2.dp.toPx()
+                            val left = stroke / 2
+                            val top = stroke / 2
+                            val right = size.width - stroke / 2
+                            val bottom = size.height - stroke / 2
+                            val radius = (bottom - top) / 2
+                            val path =
+                                Path().apply {
+                                    moveTo(size.width / 2, top)
+                                    lineTo(right - radius, top)
+                                    quadraticTo(right, top, right, top + radius)
+                                    lineTo(right, bottom - radius)
+                                    quadraticTo(right, bottom, right - radius, bottom)
+                                    lineTo(left + radius, bottom)
+                                    quadraticTo(left, bottom, left, bottom - radius)
+                                    lineTo(left, top + radius)
+                                    quadraticTo(left, top, left + radius, top)
+                                    lineTo(size.width / 2, top)
+                                }
+                            val measure = PathMeasure().apply { setPath(path, false) }
+                            val remaining = Path()
+                            measure.getSegment(
+                                measure.length * (1f - countdownProgress.coerceIn(0f, 1f)),
+                                measure.length,
+                                remaining,
+                            )
+                            drawPath(remaining, Color.White, style = Stroke(stroke))
+                        }
+                    else Modifier,
+                )
                 .focusTarget(focusTarget)
                 .then(
                     if (focusTarget == null && focusRequester != null) {
@@ -133,6 +172,7 @@ fun GlassButton(
             },
         emphasized = focused || primary || destructive,
         contentAlignment = Alignment.Center,
+        showBorder = countdownProgress == null,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = if (compact) 18.dp else 22.dp),
@@ -160,6 +200,24 @@ fun GlassButton(
             )
         }
     }
+}
+
+/** A GlassButton whose outline is the remaining fraction of a countdown. */
+@Composable
+fun CountdownGlassButton(
+    text: String,
+    onClick: () -> Unit,
+    remaining: Float,
+    modifier: Modifier = Modifier,
+    focusTarget: FocusTarget? = null,
+) {
+    GlassButton(
+        text = text,
+        onClick = onClick,
+        modifier = modifier,
+        focusTarget = focusTarget,
+        countdownProgress = remaining,
+    )
 }
 
 /** 绘制支持焦点和键盘操作的圆形图标按钮。 */

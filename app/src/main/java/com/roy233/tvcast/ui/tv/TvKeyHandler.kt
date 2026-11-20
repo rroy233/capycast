@@ -267,6 +267,16 @@ object TvKeyHandler {
             return false
         }
 
+        if (
+            state.castAutoplayPrompt &&
+                !state.hudVisible &&
+                !modal &&
+                (event.key == Key.DirectionCenter ||
+                    event.key == Key.Enter ||
+                    event.key == Key.NumPadEnter)
+        )
+            return false
+
         if (state.mode == TvMode.PLAYING && !state.isLive && !state.hudVisible && !modal) {
             if (
                 handlePlaybackSeekKey(

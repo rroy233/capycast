@@ -44,7 +44,7 @@ interface PlaybackTickerHost {
 
     fun onDanmakuPlayerTime(positionMs: Long)
 
-    fun onVodProgress(positionMs: Long, activelyPlaying: Boolean)
+    fun onVodProgress(positionMs: Long, durationMs: Long, activelyPlaying: Boolean)
 
     fun onHistoryPosition(positionMs: Long, durationMs: Long, playing: Boolean)
 
@@ -84,7 +84,12 @@ class PlaybackTicker(
                         val activelyPlaying = playing && !host.isBuffering()
                         val volume = snapshot.volume
                         val live = host.isLive()
-                        if (!live) host.onVodProgress(pos, activelyPlaying)
+                        if (!live)
+                            host.onVodProgress(
+                                pos,
+                                if (len > 0L) len else host.displayedDurationMs(),
+                                activelyPlaying,
+                            )
                         if (host.currentAvailable()) {
                             host.onHistoryPosition(
                                 positionMs = if (live) 0L else pos,
