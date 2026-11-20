@@ -125,6 +125,15 @@ Release Notes 只描述「上一个已发布版本」到本版本之间、最终
 
 保持专业、客观、简洁。面向普通使用者，不假设读者了解项目内部架构。
 
+### 6. 多语言文件
+
+简体中文是发布说明的原文，使用 `release-notes/<versionName>.md`。其他语言放在 `release-notes/i18n/<versionName>-<languageCode>.md`，例如：
+
+- `release-notes/<versionName>.md`：简体中文。
+- `release-notes/i18n/<versionName>-<languageCode>.md`：其他语言。
+
+其他语言的清单请读取 [release-notes/i18n.json](release-notes/i18n.json)（`<languageCode>`为`tag`字段）。必须根据用户指令，**先完成中文版本的撰写** ，然后再去创建别的语言版本的文件，并**根据中文翻译为其他语言**，并确保交付中完成所有语言版本的撰写。所有语言都遵循后文的输出格式要求。
+
 ## 四、Release Notes 输出格式
 
 使用 Markdown，按照以下结构组织内容。仅输出确实有内容且对用户有价值的章节。
