@@ -18,7 +18,7 @@ object TrackOptionMapper {
         val seen = mutableSetOf<Int>()
         val options =
             request.videos
-                .filter { it.codecId == 7 || it.codecId == 12 }
+                .filter { it.codecId == 7 || it.codecId == 12 || it.codecId == 13 }
                 .sortedWith(
                     compareByDescending<MediaTrack> { it.id }
                         .thenByDescending { it.width.toLong() * it.height }
@@ -26,12 +26,14 @@ object TrackOptionMapper {
                 )
                 .filter { seen.add(it.id) }
                 .map {
+                    val displayTrack =
+                        request.video.takeIf { selected -> selected.id == it.id } ?: it
                     TrackOption(
                         qn = it.id,
                         label =
                             request.qualityLabels[it.id].orEmpty().ifBlank { qualityLabel(it.id) },
-                        detail = trackDetail(it),
-                        codecid = it.codecId,
+                        detail = trackDetail(displayTrack),
+                        codecid = displayTrack.codecId,
                     )
                 }
         if (options.isNotEmpty()) return options

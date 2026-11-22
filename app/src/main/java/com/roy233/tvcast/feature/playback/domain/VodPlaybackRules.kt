@@ -2,6 +2,7 @@ package com.roy233.tvcast.feature.playback.domain
 
 import com.roy233.tvcast.core.playback.MediaTrack
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.VideoTrackSupport
 
 /**
  * 点播表示层与恢复判定规则。
@@ -9,6 +10,26 @@ import com.roy233.tvcast.core.playback.PlaybackRequest
  * 全部为纯函数，不含状态与副作用。
  */
 object VodPlaybackRules {
+
+    /** 相同画质按设备能力排序；并列时保留调用方原有顺序。 */
+    fun rankRepresentations(
+        tracks: List<Pair<MediaTrack, VideoTrackSupport>>,
+        allowExceeds: Boolean = true,
+    ): List<MediaTrack> =
+        tracks
+            .filter { (_, support) ->
+                support != VideoTrackSupport.NO_HARDWARE_DECODER &&
+                    (allowExceeds || support != VideoTrackSupport.EXCEEDS_CAPABILITIES)
+            }
+            .sortedBy { (_, support) ->
+                when (support) {
+                    VideoTrackSupport.SUPPORTED -> 0
+                    VideoTrackSupport.UNKNOWN -> 1
+                    VideoTrackSupport.EXCEEDS_CAPABILITIES -> 2
+                    VideoTrackSupport.NO_HARDWARE_DECODER -> 3
+                }
+            }
+            .map { it.first }
 
     /** 表示层唯一标识，用于判定某档位是否已经尝试过。 */
     fun representationKey(track: MediaTrack): String =

@@ -23,7 +23,20 @@ data class MediaTrack(
     val initializationRange: String = "",
     val indexRange: String = "",
     val psshBase64: String = "",
+    val frameRate: Float? = null,
 )
+
+/** 硬件解码器对具体视频表示的声明能力。 */
+enum class VideoTrackSupport {
+    SUPPORTED,
+    UNKNOWN,
+    EXCEEDS_CAPABILITIES,
+    NO_HARDWARE_DECODER,
+}
+
+fun interface VideoTrackCapability {
+    fun support(track: MediaTrack): VideoTrackSupport
+}
 
 /** B 站播放信息映射后的播放器无关输入，逐项保留原始播放元数据。 */
 data class PlaybackRequest(
@@ -123,6 +136,13 @@ sealed interface PlaybackEvent {
         PlaybackEvent
 
     data class VideoSizeChanged(val width: Int, val height: Int) : PlaybackEvent
+
+    data class VideoFrameSample(
+        val timestampMs: Long,
+        val rendered: Int,
+        val dropped: Int,
+        val valid: Boolean,
+    ) : PlaybackEvent
 }
 
 /** 用于直播停滞检测的中立播放进度样本。 */

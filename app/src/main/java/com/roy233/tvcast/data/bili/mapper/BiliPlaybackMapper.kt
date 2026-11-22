@@ -53,5 +53,6 @@ object BiliPlaybackMapper {
             initializationRange = track.initializationRange,
             indexRange = track.indexRange,
             psshBase64 = track.psshBase64,
+            frameRate = track.frameRate,
         )
 }

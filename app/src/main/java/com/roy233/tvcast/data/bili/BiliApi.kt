@@ -50,6 +50,7 @@ object BiliApi {
         val indexRange: String = "",
         /** 从初始化区间提取的 ISO-BMFF PSSH atom，Base64 编码。 */
         val psshBase64: String = "",
+        val frameRate: Float? = null,
     )
 
     /** 保存一次媒体解析得到的完整播放信息。 */

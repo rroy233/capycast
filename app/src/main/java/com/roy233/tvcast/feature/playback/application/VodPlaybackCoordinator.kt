@@ -5,11 +5,15 @@ import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.playback.MediaTrack
+import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.core.playback.PlaybackResolver
+import com.roy233.tvcast.core.playback.VideoTrackCapability
+import com.roy233.tvcast.core.playback.VideoTrackSupport
 import com.roy233.tvcast.feature.playback.domain.VodPlaybackRules
 import com.roy233.tvcast.feature.playback.domain.VodRecoveryController
 import com.roy233.tvcast.feature.playback.model.PendingVodRouteSwitch
+import com.roy233.tvcast.feature.playback.model.RankedVodPlayback
 import com.roy233.tvcast.feature.playback.model.RankedVodRoute
 import com.roy233.tvcast.feature.playback.model.VodAssetRefreshState
 import com.roy233.tvcast.feature.playback.model.VodSession
@@ -55,6 +59,9 @@ class VodPlaybackCoordinator(
     routeProbe: VodRouteProbe,
     private val resolver: PlaybackResolver,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val videoCapability: VideoTrackCapability = VideoTrackCapability {
+        VideoTrackSupport.UNKNOWN
+    },
 ) {
 
     /** 当前点播会话；为空表示没有进行中的点播内容。 */
@@ -66,8 +73,64 @@ class VodPlaybackCoordinator(
     /** 等待播放确认的线路切换信息。 */
     var pendingSwitch: PendingVodRouteSwitch? = null
 
+    private data class FrameDropTrial(
+        val session: VodSession,
+        val previousRequest: PlaybackRequest,
+        val previousRoutes: List<RankedVodRoute>,
+        val previousAttempts: Set<String>,
+        val positionMs: Long,
+    )
+
+    private var frameDropTrial: FrameDropTrial? = null
+
     /** 点播线路探测与切换协调器。 */
     val cdn = VodCdnCoordinator(routeProbe)
+
+    /** 只为非受保护 SDR DASH 调整选轨，其他播放路径保持原行为。 */
+    private fun usesCapabilitySelection(request: PlaybackRequest): Boolean =
+        !request.isLive &&
+            !request.isDrm &&
+            request.progressiveUrl == null &&
+            !request.video.isHdr &&
+            !request.video.isDolbyVision
+
+    fun selectVideo(request: PlaybackRequest, quality: Int): MediaTrack? {
+        val candidates = request.videos.filter { it.id == quality }
+        val original = candidates.firstOrNull() ?: return null
+        if (!usesCapabilitySelection(request) || original.isHdr || original.isDolbyVision)
+            return original
+        val preferred =
+            candidates.firstOrNull {
+                VodPlaybackRules.representationKey(it) ==
+                    VodPlaybackRules.representationKey(request.video)
+            } ?: original
+        val ordered =
+            (listOf(preferred) + candidates.filterNot { it == preferred }).filter {
+                it.url.isNotBlank() &&
+                    it.codecId in SUPPORTED_VIDEO_CODECS &&
+                    it.isHdr == preferred.isHdr &&
+                    it.isDolbyVision == preferred.isDolbyVision
+            }
+        val assessed = ordered.map { track -> track to videoCapability.support(track) }
+        LogHub.i(
+            TAG,
+            "VOD capability qn=$quality candidates=" +
+                assessed.joinToString { (track, support) ->
+                    "${track.codecId}:${track.codecs}:$support"
+                },
+        )
+        val selected = VodPlaybackRules.rankRepresentations(assessed).firstOrNull()
+        LogHub.i(TAG, "VOD capability selected qn=$quality codec=${selected?.codecId ?: -1}")
+        return selected
+    }
+
+    suspend fun rankInitialPlayback(request: PlaybackRequest): RankedVodPlayback {
+        if (!usesCapabilitySelection(request)) return cdn.rankPlayback(request)
+        val video =
+            selectVideo(request, request.video.id)
+                ?: error("No hardware video decoder available for requested quality")
+        return cdn.rankPlayback(request.copy(video = video))
+    }
 
     /** 备用线路评分刷新任务。 */
     private var backupRefreshJob: Job? = null
@@ -85,12 +148,59 @@ class VodPlaybackCoordinator(
 
     /** 记录一次定位，供恢复状态机跟踪。 */
     fun onSeek(positionMs: Long) {
+        activeSession?.frameDropMonitor?.reset()
         activeSession?.recovery?.onSeek(positionMs, SystemClock.elapsedRealtime())
     }
 
     /** 记录一次播放器打开动作。 */
-    fun onOpening(positionMs: Long): Long? =
-        activeSession?.recovery?.onOpening(positionMs, SystemClock.elapsedRealtime())
+    fun onOpening(positionMs: Long): Long? {
+        activeSession?.frameDropMonitor?.reset()
+        return activeSession?.recovery?.onOpening(positionMs, SystemClock.elapsedRealtime())
+    }
+
+    fun observeVideoFrames(sample: PlaybackEvent.VideoFrameSample?) {
+        val session = activeSession ?: return
+        val request = playback.currentRequest() ?: return
+        if (sample == null || switching || !usesCapabilitySelection(request)) {
+            session.frameDropMonitor.reset()
+            return
+        }
+        val window = session.frameDropMonitor.observe(sample) ?: return
+        LogHub.i(
+            TAG,
+            "VOD frame window qn=${request.video.id} codec=${request.video.codecId} " +
+                "frames=${window.frames} dropped=${window.dropped} severe=${window.severe}",
+        )
+        if (!window.sustained) return
+        session.frameDropMonitor.reset()
+        session.frameDropAttempts += VodPlaybackRules.representationKey(request.video)
+        val candidates =
+            request.videos.filter {
+                it.id == request.video.id &&
+                    it.url.isNotBlank() &&
+                    it.codecId != request.video.codecId &&
+                    it.isHdr == request.video.isHdr &&
+                    it.isDolbyVision == request.video.isDolbyVision &&
+                    VodPlaybackRules.representationKey(it) !in session.frameDropAttempts
+            }
+        val assessed = candidates.map { it to videoCapability.support(it) }
+        LogHub.i(
+            TAG,
+            "VOD frame recovery candidates qn=${request.video.id} " +
+                assessed.joinToString { (track, support) -> "${track.codecId}:$support" },
+        )
+        val next =
+            VodPlaybackRules.rankRepresentations(assessed, allowExceeds = false).firstOrNull()
+        if (next == null) {
+            if (!session.frameDropExhaustedNotified) {
+                playback.showRouteToast("当前画质播放不流畅，暂无其他可用编码")
+                session.frameDropExhaustedNotified = true
+            }
+            return
+        }
+        session.frameDropAttempts += VodPlaybackRules.representationKey(next)
+        scheduleVodRepresentationFallback("sustained-frame-drops", session, request, next)
+    }
 
     /** 结束当前点播会话并取消后台任务。 */
     fun clear() {
@@ -101,6 +211,28 @@ class VodPlaybackCoordinator(
         activeSession = null
         switching = false
         pendingSwitch = null
+        frameDropTrial = null
+    }
+
+    private fun rollbackFrameDropTrial(): Boolean {
+        val trial = frameDropTrial ?: return false
+        frameDropTrial = null
+        if (activeSession !== trial.session || !playback.isCastActive()) return false
+        switching = false
+        pendingSwitch = null
+        trial.session.request = trial.previousRequest
+        trial.session.videoRoutes = trial.previousRoutes
+        trial.session.attemptedUrls.clear()
+        trial.session.attemptedUrls.addAll(trial.previousAttempts)
+        playback.setCurrent(trial.previousRequest)
+        val position = playback.positionMs().takeIf { it > 0L } ?: trial.positionMs
+        val restored = runCatching {
+            playback.openPlayback(trial.previousRequest, position)
+        }
+            .onFailure { LogHub.e(TAG, "VOD frame recovery restore failed", it, stack = true) }
+            .getOrDefault(false)
+        playback.showRouteToast(if (restored) "备用编码不可用，已恢复原画质" else "备用编码切换失败")
+        return restored
     }
 
     /** 当前点播媒体返回 HTTP 403 时单飞重新解析整套播放地址。 */
@@ -250,6 +382,7 @@ class VodPlaybackCoordinator(
 
     /** 自动恢复网络/缓冲故障時切到同一画质与表示层的下一条 CDN。 */
     fun handleFailure(reason: String, preferCodecFallback: Boolean = false): Boolean {
+        if (frameDropTrial != null) return rollbackFrameDropTrial()
         if (playback.currentRequest()?.isLive == true || !playback.isCastActive() || switching)
             return false
         val session = activeSession ?: return false
@@ -345,10 +478,15 @@ class VodPlaybackCoordinator(
         reason: String,
         session: VodSession,
         request: PlaybackRequest,
+        selectedCandidate: MediaTrack? = null,
     ): Boolean {
-        session.attemptedRepresentations += VodPlaybackRules.representationKey(request.video)
+        if (reason != "sustained-frame-drops") {
+            session.attemptedRepresentations += VodPlaybackRules.representationKey(request.video)
+        }
         val candidate =
-            nextVodRepresentation(request, session.attemptedRepresentations) ?: return false
+            selectedCandidate
+                ?: nextVodRepresentation(request, session.attemptedRepresentations)
+                ?: return false
         if (switching) return false
         switching = true
         session.recovery.onSwitching()
@@ -375,6 +513,16 @@ class VodPlaybackCoordinator(
                 val nextRequest = request.copy(video = selected)
                 val previousRoutes = session.videoRoutes
                 val previousRequest = session.request
+                if (reason == "sustained-frame-drops") {
+                    frameDropTrial =
+                        FrameDropTrial(
+                            session,
+                            previousRequest,
+                            previousRoutes,
+                            session.attemptedUrls.toSet(),
+                            position,
+                        )
+                }
                 session.request = nextRequest
                 session.videoRoutes = routes
                 session.attemptedUrls.clear()
@@ -383,10 +531,16 @@ class VodPlaybackCoordinator(
                 pendingSwitch = null
                 opened = playback.openPlayback(nextRequest, position)
                 if (!opened) {
+                    if (reason == "sustained-frame-drops") {
+                        rollbackFrameDropTrial()
+                        return@launch
+                    }
                     session.request = previousRequest
                     session.videoRoutes = previousRoutes
-                    session.attemptedRepresentations +=
-                        VodPlaybackRules.representationKey(candidate)
+                    if (reason != "sustained-frame-drops") {
+                        session.attemptedRepresentations +=
+                            VodPlaybackRules.representationKey(candidate)
+                    }
                     playback.setCurrent(previousRequest)
                     LogHub.e(
                         TAG,
@@ -412,11 +566,17 @@ class VodPlaybackCoordinator(
                     "VOD representation fallback failed qn=${candidate.id} codec=${candidate.codecId} " +
                         "reason=${LogRedaction.reason(failure)}",
                 )
+                if (reason == "sustained-frame-drops") rollbackFrameDropTrial()
             } finally {
                 if (!opened) {
                     switching = false
                 }
-                if (!opened && activeSession === session && playback.isCastActive()) {
+                if (
+                    !opened &&
+                        reason != "sustained-frame-drops" &&
+                        activeSession === session &&
+                        playback.isCastActive()
+                ) {
                     handleFailure("representation-fallback-open-failed")
                 }
             }
@@ -436,34 +596,54 @@ class VodPlaybackCoordinator(
                     track.url.isNotBlank() &&
                     track.codecId in SUPPORTED_VIDEO_CODECS
             }
-        val sameQuality = remaining.filter { it.id == currentTrack.id }
-        if (sameQuality.isNotEmpty())
-            return sameQuality.maxByOrNull {
-                VodPlaybackRules.videoCodecRank(it)
-            }
+        val sameQuality =
+            remaining
+                .filter { it.id == currentTrack.id }
+                .sortedByDescending(VodPlaybackRules::videoCodecRank)
+        if (sameQuality.isNotEmpty()) {
+            if (!usesCapabilitySelection(request)) return sameQuality.first()
+            val ranked =
+                VodPlaybackRules.rankRepresentations(
+                    sameQuality.map { it to videoCapability.support(it) },
+                )
+            if (ranked.isNotEmpty()) return ranked.first()
+        }
 
         val currentRank = request.acceptedQualities.indexOf(currentTrack.id)
         val lowerQuality = remaining.filter { track ->
             val rank = request.acceptedQualities.indexOf(track.id)
             if (currentRank >= 0 && rank >= 0) rank > currentRank else track.id < currentTrack.id
         }
-        return if (currentRank >= 0) {
-            lowerQuality.minWithOrNull(
-                compareBy<MediaTrack> {
-                        request.acceptedQualities.indexOf(it.id).takeIf { rank -> rank >= 0 }
-                            ?: Int.MAX_VALUE
-                    }
-                    .thenByDescending { VodPlaybackRules.videoCodecRank(it) },
-            )
-        } else {
-            lowerQuality.maxWithOrNull(
-                compareBy<MediaTrack> { it.id }.thenBy { VodPlaybackRules.videoCodecRank(it) },
-            )
-        }
+        val ordered =
+            if (currentRank >= 0) {
+                lowerQuality.sortedWith(
+                    compareBy<MediaTrack> {
+                            request.acceptedQualities.indexOf(it.id).takeIf { rank -> rank >= 0 }
+                                ?: Int.MAX_VALUE
+                        }
+                        .thenByDescending { VodPlaybackRules.videoCodecRank(it) },
+                )
+            } else {
+                lowerQuality.sortedWith(
+                    compareByDescending<MediaTrack> { it.id }
+                        .thenByDescending { VodPlaybackRules.videoCodecRank(it) },
+                )
+            }
+        if (!usesCapabilitySelection(request)) return ordered.firstOrNull()
+        return ordered
+            .groupBy { it.id }
+            .values
+            .firstNotNullOfOrNull { quality ->
+                VodPlaybackRules.rankRepresentations(
+                        quality.map { it to videoCapability.support(it) },
+                    )
+                    .firstOrNull()
+            }
     }
 
     /** 稳定播放确认后才结束切源事务并提示用户。 */
     fun completeRouteSwitch() {
+        frameDropTrial = null
         val switched = pendingSwitch
         if (switched == null) {
             switching = false

@@ -2,12 +2,50 @@ package com.roy233.tvcast.feature.playback.domain
 
 import com.roy233.tvcast.core.playback.MediaTrack
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.VideoTrackSupport
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VodPlaybackRulesTest {
+
+    @Test
+    fun `capability rank preserves original order within support tiers`() {
+        val avc = track(120, 7)
+        val hevc = track(120, 12)
+        val av1 = track(120, 13)
+        assertEquals(
+            listOf(hevc, av1, avc),
+            VodPlaybackRules.rankRepresentations(
+                listOf(
+                    avc to VideoTrackSupport.EXCEEDS_CAPABILITIES,
+                    hevc to VideoTrackSupport.SUPPORTED,
+                    av1 to VideoTrackSupport.UNKNOWN,
+                ),
+            ),
+        )
+        assertEquals(
+            listOf(hevc, av1),
+            VodPlaybackRules.rankRepresentations(
+                listOf(
+                    avc to VideoTrackSupport.NO_HARDWARE_DECODER,
+                    hevc to VideoTrackSupport.UNKNOWN,
+                    av1 to VideoTrackSupport.UNKNOWN,
+                ),
+            ),
+        )
+        assertEquals(
+            listOf(hevc),
+            VodPlaybackRules.rankRepresentations(
+                listOf(
+                    avc to VideoTrackSupport.EXCEEDS_CAPABILITIES,
+                    hevc to VideoTrackSupport.UNKNOWN,
+                ),
+                allowExceeds = false,
+            ),
+        )
+    }
 
     private fun track(id: Int, codecid: Int, codecs: String = "hvc1") =
         MediaTrack(
