@@ -3,10 +3,20 @@ package com.roy233.tvcast.data.bili
 import com.google.gson.JsonParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CdnCandidateSelectorTest {
+
+    @Test
+    fun `frame rate accepts decimal and rational while retaining unknown`() {
+        assertEquals(59.94f, CdnCandidateSelector.parseFrameRate("59.94")!!, 0.001f)
+        assertEquals(29.970f, CdnCandidateSelector.parseFrameRate("30000/1001")!!, 0.001f)
+        listOf("", "0", "NaN", "30/0", "1/2/3").forEach {
+            assertNull(CdnCandidateSelector.parseFrameRate(it))
+        }
+    }
 
     @Test
     fun `marks qn 125 HEVC representation as HDR`() {

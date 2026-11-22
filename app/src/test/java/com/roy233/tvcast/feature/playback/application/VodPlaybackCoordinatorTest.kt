@@ -1,8 +1,11 @@
 package com.roy233.tvcast.feature.playback.application
 
 import com.roy233.tvcast.core.playback.MediaTrack
+import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.core.playback.PlaybackResolver
+import com.roy233.tvcast.core.playback.VideoTrackCapability
+import com.roy233.tvcast.core.playback.VideoTrackSupport
 import com.roy233.tvcast.feature.playback.model.RankedVodRoute
 import com.roy233.tvcast.feature.playback.model.VodAssetRefreshState
 import com.roy233.tvcast.feature.playback.model.VodProbeResult
@@ -24,6 +27,112 @@ import org.junit.Test
 
 class VodPlaybackCoordinatorTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+    @Test
+    fun `initial and manual selection choose a supported representation`() = runBlocking {
+        val avc = track(120, 7, "https://test.example/avc")
+        val hevc = track(120, 12, "https://test.example/hevc")
+        val current = request(avc, null, listOf(avc, hevc))
+        val host = RecordingVodHost(scope, current, positionMs = 0L)
+        val coordinator =
+            VodPlaybackCoordinator(
+                host,
+                successfulProbe(),
+                unusedResolver(),
+                videoCapability =
+                    VideoTrackCapability {
+                        if (it.codecId == 12) VideoTrackSupport.SUPPORTED
+                        else VideoTrackSupport.EXCEEDS_CAPABILITIES
+                    },
+            )
+        assertEquals(hevc, coordinator.selectVideo(current, 120))
+        assertEquals(hevc.url, coordinator.rankInitialPlayback(current).request.video.url)
+        assertEquals(avc, coordinator.selectVideo(current.copy(isDrm = true), 120))
+    }
+
+    @Test
+    fun `sustained dropped frames switch only to same quality preserving position`() = runBlocking {
+        val avc = track(120, 7, "https://test.example/avc")
+        val hevc = track(120, 12, "https://test.example/hevc")
+        val lower = track(116, 7, "https://test.example/lower")
+        val current = request(avc, null, listOf(avc, hevc, lower))
+        val host = RecordingVodHost(scope, current, positionMs = 123_456L)
+        val coordinator =
+            VodPlaybackCoordinator(
+                host,
+                successfulProbe(),
+                unusedResolver(),
+                ioDispatcher = Dispatchers.Unconfined,
+                videoCapability = VideoTrackCapability { VideoTrackSupport.SUPPORTED },
+            )
+        coordinator.activeSession = VodSession(current, emptyList(), emptyList())
+        for (i in 0..40) {
+            coordinator.observeVideoFrames(PlaybackEvent.VideoFrameSample(i * 500L, i * 9, i, true))
+        }
+        withTimeout(2_000L) { while (host.opened.isEmpty()) delay(10) }
+        assertEquals(hevc.url, host.opened.single().first.video.url)
+        assertEquals(123_456L, host.opened.single().second)
+    }
+
+    @Test
+    fun `sustained dropped frames keep quality and notify once when alternatives are unavailable`() {
+        val avc = track(120, 7, "https://test.example/avc")
+        val hevc = track(120, 12, "https://test.example/hevc")
+        val lower = track(116, 7, "https://test.example/lower")
+        val current = request(avc, null, listOf(avc, hevc, lower))
+        val host = RecordingVodHost(scope, current, positionMs = 5000L)
+        val coordinator =
+            VodPlaybackCoordinator(
+                host,
+                successfulProbe(),
+                unusedResolver(),
+                videoCapability = VideoTrackCapability { VideoTrackSupport.NO_HARDWARE_DECODER },
+            )
+        coordinator.activeSession = VodSession(current, emptyList(), emptyList())
+        for (i in 0..80) {
+            coordinator.observeVideoFrames(PlaybackEvent.VideoFrameSample(i * 500L, i * 9, i, true))
+        }
+        assertTrue(host.opened.isEmpty())
+        assertEquals(1, host.messages.size)
+        assertEquals(120, host.currentRequest().video.id)
+    }
+
+    @Test
+    fun `failed frame recovery restores previous representation and position`() = runBlocking {
+        val avc = track(120, 7, "https://test.example/avc")
+        val hevc = track(120, 12, "https://test.example/hevc")
+        val current = request(avc, null, listOf(avc, hevc))
+        val host = RecordingVodHost(scope, current, positionMs = 45_000L)
+        host.failNextOpen = true
+        val coordinator =
+            VodPlaybackCoordinator(
+                host,
+                successfulProbe(),
+                unusedResolver(),
+                ioDispatcher = Dispatchers.Unconfined,
+                videoCapability = VideoTrackCapability { VideoTrackSupport.SUPPORTED },
+            )
+        coordinator.activeSession = VodSession(current, emptyList(), emptyList())
+        for (i in 0..40) {
+            coordinator.observeVideoFrames(PlaybackEvent.VideoFrameSample(i * 500L, i * 9, i, true))
+        }
+        withTimeout(2_000L) { while (host.opened.size < 2) delay(10) }
+        assertEquals(listOf(hevc.url, avc.url), host.opened.map { it.first.video.url })
+        assertEquals(45_000L, host.opened.last().second)
+        assertEquals(avc, host.currentRequest().video)
+    }
+
+    private fun unusedResolver(): PlaybackResolver =
+        object : PlaybackResolver {
+            override suspend fun resolveVod(
+                aid: Long,
+                cid: Long,
+                bvid: String,
+                title: String,
+                epId: Long,
+                seasonId: Long,
+            ): PlaybackRequest = error("unexpected resolve")
+        }
 
     @After
     fun tearDown() {
@@ -141,8 +250,12 @@ class VodPlaybackCoordinatorTest {
     ) : VodPlaybackHost {
         private var current = initialRequest
         val opened = mutableListOf<Pair<PlaybackRequest, Long>>()
+        val messages = mutableListOf<String>()
+        var failNextOpen = false
 
-        override fun showRouteToast(message: String) = Unit
+        override fun showRouteToast(message: String) {
+            messages += message
+        }
 
         override fun isPausedWithoutBuffering(): Boolean = false
 
@@ -159,6 +272,10 @@ class VodPlaybackCoordinatorTest {
         override fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean {
             current = request
             opened += request to seekToMs
+            if (failNextOpen) {
+                failNextOpen = false
+                return false
+            }
             return true
         }
     }

@@ -1,6 +1,7 @@
 package com.roy233.tvcast.feature.playback.model
 
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.feature.playback.domain.VodFrameDropMonitor
 import com.roy233.tvcast.feature.playback.domain.VodRecoveryController
 
 /** 一次投屏请求解析后的内容类型与播放输入。 */
@@ -44,6 +45,9 @@ data class VodSession(
     var lastProgressAtMs: Long = 0L,
     var assetRefreshState: VodAssetRefreshState = VodAssetRefreshState.IDLE,
     val recovery: VodRecoveryController = VodRecoveryController(),
+    val frameDropMonitor: VodFrameDropMonitor = VodFrameDropMonitor(),
+    val frameDropAttempts: MutableSet<String> = mutableSetOf(),
+    var frameDropExhaustedNotified: Boolean = false,
 )
 
 /** 当前点播资源针对 HTTP 403 的单飞刷新状态。 */

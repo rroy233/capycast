@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Point
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.util.Base64
 import android.view.Surface
 import android.view.SurfaceView
@@ -36,6 +37,7 @@ import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.core.diagnostics.LogHub
@@ -47,6 +49,8 @@ import com.roy233.tvcast.core.playback.MediaTrack
 import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackFailure
 import com.roy233.tvcast.core.playback.PlaybackRequest
+import com.roy233.tvcast.core.playback.VideoTrackCapability
+import com.roy233.tvcast.core.playback.VideoTrackSupport
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.util.Collections
@@ -62,12 +66,71 @@ class Media3PlayerEngine(
     context: Context,
     private val playerView: PlayerView,
     private val onEvent: (PlaybackEvent) -> Unit,
-) {
+) : VideoTrackCapability {
 
     /**
      * Dolby Vision 的软件解码无法保证保留动态元数据，也无法在 4K 下稳定播放。 因此视频轨只返回硬件 MediaCodec；音频轨保持系统默认选择，兼顾 E-AC-3 兼容性。
      */
     private val hardwareVideoCodecSelector = HardwareVideoCodecSelector()
+
+    private fun isEligibleHardwareDecoder(codec: MediaCodecInfo, secure: Boolean): Boolean =
+        codec.hardwareAccelerated && !codec.softwareOnly && (!secure || codec.secure)
+
+    override fun support(track: MediaTrack): VideoTrackSupport {
+        val mime =
+            MimeTypes.getMediaMimeType(track.codecs)
+                ?: track.mimeType.takeIf { it.startsWith("video/") && it != "video/mp4" }
+                ?: return VideoTrackSupport.UNKNOWN
+        if (track.width <= 0 || track.height <= 0 || track.codecs.isBlank())
+            return VideoTrackSupport.UNKNOWN
+        return try {
+            val decoders =
+                MediaCodecSelector.DEFAULT.getDecoderInfos(mime, false, false).filter {
+                    isEligibleHardwareDecoder(it, false)
+                }
+            if (decoders.isEmpty()) VideoTrackSupport.NO_HARDWARE_DECODER
+            else {
+                val format =
+                    Format.Builder()
+                        .setSampleMimeType(mime)
+                        .setCodecs(track.codecs)
+                        .setWidth(track.width)
+                        .setHeight(track.height)
+                        .setFrameRate(track.frameRate ?: Format.NO_VALUE.toFloat())
+                        .build()
+                if (decoders.none { it.isFormatSupported(format) }) {
+                    VideoTrackSupport.EXCEEDS_CAPABILITIES
+                } else if (track.frameRate == null) {
+                    VideoTrackSupport.UNKNOWN
+                } else {
+                    VideoTrackSupport.SUPPORTED
+                }
+            }
+        } catch (error: Exception) {
+            LogHub.w(
+                TAG,
+                "video capability query failed mime=$mime reason=${LogRedaction.reason(error)}",
+            )
+            VideoTrackSupport.UNKNOWN
+        }
+    }
+
+    /** 由现有播放轮询触发，采样只描述播放器状态，不实施恢复策略。 */
+    fun sampleVideoFrames() {
+        val counters = player.videoDecoderCounters ?: return
+        counters.ensureUpdated()
+        onEvent(
+            PlaybackEvent.VideoFrameSample(
+                timestampMs = SystemClock.elapsedRealtime(),
+                rendered = counters.renderedOutputBufferCount,
+                dropped = counters.droppedBufferCount,
+                valid =
+                    player.isPlaying &&
+                        player.playbackState == Player.STATE_READY &&
+                        player.playbackParameters.speed == 1f,
+            ),
+        )
+    }
 
     @Volatile private var activeDrm = false
     @Volatile private var activeRequest: PlaybackRequest? = null
@@ -247,7 +310,11 @@ class Media3PlayerEngine(
             } else {
                 // DASH 表示层是独立的 fMP4 文件。Media3 统一维护两个 Progressive source
                 // 的 seek 和缓冲时钟；HDR 与杜比视界也由同一条路径保留色彩元数据。
-                val video = progressiveSource(info.video)
+                val frameRate =
+                    info.video.frameRate.takeIf {
+                        !info.isLive && !info.video.isHdr && !info.video.isDolbyVision
+                    }
+                val video = progressiveSource(info.video, frameRate)
                 info.audio
                     ?.takeIf { it.url.isNotBlank() }
                     ?.let { MergingMediaSource(video, progressiveSource(it)) } ?: video
@@ -468,13 +535,22 @@ class Media3PlayerEngine(
         }
     }
 
-    private fun progressiveSource(track: MediaTrack): MediaSource {
+    private fun progressiveSource(track: MediaTrack, frameRate: Float? = null): MediaSource {
         val item =
             MediaItem.Builder()
                 .setUri(track.url)
                 .setMimeType(track.mimeType.ifBlank { null })
                 .build()
-        return ProgressiveMediaSource.Factory(mediaHttpFactory).createMediaSource(item)
+        val sourceFactory =
+            if (frameRate != null && frameRate.isFinite() && frameRate > 0f) {
+                ProgressiveMediaSource.Factory(
+                    mediaHttpFactory,
+                    VideoFrameRateExtractorsFactory(DefaultExtractorsFactory(), frameRate),
+                )
+            } else {
+                ProgressiveMediaSource.Factory(mediaHttpFactory)
+            }
+        return sourceFactory.createMediaSource(item)
     }
 
     private fun isHls(info: PlaybackRequest, url: String): Boolean =
@@ -794,7 +870,7 @@ class Media3PlayerEngine(
                 )
             if (!mimeType.startsWith("video/", ignoreCase = true)) return candidates
             val hardware = candidates.filter {
-                it.hardwareAccelerated && !it.softwareOnly && (!requiresSecureDecoder || it.secure)
+                isEligibleHardwareDecoder(it, requiresSecureDecoder)
             }
             val candidateSummary = candidates.joinToString { codec ->
                 "${codec.name}(hardware=${codec.hardwareAccelerated},software=${codec.softwareOnly},secure=${codec.secure})"

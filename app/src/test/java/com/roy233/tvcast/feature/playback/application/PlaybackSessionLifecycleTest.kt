@@ -52,6 +52,9 @@ class PlaybackSessionLifecycleTest {
         assertEquals(first.token.attemptId + 1L, second.token.attemptId)
         assertEquals(listOf("openPlaybackComponents"), calls.filter { "PlaybackComponents" in it })
         assertFalse(lifecycle.acceptEvent(first.token, PlaybackEvent.Ended))
+        val frameSample = PlaybackEvent.VideoFrameSample(10_000L, 100, 10, true)
+        assertFalse(lifecycle.acceptEvent(first.token, frameSample))
+        assertTrue(lifecycle.acceptEvent(second.token, frameSample))
         assertTrue(lifecycle.acceptEvent(second.token, PlaybackEvent.Playing))
     }
 

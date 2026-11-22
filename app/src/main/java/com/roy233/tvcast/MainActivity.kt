@@ -42,6 +42,8 @@ import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.core.playback.PlaybackSessionToken
 import com.roy233.tvcast.core.playback.PlaybackSnapshot
+import com.roy233.tvcast.core.playback.VideoTrackCapability
+import com.roy233.tvcast.core.playback.VideoTrackSupport
 import com.roy233.tvcast.data.bili.NvaExtDecoder
 import com.roy233.tvcast.data.bili.danmaku.BiliDanmakuRepository
 import com.roy233.tvcast.data.bili.danmaku.BiliLiveDanmakuClient
@@ -144,7 +146,10 @@ class MainActivity :
     /** 当前播放后端及其原生资源。 */
     private lateinit var playbackEngineHost: PlaybackEngineHost
     /** 统一接收播放后端转换后的事件。 */
-    private val playbackEventRouter = PlaybackEventRouter(this)
+    private val playbackEventRouter =
+        PlaybackEventRouter(this) { sample ->
+            vodCoordinator.observeVideoFrames(sample)
+        }
     private val playbackUsageSession by lazy {
         PlaybackUsageSession(container.qualityTelemetry, SystemClock::elapsedRealtime)
     }
@@ -255,6 +260,12 @@ class MainActivity :
             playback = this,
             routeProbe = OkHttpVodRouteProbe(),
             resolver = container.playbackResolver,
+            videoCapability =
+                VideoTrackCapability { track ->
+                    if (::playbackEngineHost.isInitialized)
+                        playbackEngineHost.videoTrackCapability.support(track)
+                    else VideoTrackSupport.UNKNOWN
+                },
         )
     }
     /** 直播会话协调器。 */
@@ -868,6 +879,7 @@ class MainActivity :
     /** 将轮询进度交给点播恢复状态机。 */
     override fun onVodProgress(positionMs: Long, durationMs: Long, activelyPlaying: Boolean) {
         observeVodProgress(positionMs, activelyPlaying)
+        playbackEngineHost.sampleVideoFrames()
         castCoordinator.onVodProgress(positionMs, durationMs, activelyPlaying)
     }
 

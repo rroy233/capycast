@@ -68,12 +68,15 @@ class PlaybackSelectionCoordinator(private val host: PlaybackSelectionHost) {
             LogHub.w(TAG, "switchQuality qn=$qn ignored: no current media")
             return
         }
-        val track = request.videos.firstOrNull { it.id == qn }
+        val track = host.vodCoordinator().selectVideo(request, qn)
         if (track == null) {
             LogHub.w(
                 TAG,
                 "switchQuality qn=$qn not found; available=${request.videos.joinToString(",") { it.id.toString() }}",
             )
+            if (request.videos.any { it.id == qn }) {
+                host.showSelectionToast("该画质没有可用的硬件解码器")
+            }
             return
         }
         if (host.vodCoordinator().switching) return

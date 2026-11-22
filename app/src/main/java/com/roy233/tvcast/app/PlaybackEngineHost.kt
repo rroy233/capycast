@@ -13,6 +13,7 @@ import com.roy233.tvcast.core.playback.PlaybackEvent
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.core.playback.PlaybackSessionToken
 import com.roy233.tvcast.core.playback.PlaybackSnapshot
+import com.roy233.tvcast.core.playback.VideoTrackCapability
 import com.roy233.tvcast.platform.player.Media3PlaybackEngineAdapter
 import com.roy233.tvcast.platform.player.Media3PlayerEngine
 
@@ -42,6 +43,11 @@ class PlaybackEngineHost(
     private val engine: PlaybackEngine = Media3PlaybackEngineAdapter { media3 }
 
     val backend: PlaybackBackend = PlaybackBackend.MEDIA3
+
+    val videoTrackCapability: VideoTrackCapability
+        get() = media3
+
+    fun sampleVideoFrames() = media3.sampleVideoFrames()
 
     fun open(
         request: PlaybackRequest,

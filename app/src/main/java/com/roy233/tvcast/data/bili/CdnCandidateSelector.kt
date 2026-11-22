@@ -93,7 +93,16 @@ object CdnCandidateSelector {
             isDolbyAudio = isDolbyAudio,
             initializationRange = initializationRange,
             indexRange = indexRange,
+            frameRate = parseFrameRate(o.string("frame_rate").ifBlank { o.string("frameRate") }),
         )
+    }
+
+    internal fun parseFrameRate(value: String): Float? {
+        val parts = value.trim().split('/')
+        val numerator = parts.firstOrNull()?.toFloatOrNull() ?: return null
+        val denominator = if (parts.size == 2) parts[1].toFloatOrNull() ?: return null else 1f
+        if (parts.size > 2 || denominator <= 0f) return null
+        return (numerator / denominator).takeIf { it.isFinite() && it > 0f }
     }
 
     /** 从视频轨道中选择优先级最高的轨道。 */

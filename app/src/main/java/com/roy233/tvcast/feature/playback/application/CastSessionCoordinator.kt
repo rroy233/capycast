@@ -115,7 +115,7 @@ class CastSessionCoordinator(
             resolveVod = { aid, cid, bvid, title, epId, seasonId ->
                 playback.resolveVodPlayback(aid, cid, bvid, title, epId, seasonId)
             },
-            rankVod = { playback.vodSessionCoordinator().cdn.rankPlayback(it) },
+            rankVod = { playback.vodSessionCoordinator().rankInitialPlayback(it) },
         )
 
     /** 将当前播放信息加入最近投屏记录。 */

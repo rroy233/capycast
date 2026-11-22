@@ -94,7 +94,10 @@ interface PlaybackEventHost {
 }
 
 /** 将唯一 Media3 后端的事件映射到既有 VOD、直播、历史与弹幕会话。 */
-class PlaybackEventRouter(private val host: PlaybackEventHost) {
+class PlaybackEventRouter(
+    private val host: PlaybackEventHost,
+    private val onVideoFrames: (PlaybackEvent.VideoFrameSample?) -> Unit = {},
+) {
     fun dispatch(token: PlaybackSessionToken, backend: PlaybackBackend, event: PlaybackEvent) {
         if (
             backend != PlaybackBackend.MEDIA3 ||
@@ -114,6 +117,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
                 host.runOnMain {
                     host.updateVideoSize(event.width, event.height)
                 }
+            is PlaybackEvent.VideoFrameSample -> onVideoFrames(event)
         }
     }
 
@@ -143,6 +147,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
     }
 
     private fun paused() {
+        onVideoFrames(null)
         LogHub.d(TAG, "event paused live=${host.currentPlaybackRequest()?.isLive == true}")
         host.runOnMain {
             val live = host.currentPlaybackRequest()?.isLive == true
@@ -162,6 +167,7 @@ class PlaybackEventRouter(private val host: PlaybackEventHost) {
     }
 
     private fun buffering(buffering: Boolean) {
+        if (buffering) onVideoFrames(null)
         LogHub.d(
             TAG,
             "event buffering=$buffering live=${host.currentPlaybackRequest()?.isLive == true}",
