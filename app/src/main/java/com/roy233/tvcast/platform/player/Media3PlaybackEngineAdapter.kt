@@ -17,8 +17,8 @@ class Media3PlaybackEngineAdapter(
 
     override val backend: PlaybackBackend = PlaybackBackend.MEDIA3
 
-    override fun open(request: PlaybackRequest, seekToMs: Long): Boolean {
-        engine()?.open(request, seekToMs) ?: return false
+    override fun open(request: PlaybackRequest, seekToMs: Long, startPaused: Boolean): Boolean {
+        engine()?.open(request, seekToMs, startPaused) ?: return false
         return true
     }
 
@@ -29,6 +29,8 @@ class Media3PlaybackEngineAdapter(
     override fun durationMs(): Long = engine()?.durationMs() ?: 0L
 
     override fun isPlaying(): Boolean = engine()?.isPlaying() ?: false
+
+    override fun isPlayRequested(): Boolean = engine()?.isPlayRequested() ?: false
 
     override fun isSeekable(): Boolean = engine()?.isSeekable() ?: false
 

@@ -2,6 +2,7 @@ package com.roy233.tvcast.platform.dlna
 
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
+import com.roy233.tvcast.core.lifecycle.ForegroundAvailability
 
 /**
  * 分发 DLNA SOAP 动作并构造响应。
@@ -12,6 +13,7 @@ import com.roy233.tvcast.core.diagnostics.LogRedaction
 internal class SoapActionDispatcher(
     private val state: DlnaTransportState,
     private val listener: DlnaRenderer.Listener,
+    private val foreground: ForegroundAvailability,
 ) {
 
     /** 当前传输状态名称。 */
@@ -36,7 +38,7 @@ internal class SoapActionDispatcher(
     }
 
     /** 分发 SOAP 动作并构造对应响应。 */
-    fun dispatch(req: SoapRequest): ByteArray {
+    fun dispatch(req: SoapRequest, generation: Long): ByteArray {
         val s = state
         return when (req.action) {
             "SetAVTransportURI" -> {
@@ -44,45 +46,54 @@ internal class SoapActionDispatcher(
                 val meta = req.args["CurrentURIMetaData"].orEmpty()
                 val title = DlnaXml.extractTitle(meta)
                 val longDesc = DlnaXml.extractLongDescription(meta)
-                s.uri = uri
-                s.metadata = meta
-                s.title = title
-                s.durationMs = DlnaTime.parseDidlDuration(meta)
-                s.transport = "TRANSITIONING"
-                LogHub.i(
-                    TAG,
-                    "SetAVTransportURI title=${title.take(80)} " +
-                        "uri=${LogRedaction.url(uri)} metadata=${meta.length}B " +
-                        "longDescription=${longDesc.length}B duration=${s.durationMs}ms",
-                )
-                if (longDesc.isBlank()) {
-                    LogHub.w(TAG, "SetAVTransportURI has no longDescription; cast identity missing")
+                val durationMs = DlnaTime.parseDidlDuration(meta)
+                foregroundCommand(req, generation) {
+                    s.uri = uri
+                    s.metadata = meta
+                    s.title = title
+                    s.durationMs = durationMs
+                    s.transport = "TRANSITIONING"
+                    LogHub.i(
+                        TAG,
+                        "SetAVTransportURI title=${title.take(80)} " +
+                            "uri=${LogRedaction.url(uri)} metadata=${meta.length}B " +
+                            "longDescription=${longDesc.length}B duration=${s.durationMs}ms",
+                    )
+                    if (longDesc.isBlank()) {
+                        LogHub.w(
+                            TAG,
+                            "SetAVTransportURI has no longDescription; cast identity missing",
+                        )
+                    }
+                    runCatching { listener.onCast(uri, meta, title, longDesc, generation) }
+                        .onFailure { LogHub.e(TAG, "onCast failed", it, stack = true) }
+                    soapOk(req.service, req.action)
                 }
-                runCatching { listener.onCast(uri, meta, title, longDesc) }
-                    .onFailure { LogHub.e(TAG, "onCast failed", it, stack = true) }
-                soapOk(req.service, req.action)
             }
-            "Play" -> {
-                s.transport = "PLAYING"
-                LogHub.i(TAG, "Play command transport=${s.transport} title=${s.title.take(60)}")
-                runCatching { listener.onPlay() }
-                    .onFailure { LogHub.e(TAG, "onPlay failed", it, stack = true) }
-                soapOk(req.service, req.action)
-            }
-            "Pause" -> {
-                s.transport = "PAUSED_PLAYBACK"
-                LogHub.i(TAG, "Pause command transport=${s.transport}")
-                runCatching { listener.onPause() }
-                    .onFailure { LogHub.e(TAG, "onPause failed", it, stack = true) }
-                soapOk(req.service, req.action)
-            }
-            "Stop" -> {
-                s.transport = "STOPPED"
-                LogHub.i(TAG, "Stop command transport=${s.transport}")
-                runCatching { listener.onStop() }
-                    .onFailure { LogHub.e(TAG, "onStop failed", it, stack = true) }
-                soapOk(req.service, req.action)
-            }
+            "Play" ->
+                foregroundCommand(req, generation) {
+                    s.transport = "PLAYING"
+                    LogHub.i(TAG, "Play command transport=${s.transport} title=${s.title.take(60)}")
+                    runCatching { listener.onPlay(generation) }
+                        .onFailure { LogHub.e(TAG, "onPlay failed", it, stack = true) }
+                    soapOk(req.service, req.action)
+                }
+            "Pause" ->
+                foregroundCommand(req, generation) {
+                    s.transport = "PAUSED_PLAYBACK"
+                    LogHub.i(TAG, "Pause command transport=${s.transport}")
+                    runCatching { listener.onPause(generation) }
+                        .onFailure { LogHub.e(TAG, "onPause failed", it, stack = true) }
+                    soapOk(req.service, req.action)
+                }
+            "Stop" ->
+                foregroundCommand(req, generation) {
+                    s.transport = "STOPPED"
+                    LogHub.i(TAG, "Stop command transport=${s.transport}")
+                    runCatching { listener.onStop(generation) }
+                        .onFailure { LogHub.e(TAG, "onStop failed", it, stack = true) }
+                    soapOk(req.service, req.action)
+                }
             "Seek" -> {
                 if (!runCatching { listener.isSeekable() }.getOrDefault(false)) {
                     LogHub.w(TAG, "Seek rejected: current media is not seekable")
@@ -90,10 +101,12 @@ internal class SoapActionDispatcher(
                 }
                 val target = req.args["Target"].orEmpty()
                 val ms = DlnaTime.parse(target)
-                LogHub.i(TAG, "Seek $target -> ${ms}ms")
-                runCatching { listener.onSeek(ms) }
-                    .onFailure { LogHub.e(TAG, "onSeek failed", it, stack = true) }
-                soapOk(req.service, req.action)
+                foregroundCommand(req, generation) {
+                    LogHub.i(TAG, "Seek $target -> ${ms}ms")
+                    runCatching { listener.onSeek(ms, generation) }
+                        .onFailure { LogHub.e(TAG, "onSeek failed", it, stack = true) }
+                    soapOk(req.service, req.action)
+                }
             }
             "GetTransportInfo" ->
                 soapOk(
@@ -177,24 +190,26 @@ internal class SoapActionDispatcher(
                     req.action,
                     listOf("CurrentVolume" to volume().toString()),
                 )
-            "SetVolume" -> {
-                val v = req.args["DesiredVolume"]?.toIntOrNull()?.coerceIn(0, 100) ?: 50
-                s.volume = v
-                LogHub.i(TAG, "SetVolume command value=$v")
-                runCatching { listener.onSetVolume(v) }
-                    .onFailure { LogHub.e(TAG, "onSetVolume failed", it, stack = true) }
-                soapOk(req.service, req.action)
-            }
+            "SetVolume" ->
+                foregroundCommand(req, generation) {
+                    val v = req.args["DesiredVolume"]?.toIntOrNull()?.coerceIn(0, 100) ?: 50
+                    s.volume = v
+                    LogHub.i(TAG, "SetVolume command value=$v")
+                    runCatching { listener.onSetVolume(v) }
+                        .onFailure { LogHub.e(TAG, "onSetVolume failed", it, stack = true) }
+                    soapOk(req.service, req.action)
+                }
             "GetMute" ->
                 soapOk(
                     req.service,
                     req.action,
                     listOf("CurrentMute" to if (s.mute) "1" else "0"),
                 )
-            "SetMute" -> {
-                s.mute = req.args["DesiredMute"] in listOf("1", "true", "True")
-                soapOk(req.service, req.action)
-            }
+            "SetMute" ->
+                foregroundCommand(req, generation) {
+                    s.mute = req.args["DesiredMute"] in listOf("1", "true", "True")
+                    soapOk(req.service, req.action)
+                }
             "GetVolumeDB" -> soapOk(req.service, req.action, listOf("CurrentVolume" to "0"))
             "GetVolumeDBRange" ->
                 soapOk(
@@ -248,6 +263,14 @@ internal class SoapActionDispatcher(
             }
         }
     }
+
+    private fun foregroundCommand(
+        req: SoapRequest,
+        generation: Long,
+        action: () -> ByteArray,
+    ): ByteArray =
+        foreground.ifCurrent(generation, action)
+            ?: fault(req.service, 701, "Transition not available")
 
     /** 根据 SOAP 动作选择对应的 UPnP 服务。 */
     fun serviceFor(action: String): String =

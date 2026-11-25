@@ -1,16 +1,21 @@
 package com.roy233.tvcast.feature.playback.application
 
 import android.content.Context
+import com.roy233.tvcast.core.lifecycle.ForegroundAvailability
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.feature.cast.domain.CastContent
 import com.roy233.tvcast.feature.playback.model.LivePlayInfo
 import com.roy233.tvcast.feature.playback.model.RankedLiveSource
 import com.roy233.tvcast.ui.model.PlaybackUiState
 import com.roy233.tvcast.ui.model.TvMode
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,8 +32,41 @@ class CastSessionCoordinatorTest {
     }
 
     @Test
+    fun `resolution result is held until foreground is restored`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        host.vodResolver = {
+            started.complete(Unit)
+            finish.await()
+            error("test failure")
+        }
+        val foreground =
+            ForegroundAvailability().apply {
+                setInteractive(true)
+                setResumed(true)
+                activate()
+            }
+        val coordinator = CastSessionCoordinator(host, foreground)
+        coordinator.resolve(CastContent(aid = 1, cid = 2), "test")
+        withTimeout(5000) { started.await() }
+        foreground.setResumed(false)
+        finish.complete(Unit)
+        assertEquals(null, withTimeoutOrNull(150) { host.reported.await() })
+        foreground.setResumed(true)
+        foreground.activate()
+        withTimeout(5000) { host.reported.await() }
+    }
+
+    @Test
     fun `unrecognised cast stops the previous session and reports a non retryable error`() {
-        CastSessionCoordinator(host)
+        CastSessionCoordinator(
+                host,
+                ForegroundAvailability().apply {
+                    setInteractive(true)
+                    setResumed(true)
+                    activate()
+                },
+            )
             .handleCast(
                 uri = "https://example.com/cast",
                 title = "测试投屏",
@@ -67,6 +105,8 @@ class CastSessionCoordinatorTest {
         val events = mutableListOf<String>()
         var playbackState = PlaybackUiState(rememberPlaybackContent = true)
         var error: ErrorReport? = null
+        val reported = CompletableDeferred<Unit>()
+        var vodResolver: suspend () -> PlaybackRequest = { error("unused in this test") }
 
         override fun remembersPlaybackContent(): Boolean = playbackState.rememberPlaybackContent
 
@@ -135,6 +175,7 @@ class CastSessionCoordinatorTest {
             keepVideo: Boolean,
         ) {
             error = ErrorReport(title, message, code, canRetry, keepVideo)
+            reported.complete(Unit)
         }
 
         override fun addRecentRecord(request: PlaybackRequest) = Unit
@@ -185,7 +226,7 @@ class CastSessionCoordinatorTest {
             title: String,
             epId: Long,
             seasonId: Long,
-        ): PlaybackRequest = error("unused in this test")
+        ): PlaybackRequest = vodResolver()
 
         override fun applyPendingPause() = Unit
 

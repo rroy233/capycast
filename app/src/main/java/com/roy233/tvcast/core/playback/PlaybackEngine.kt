@@ -16,7 +16,7 @@ interface PlaybackEngine {
     val backend: PlaybackBackend
 
     /** 打开媒体并开始播放；返回是否已发起打开流程。 */
-    fun open(request: PlaybackRequest, seekToMs: Long): Boolean
+    fun open(request: PlaybackRequest, seekToMs: Long, startPaused: Boolean = false): Boolean
 
     /** 释放后端和它拥有的原生资源。 */
     fun release()
@@ -39,6 +39,9 @@ interface PlaybackEngine {
 
     /** 当前是否正在播放。 */
     fun isPlaying(): Boolean
+
+    /** 播放意图；缓冲时仍可能为 true。 */
+    fun isPlayRequested(): Boolean
 
     /** 当前媒体是否支持定位。 */
     fun isSeekable(): Boolean

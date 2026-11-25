@@ -1,6 +1,7 @@
 package com.roy233.tvcast.feature.cast.application
 
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.core.lifecycle.ForegroundAvailability
 
 /** DLNA 命令进入投屏会话后的播放与展示能力。 */
 interface DlnaTransportHost {
@@ -44,15 +45,15 @@ interface DlnaTransportHost {
 
 /** 协议适配器只向此端口传递语义命令。 */
 interface DlnaCastCommands {
-    fun cast(uri: String, title: String, longDescription: String)
+    fun cast(uri: String, title: String, longDescription: String, generation: Long)
 
-    fun play()
+    fun play(generation: Long)
 
-    fun pause()
+    fun pause(generation: Long)
 
-    fun stop()
+    fun stop(generation: Long)
 
-    fun seek(positionMs: Long)
+    fun seek(positionMs: Long, generation: Long)
 
     fun isSeekable(): Boolean
 
@@ -68,13 +69,21 @@ interface DlnaCastCommands {
 }
 
 /** DLNA 播放控制与当前投屏会话的交互。 */
-class DlnaTransportCoordinator(private val host: DlnaTransportHost) : DlnaCastCommands {
-    override fun cast(uri: String, title: String, longDescription: String) {
-        host.onMainThread { host.onCast(uri, title, longDescription) }
+class DlnaTransportCoordinator(
+    private val host: DlnaTransportHost,
+    private val foreground: ForegroundAvailability,
+) : DlnaCastCommands {
+    private fun onForeground(generation: Long, action: () -> Unit) {
+        if (!foreground.isCurrent(generation)) return
+        host.onMainThread { if (foreground.isCurrent(generation)) action() }
     }
 
-    override fun play() {
-        host.onMainThread {
+    override fun cast(uri: String, title: String, longDescription: String, generation: Long) {
+        onForeground(generation) { host.onCast(uri, title, longDescription) }
+    }
+
+    override fun play(generation: Long) {
+        onForeground(generation) {
             host.setPendingPause(false)
             if (host.engineAvailable()) host.setPaused(false, "dlna-play")
             else LogHub.w(TAG, "dlna play ignored: player engine unavailable")
@@ -82,8 +91,8 @@ class DlnaTransportCoordinator(private val host: DlnaTransportHost) : DlnaCastCo
         }
     }
 
-    override fun pause() {
-        host.onMainThread {
+    override fun pause(generation: Long) {
+        onForeground(generation) {
             host.setPendingPause(true)
             if (host.engineAvailable()) host.setPaused(true, "dlna-pause")
             else LogHub.w(TAG, "dlna pause ignored: player engine unavailable")
@@ -91,13 +100,13 @@ class DlnaTransportCoordinator(private val host: DlnaTransportHost) : DlnaCastCo
         }
     }
 
-    override fun stop() = host.onMainThread { host.stopCastFromDlna() }
+    override fun stop(generation: Long) = onForeground(generation) { host.stopCastFromDlna() }
 
-    override fun seek(positionMs: Long) {
-        host.onMainThread {
+    override fun seek(positionMs: Long, generation: Long) {
+        onForeground(generation) {
             if (host.currentIsLive()) {
                 LogHub.w(TAG, "dlna seek rejected for live room=${host.currentCid()}")
-                return@onMainThread
+                return@onForeground
             }
             if (host.engineAvailable()) host.seekTo(positionMs, "dlna-seek")
             else LogHub.w(TAG, "dlna seek ignored: player engine unavailable")

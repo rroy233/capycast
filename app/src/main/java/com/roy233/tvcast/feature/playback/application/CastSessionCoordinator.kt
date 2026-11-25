@@ -5,6 +5,7 @@ import android.os.SystemClock
 import com.roy233.tvcast.core.diagnostics.LogHub
 import com.roy233.tvcast.core.diagnostics.LogRedaction
 import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
+import com.roy233.tvcast.core.lifecycle.ForegroundAvailability
 import com.roy233.tvcast.core.playback.PlaybackRequest
 import com.roy233.tvcast.feature.cast.application.CastAutoplaySession
 import com.roy233.tvcast.feature.cast.application.CastRequestResolver
@@ -99,6 +100,7 @@ interface CastSessionHost : RecentCastHost {
  */
 class CastSessionCoordinator(
     private val playback: CastSessionHost,
+    private val foreground: ForegroundAvailability,
     private val autoplay: CastAutoplaySession? = null,
 ) {
     private data class VodResume(
@@ -282,6 +284,11 @@ class CastSessionCoordinator(
                             )
                         }
                     }
+                if (!isActive) return@launch
+                // A request accepted in the foreground may finish resolving after backgrounding.
+                // Keep the result pending until the user returns; never open a player in
+                // background.
+                foreground.awaitAvailable()
                 if (!isActive) return@launch
                 playback.setResolving(false)
                 result

@@ -33,7 +33,7 @@ class LivePlaybackCoordinatorTest {
                         true
                     }
                     "getCoroutineScope" -> scope
-                    "isPausedWithoutBuffering",
+                    "isPlaybackPaused",
                     "isPlaying" -> false
                     "setPendingPause" -> Unit
                     "lastTitle" -> "live"

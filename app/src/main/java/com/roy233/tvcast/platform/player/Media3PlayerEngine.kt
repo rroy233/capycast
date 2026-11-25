@@ -279,7 +279,7 @@ class Media3PlayerEngine(
      *
      * DASH 点播的音视频表示层由 [MergingMediaSource] 合并为同一条播放时间线，保持独立 fMP4 流的定位和缓冲时钟一致。
      */
-    fun open(info: PlaybackRequest, seekToMs: Long) {
+    fun open(info: PlaybackRequest, seekToMs: Long, startPaused: Boolean = false) {
         activeDrm = info.isDrm
         activeRequest = info
         transferredBytes.set(0L)
@@ -355,8 +355,8 @@ class Media3PlayerEngine(
             if (dashItem != null) player.setMediaItem(dashItem!!)
             else player.setMediaSource(mediaSource!!)
             player.seekTo(seekToMs.coerceAtLeast(0L))
+            player.playWhenReady = !startPaused
             player.prepare()
-            player.playWhenReady = true
         } catch (error: Throwable) {
             val reason = safeErrorReason(error)
             LogHub.e(TAG, "open failed: $reason")
@@ -436,6 +436,8 @@ class Media3PlayerEngine(
     fun durationMs(): Long = player.duration.takeIf { it != C.TIME_UNSET }?.coerceAtLeast(0L) ?: 0L
 
     fun isPlaying(): Boolean = player.isPlaying
+
+    fun isPlayRequested(): Boolean = player.playWhenReady
 
     fun isSeekable(): Boolean = player.isCurrentMediaItemSeekable
 
