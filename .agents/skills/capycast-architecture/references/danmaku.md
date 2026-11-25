@@ -15,6 +15,8 @@ live player events       → LiveDanmakuController → LiveDanmakuClient → Dfm
 
 `DfmDanmakuEngine` owns DFM-specific state, `DanmakuView`, pending renderer items, renderer seek/reset and display settings. It is the only location that calls DFM APIs.
 
+`MediaClock` supplies media time; the maintained DFM `DrawHandler` schedules frames independently. Preserve this separation for speed, seek and pause; see `app/third_party/danmaku/README.md`.
+
 `data/bili/danmaku` owns Bilibili segment APIs, live WebSocket protocol framing/decoding and the concrete implementations of the feature’s repository/client ports.
 
 ## VOD data identity and session ownership
@@ -51,4 +53,4 @@ Diagnostics for this path log `generation`, `aid`/`cid`, segment `index` and `ac
 
 ## Diagnosing timing issues
 
-Trace packet or segment receipt → controller queue → flush/DFM submission → `danmakuShown`. Compare media clock, DFM timer and current renderer time. A visible overlay with submitted items and no `shown` callback points to renderer timeline or render state, while no queued items points to the data/session path. Keep logs redacted and do not log message content or identity data.
+Trace receipt → queue → submission → `danmakuShown`; compare media time, DFM time and completed `frames`. `shown` counts new items, not frames. Keep logs redacted; never log message content or identity data.

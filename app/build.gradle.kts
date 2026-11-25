@@ -91,6 +91,8 @@ android {
         buildConfig = true
     }
 
+    sourceSets.getByName("main").java.srcDir("third_party/danmaku/src/main/java")
+
     testOptions {
         unitTests {
             // 解析层会记录 Android 日志；本地 JVM 测试无需真实 Logcat。
@@ -110,8 +112,6 @@ dependencies {
     releaseImplementation(platform("com.google.firebase:firebase-bom:33.16.0"))
     releaseImplementation("com.google.firebase:firebase-analytics")
     releaseImplementation("com.google.firebase:firebase-crashlytics")
-    // DanmakuFlameMaster 0.9.25 AAR (Apache-2.0), the engine used by 云视听.
-    implementation(files("libs/DanmakuFlameMaster-0.9.25.aar"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.brotli:dec:0.1.2")

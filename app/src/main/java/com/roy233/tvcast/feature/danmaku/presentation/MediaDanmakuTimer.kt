@@ -1,6 +1,7 @@
 package com.roy233.tvcast.feature.danmaku.presentation
 
 import com.roy233.tvcast.feature.danmaku.domain.MediaClock
+import master.flame.danmaku.controller.ExternalMediaTimer
 import master.flame.danmaku.danmaku.model.DanmakuTimer
 
 /**
@@ -16,7 +17,7 @@ import master.flame.danmaku.danmaku.model.DanmakuTimer
  */
 class MediaDanmakuTimer(
     private val clock: MediaClock,
-) : DanmakuTimer() {
+) : DanmakuTimer(), ExternalMediaTimer {
 
     override fun add(mills: Long): Long {
         return super.update(clock.nowMs())
