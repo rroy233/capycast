@@ -10,7 +10,7 @@ CapyCast 使用以下第三方开源组件。各组件的版权归其原作者�
 - 源代码：[DanmakuFlameMaster](https://github.com/ctiao/DanmakuFlameMaster)
 - 许可证全文：[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
 
-本项目以本地 AAR 形式引用 `app/libs/DanmakuFlameMaster-0.9.25.aar`，仅在客户端绘制弹幕，不包含其示例应用代码。该 AAR 不受 CapyCast 的 MIT License 覆盖。
+本项目在 `app/third_party/danmaku` 中包含该版本的源码及本地修改，用于客户端弹幕绘制，不包含其示例应用代码。该源码遵循 Apache License 2.0。
 
 ## 其他依赖
 

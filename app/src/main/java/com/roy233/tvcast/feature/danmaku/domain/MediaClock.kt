@@ -8,6 +8,8 @@ import kotlin.math.abs
  * 位置是「锚点媒体时间 + 经过的墙钟时间 × 倍速」的纯函数，不做逐帧累加， 因此暂停、seek、倍速切换都不会累积误差。
  *
  * @param nanoTime 单调时钟；测试可注入假实现。
+ *
+ * 会话线程写入锚点，DFM 绘制线程读取；所有状态转换和读取使用同一把锁。
  */
 class MediaClock(
     private val nanoTime: () -> Long = { System.nanoTime() },
@@ -19,13 +21,15 @@ class MediaClock(
     private var frozen = true
 
     /** 视频总时长；0 表示未知。 */
-    var durationMs: Long = 0L
+    @get:Synchronized @set:Synchronized var durationMs: Long = 0L
 
     /** 当前是否处于暂停/冻结状态。 */
+    @get:Synchronized
     val isFrozen: Boolean
         get() = frozen
 
     /** 当前媒体时间，单位毫秒。 */
+    @Synchronized
     fun nowMs(): Long {
         if (frozen) return anchorMediaMs
         val elapsedMs = (nanoTime() - anchorNanos) / 1_000_000.0
@@ -33,11 +37,13 @@ class MediaClock(
     }
 
     /** 从指定位置开始播放。 */
+    @Synchronized
     fun start(mediaMs: Long) {
         rebase(mediaMs)
     }
 
     /** 以播放器位置重新锚定，并进入播放状态。 */
+    @Synchronized
     fun rebase(mediaMs: Long) {
         anchorMediaMs = clamp(mediaMs)
         anchorNanos = nanoTime()
@@ -45,18 +51,21 @@ class MediaClock(
     }
 
     /** 冻结在指定位置。 */
+    @Synchronized
     fun pause(mediaMs: Long) {
         anchorMediaMs = clamp(mediaMs)
         frozen = true
     }
 
     /** 跳转到指定位置；保持当前播放/暂停状态。 */
+    @Synchronized
     fun seek(mediaMs: Long) {
         anchorMediaMs = clamp(mediaMs)
         anchorNanos = nanoTime()
     }
 
     /** 更新倍速，保持当前媒体时间连续。 */
+    @Synchronized
     fun setRate(newRate: Float) {
         anchorMediaMs = nowMs()
         anchorNanos = nanoTime()
@@ -71,6 +80,7 @@ class MediaClock(
      *
      * @return true 表示发生硬重锚，便于记录诊断信息。
      */
+    @Synchronized
     fun onPlayerSample(mediaMs: Long): Boolean {
         if (frozen) {
             return false
@@ -91,6 +101,7 @@ class MediaClock(
     }
 
     /** 重置为初始状态。 */
+    @Synchronized
     fun reset() {
         anchorMediaMs = 0L
         anchorNanos = nanoTime()

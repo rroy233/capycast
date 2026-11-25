@@ -63,6 +63,9 @@ class DfmDanmakuEngine(
     private val expiredAtAdd = AtomicLong()
     /** DFM 报告“当场弹幕全部结束”的次数。 */
     private val allFinishedTotal = AtomicLong()
+    /** Completed draw tasks, independent of the number of new danmakus shown. */
+    private val renderedFrames = AtomicLong()
+    private val lastRenderedMediaMs = AtomicLong(-1L)
     @Volatile private var lastSubmittedTimeMs = -1L
     @Volatile private var lastShownTimeMs = -1L
     @Volatile private var liveTraceRoomId: Long? = null
@@ -92,6 +95,11 @@ class DfmDanmakuEngine(
                 }
 
                 override fun updateTimer(timer: DanmakuTimer) = Unit
+
+                override fun frameRendered(mediaTimeMs: Long) {
+                    lastRenderedMediaMs.set(mediaTimeMs)
+                    renderedFrames.incrementAndGet()
+                }
 
                 override fun danmakuShown(danmaku: BaseDanmaku) {
                     shownTotal.incrementAndGet()
@@ -262,6 +270,8 @@ class DfmDanmakuEngine(
         shownTotal.set(0)
         expiredAtAdd.set(0)
         allFinishedTotal.set(0)
+        renderedFrames.set(0)
+        lastRenderedMediaMs.set(-1L)
         LogHub.d(TAG, "clear after " + diagnosticState())
     }
 
@@ -284,7 +294,8 @@ class DfmDanmakuEngine(
             "visible=${view.visibility} shown=${view.isShown} attached=${view.isAttachedToWindow} " +
             "alpha=${view.alpha} size=${view.width}x${view.height} pending=${pending.size} " +
             "submitted=${liveSubmittedCount.get()} shownCount=${liveShownCount.get()} " +
-            "lastSubmitted=$lastSubmittedTimeMs lastShown=$lastShownTimeMs"
+            "lastSubmitted=$lastSubmittedTimeMs lastShown=$lastShownTimeMs " +
+            "frames=${renderedFrames.get()} lastFrameMedia=${lastRenderedMediaMs.get()}"
 
     /** 渲染器自检快照：时间轴、暂停状态与提交计数。 */
     override fun renderDiagnostics(): String =
@@ -293,6 +304,7 @@ class DfmDanmakuEngine(
             "prepared=$prepared ready=$dfmReady pending=${pending.size} " +
             "submitted=${submittedTotal.get()} shown=${shownTotal.get()} " +
             "expiredAtAdd=${expiredAtAdd.get()} allFinished=${allFinishedTotal.get()} " +
+            "frames=${renderedFrames.get()} lastFrameMedia=${lastRenderedMediaMs.get()} " +
             "visible=${view.visibility} attached=${view.isAttachedToWindow} " +
             "size=${view.width}x${view.height}"
 
