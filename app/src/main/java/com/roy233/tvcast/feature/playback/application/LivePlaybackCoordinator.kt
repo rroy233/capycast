@@ -30,7 +30,7 @@ import kotlinx.coroutines.withContext
 interface LivePlaybackHost {
     fun updateBackupCount(count: Int)
 
-    fun isPausedWithoutBuffering(): Boolean
+    fun isPlaybackPaused(): Boolean
 
     fun showRouteToast(message: String)
 
@@ -459,7 +459,7 @@ class LivePlaybackCoordinator(
                 firstByteMs = target.result?.firstByteMs,
                 throughputBytesPerSecond = target.result?.throughputBytesPerSecond,
             )
-        val stayPaused = playback.isPausedWithoutBuffering() && !playback.isPlaying()
+        val stayPaused = playback.isPlaybackPaused()
         playback.setPendingPause(stayPaused)
         val info = livePlayInfo(session, target.candidate, playback.lastTitle())
         LogHub.i(

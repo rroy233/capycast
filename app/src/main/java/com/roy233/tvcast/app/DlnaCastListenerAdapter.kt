@@ -7,22 +7,28 @@ import com.roy233.tvcast.platform.dlna.DlnaRenderer
 
 /** 将 DLNA 协议回调逐条翻译为投屏会话的语义命令；业务顺序由会话协作者维护。 */
 class DlnaCastListenerAdapter(private val commands: DlnaCastCommands) : DlnaRenderer.Listener {
-    override fun onCast(uri: String, metadata: String, title: String, longDescription: String) {
+    override fun onCast(
+        uri: String,
+        metadata: String,
+        title: String,
+        longDescription: String,
+        generation: Long,
+    ) {
         LogHub.i(
             TAG,
             "dlna cast uri=${LogRedaction.url(uri)} title=${title.take(80)} " +
                 "metadata=${metadata.length}B longDescription=${longDescription.length}B",
         )
-        commands.cast(uri, title, longDescription)
+        commands.cast(uri, title, longDescription, generation)
     }
 
-    override fun onPlay() = commands.play()
+    override fun onPlay(generation: Long) = commands.play(generation)
 
-    override fun onPause() = commands.pause()
+    override fun onPause(generation: Long) = commands.pause(generation)
 
-    override fun onStop() = commands.stop()
+    override fun onStop(generation: Long) = commands.stop(generation)
 
-    override fun onSeek(positionMs: Long) = commands.seek(positionMs)
+    override fun onSeek(positionMs: Long, generation: Long) = commands.seek(positionMs, generation)
 
     override fun isSeekable(): Boolean = commands.isSeekable()
 

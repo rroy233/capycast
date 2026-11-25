@@ -7,9 +7,12 @@ import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.Collections
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import kotlin.concurrent.thread
 
 /** 表示待写回 DLNA 客户端的 HTTP 响应。 */
@@ -25,7 +28,8 @@ internal data class DlnaHttpResponse(
 internal class DlnaHttpServer(
     port: Int,
     private val onGet: (String) -> DlnaHttpResponse,
-    private val onPost: (String, Map<String, String>, ByteArray) -> DlnaHttpResponse,
+    private val onPost: (String, Map<String, String>, ByteArray, Long?) -> DlnaHttpResponse,
+    private val captureGeneration: () -> Long?,
 ) {
     private val serverSocket =
         ServerSocket().apply {
@@ -33,6 +37,11 @@ internal class DlnaHttpServer(
             bind(InetSocketAddress(port))
         }
     private val pool = Executors.newCachedThreadPool()
+    private val sockets: MutableSet<Socket> =
+        Collections.newSetFromMap(ConcurrentHashMap<Socket, Boolean>())
+
+    val localPort: Int
+        get() = serverSocket.localPort
 
     @Volatile private var alive = true
 
@@ -46,9 +55,28 @@ internal class DlnaHttpServer(
                         if (alive) LogHub.e(TAG, "accept failed: ${failure.message}", failure)
                         break
                     }
-                pool.execute {
-                    runCatching { handle(socket) }
-                        .onFailure { LogHub.e(TAG, "http handler failed: ${it.message}", it) }
+                val generation = captureGeneration()
+                sockets.add(socket)
+                if (!alive) {
+                    sockets.remove(socket)
+                    runCatching { socket.close() }
+                    break
+                }
+                try {
+                    pool.execute {
+                        try {
+                            runCatching { handle(socket, generation) }
+                                .onFailure {
+                                    if (alive)
+                                        LogHub.e(TAG, "http handler failed: ${it.message}", it)
+                                }
+                        } finally {
+                            sockets.remove(socket)
+                        }
+                    }
+                } catch (_: RejectedExecutionException) {
+                    sockets.remove(socket)
+                    runCatching { socket.close() }
                 }
             }
         }
@@ -57,10 +85,11 @@ internal class DlnaHttpServer(
     fun stop() {
         alive = false
         runCatching { serverSocket.close() }
+        sockets.forEach { socket -> runCatching { socket.close() } }
         pool.shutdownNow()
     }
 
-    private fun handle(socket: Socket) {
+    private fun handle(socket: Socket, generation: Long?) {
         socket.use { connection ->
             connection.soTimeout = SOCKET_TIMEOUT_MS
             val input = BufferedInputStream(connection.getInputStream())
@@ -87,7 +116,7 @@ internal class DlnaHttpServer(
                 when (method) {
                     "GET",
                     "HEAD" -> onGet(path)
-                    "POST" -> onPost(path, headers, body)
+                    "POST" -> onPost(path, headers, body, generation)
                     "SUBSCRIBE" ->
                         response(
                             200,

@@ -1,9 +1,13 @@
 package com.roy233.tvcast
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.SurfaceView
@@ -16,11 +20,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.content.ContextCompat
 import androidx.core.os.LocaleListCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.roy233.tvcast.app.CapyCastContainer
 import com.roy233.tvcast.app.DlnaCastListenerAdapter
+import com.roy233.tvcast.app.DlnaServiceLifecycle
 import com.roy233.tvcast.app.MainThreadPlaybackAccess
 import com.roy233.tvcast.app.PlaybackEngineHost
 import com.roy233.tvcast.app.SubtitleOverlayHost
@@ -36,6 +42,7 @@ import com.roy233.tvcast.core.diagnostics.PlaybackDiagnostics
 import com.roy233.tvcast.core.diagnostics.PlaybackEndReason
 import com.roy233.tvcast.core.diagnostics.Screen
 import com.roy233.tvcast.core.diagnostics.UsageEvent
+import com.roy233.tvcast.core.lifecycle.ForegroundAvailability
 import com.roy233.tvcast.core.playback.LivePlaybackTelemetry
 import com.roy233.tvcast.core.playback.PlaybackBackend
 import com.roy233.tvcast.core.playback.PlaybackEvent
@@ -232,6 +239,20 @@ class MainActivity :
     private lateinit var composeUi: ComposeView
     /** DLNA 投屏渲染器。 */
     private lateinit var dlna: DlnaRenderer
+    private lateinit var dlnaLifecycle: DlnaServiceLifecycle
+    private val foreground = ForegroundAvailability()
+    private var interactiveReceiverRegistered = false
+    private val interactiveReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    Intent.ACTION_SCREEN_OFF ->
+                        applyForegroundTransition(foreground.setInteractive(false))
+                    Intent.ACTION_SCREEN_ON ->
+                        applyForegroundTransition(foreground.setInteractive(true))
+                }
+            }
+        }
 
     /** 主线程协程作用域。 */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -276,6 +297,7 @@ class MainActivity :
     private val castCoordinator by lazy {
         CastSessionCoordinator(
             this,
+            foreground,
             CastAutoplaySession(
                 scope,
                 container.castCollectionRepository,
@@ -718,7 +740,8 @@ class MainActivity :
         ui = ui.copy(toast = message)
     }
 
-    override fun isPausedWithoutBuffering(): Boolean = !ui.isBuffering && !ui.isPlaying
+    override fun isPlaybackPaused(): Boolean =
+        !::playbackEngineHost.isInitialized || !playbackEngineHost.isPlayRequested()
 
     override fun updateBackupCount(count: Int) {
         ui = ui.copy(liveBackupCount = count)
@@ -737,6 +760,10 @@ class MainActivity :
     override fun positionMs(): Long = playerPositionMs()
 
     override fun openPlayback(request: PlaybackRequest, seekToMs: Long): Boolean {
+        if (!foreground.isAvailable) {
+            LogHub.i(TAG, "playback open rejected while unavailable")
+            return false
+        }
         currentRequest = request
         return runCatching { openPlaybackBackendForSession(request, seekToMs) }
             .onFailure { error ->
@@ -751,14 +778,20 @@ class MainActivity :
         seekToMs: Long,
     ): Boolean {
         val context = playbackSessionLifecycle.beginOpen(request, seekToMs) ?: return false
+        val startPaused = pendingPause
         val opened =
             try {
-                playbackEngineHost.open(request, seekToMs, context.token)
+                playbackEngineHost.open(
+                    request,
+                    seekToMs,
+                    context.token,
+                    startPaused = startPaused,
+                )
             } catch (failure: Throwable) {
                 playbackSessionLifecycle.completeOpen(context, opened = false)
                 throw failure
             }
-        playbackSessionLifecycle.completeOpen(context, opened)
+        playbackSessionLifecycle.completeOpen(context, opened, startPaused)
         return opened
     }
 
@@ -1112,7 +1145,7 @@ class MainActivity :
     }
 
     /** 接收 DLNA 渲染器事件并转发给播放器与界面状态。 */
-    private val dlnaCommands by lazy { DlnaTransportCoordinator(this) }
+    private val dlnaCommands by lazy { DlnaTransportCoordinator(this, foreground) }
     private val dlnaListener by lazy { DlnaCastListenerAdapter(dlnaCommands) }
     private val mainThreadPlaybackAccess by lazy { MainThreadPlaybackAccess() }
 
@@ -1214,8 +1247,28 @@ class MainActivity :
         composeUi.isFocusable = true
         composeUi.post { composeUi.requestFocus() }
 
-        dlna = DlnaRenderer(this, dlnaListener, deviceName = castDeviceName)
-        dlna.start()
+        dlna =
+            DlnaRenderer(
+                this,
+                dlnaListener,
+                foreground,
+                deviceName = castDeviceName,
+                captureGeneration = {
+                    if (::dlnaLifecycle.isInitialized) dlnaLifecycle.captureGeneration() else null
+                },
+            )
+        dlnaLifecycle = DlnaServiceLifecycle(dlna, foreground)
+        foreground.setTopResumed(Build.VERSION.SDK_INT < Build.VERSION_CODES.Q)
+        ContextCompat.registerReceiver(
+            this,
+            interactiveReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        interactiveReceiverRegistered = true
 
         ui =
             ui.copy(
@@ -1249,6 +1302,7 @@ class MainActivity :
                 viewportHost = viewportHost,
                 onEvent = playbackEventRouter::dispatch,
                 onHdrWindowChanged = ::setHdrWindowEnabled,
+                foreground = foreground,
             )
         }
             .onSuccess { host ->
@@ -1879,6 +1933,14 @@ class MainActivity :
 
     override fun stopPlaybackForSession(reason: String) = stopActivePlayback(reason)
 
+    override fun pausePlaybackForSession(reason: String) {
+        playbackEngineHost.pauseForBackground(reason)
+        ui = ui.copy(isPlaying = false)
+    }
+
+    override fun publishInitialPaused(token: PlaybackSessionToken) =
+        playbackEngineHost.publishInitialPaused(token)
+
     override fun openPlaybackComponents(context: PlaybackSessionContext) {
         val request = context.request
         if (request.isLive) {
@@ -2250,6 +2312,12 @@ class MainActivity :
     /** 恢复界面焦点并刷新设备网络信息。 */
     override fun onResume() {
         super.onResume()
+        applyForegroundTransition(
+            foreground.setInteractive(
+                (getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive,
+            ),
+        )
+        applyForegroundTransition(foreground.setResumed(true))
         LogHub.i(TAG, "activity resume castActive=$castActive mode=${ui.mode}")
         if (!composeUi.hasFocus()) {
             composeUi.post { composeUi.requestFocus() }
@@ -2257,14 +2325,54 @@ class MainActivity :
         ui = ui.copy(network = deviceInfo.wifiName(), ip = LogHub.localIp())
     }
 
-    /** 暂停非投屏场景下的本地播放器。 */
+    /** 离开前台时立即撤销准入并暂停已有播放。 */
     override fun onPause() {
+        applyForegroundTransition(foreground.setResumed(false))
         super.onPause()
         LogHub.i(TAG, "activity pause castActive=$castActive mode=${ui.mode}")
-        if (!castActive && ::playbackEngineHost.isInitialized) {
-            if (playerIsPlaying()) {
-                setPlayerPaused(true, "activity-pause")
-                ui = ui.copy(isPlaying = false)
+    }
+
+    override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
+        super.onTopResumedActivityChanged(isTopResumedActivity)
+        applyForegroundTransition(foreground.setTopResumed(isTopResumedActivity))
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!foreground.isAvailable) suspendPlayerForBackground()
+    }
+
+    private fun suspendPlayerForBackground() {
+        if (!::playbackEngineHost.isInitialized) return
+        runCatching { playbackEngineHost.suspendForBackground(ui.volume) }
+            .onFailure { LogHub.e(TAG, "background player release failed", it) }
+    }
+
+    private fun applyForegroundTransition(transition: ForegroundAvailability.Transition) {
+        when (transition) {
+            ForegroundAvailability.Transition.UNCHANGED -> Unit
+            ForegroundAvailability.Transition.UNAVAILABLE -> {
+                playbackSessionLifecycle.onForegroundUnavailable()
+                if (::dlna.isInitialized) dlna.markPaused()
+                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) suspendPlayerForBackground()
+                if (::dlnaLifecycle.isInitialized) dlnaLifecycle.setActive(false)
+            }
+            ForegroundAvailability.Transition.AVAILABLE -> {
+                if (::playbackEngineHost.isInitialized) {
+                    runCatching { playbackEngineHost.restoreAfterBackground() }
+                        .onFailure { failure ->
+                            LogHub.e(TAG, "foreground playback restore failed", failure)
+                            showError(
+                                title = "播放器恢复失败",
+                                message = "请重启应用后重试。",
+                                code = "PLAYER_RESTORE_FAILED",
+                                canRetry = false,
+                            )
+                            return
+                        }
+                }
+                if (foreground.activate() && ::dlnaLifecycle.isInitialized)
+                    dlnaLifecycle.setActive(true)
             }
         }
     }
@@ -2282,7 +2390,8 @@ class MainActivity :
         LogHub.i(TAG, "activity destroy")
         castCoordinator.clearAutoplay()
         playbackSessionLifecycle.destroy()
-        runCatching { dlna.stop() }
+        if (interactiveReceiverRegistered) unregisterReceiver(interactiveReceiver)
+        if (::dlnaLifecycle.isInitialized) dlnaLifecycle.close()
         loginCoordinator.cancel()
         updateCoordinator.cancel()
         feedbackCoordinator.release()

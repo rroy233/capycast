@@ -257,7 +257,7 @@ class VodPlaybackCoordinatorTest {
             messages += message
         }
 
-        override fun isPausedWithoutBuffering(): Boolean = false
+        override fun isPlaybackPaused(): Boolean = false
 
         override fun currentRequest(): PlaybackRequest = current
 

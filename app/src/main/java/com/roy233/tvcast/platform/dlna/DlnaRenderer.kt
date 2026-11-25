@@ -4,6 +4,7 @@ import android.content.Context
 import com.roy233.tvcast.BuildConfig
 import com.roy233.tvcast.R
 import com.roy233.tvcast.core.diagnostics.LogHub
+import com.roy233.tvcast.core.lifecycle.ForegroundAvailability
 import java.net.InetAddress
 import java.util.Locale
 import java.util.UUID
@@ -26,26 +27,34 @@ class DlnaRenderer(
     private val context: Context,
     /** 接收投屏与播放控制事件的回调接口。 */
     private val listener: Listener,
+    private val foreground: ForegroundAvailability,
     /** 对外广播的 DLNA 设备名称。 */
     private val deviceName: String = "CapyCast",
+    private val captureGeneration: () -> Long?,
 ) {
 
     /** 接收 DLNA 媒体与播放控制事件。 */
     interface Listener {
         /** 接收到新的媒体地址和 DIDL 元数据。 */
-        fun onCast(uri: String, metadata: String, title: String, longDescription: String)
+        fun onCast(
+            uri: String,
+            metadata: String,
+            title: String,
+            longDescription: String,
+            generation: Long,
+        )
 
         /** 收到播放命令。 */
-        fun onPlay()
+        fun onPlay(generation: Long)
 
         /** 收到暂停命令。 */
-        fun onPause()
+        fun onPause(generation: Long)
 
         /** 收到停止命令。 */
-        fun onStop()
+        fun onStop(generation: Long)
 
         /** 收到跳转命令。 */
-        fun onSeek(positionMs: Long)
+        fun onSeek(positionMs: Long, generation: Long)
 
         /** 当前媒体是否支持定位。直播等不可定位媒体返回 false。 */
         fun isSeekable(): Boolean
@@ -71,9 +80,9 @@ class DlnaRenderer(
     private val state = DlnaTransportState()
 
     /** SOAP 动作分发器。 */
-    private val soapDispatcher by lazy { SoapActionDispatcher(state, listener) }
+    private val soapDispatcher by lazy { SoapActionDispatcher(state, listener, foreground) }
     /** 设备对外使用的 IPv4 地址。 */
-    private val ip: String = LogHub.localIp()
+    @Volatile private var ip: String = LogHub.localIp()
     /** HTTP 描述和控制服务端口。 */
     private val port: Int = PORT
     /** 持久化的 UPnP 设备标识。 */
@@ -99,15 +108,19 @@ class DlnaRenderer(
         get() = "http://$ip:$port/description.xml"
 
     /** 启动 HTTP、SSDP 和设备保活服务。 */
-    fun start() {
-        if (running) return
+    fun start(): Boolean {
+        if (running) return true
+        ip = LogHub.localIp()
         running = true
         try {
-            http = DlnaHttpServer(port, ::handleGet, ::handlePost).also { it.start() }
+            http =
+                DlnaHttpServer(port, ::handleGet, ::handlePost, captureGeneration).also {
+                    it.start()
+                }
         } catch (t: Throwable) {
             LogHub.e(TAG, "http start failed: ${t.message}", t)
             running = false
-            return
+            return false
         }
         try {
             ssdp = SsdpDiscoveryService(context, udn, ip, descriptionUrl).also { it.start() }
@@ -128,6 +141,7 @@ class DlnaRenderer(
             }
         LogHub.i(TAG, "renderer started name=$deviceName url=$descriptionUrl")
         LogHub.setDlna(descriptionUrl)
+        return true
     }
 
     /** 停止 HTTP、SSDP 和设备保活服务。 */
@@ -147,6 +161,13 @@ class DlnaRenderer(
     /** 更新当前媒体时长。 */
     fun setDurationMs(ms: Long) {
         state.durationMs = ms.coerceAtLeast(0L)
+    }
+
+    /** 前台播放暂停后同步对外的传输状态。 */
+    fun markPaused() {
+        if (state.transport == "PLAYING" || state.transport == "TRANSITIONING") {
+            state.transport = "PAUSED_PLAYBACK"
+        }
     }
 
     /**
@@ -210,7 +231,11 @@ class DlnaRenderer(
         path: String,
         headers: Map<String, String>,
         body: ByteArray,
+        generation: Long?,
     ): DlnaHttpResponse {
+        if (generation == null || captureGeneration() != generation) {
+            return response(503, "Service Unavailable", "text/plain", "renderer unavailable")
+        }
         if (path.startsWith("/nva") || path.contains("nva", ignoreCase = true)) {
             LogHub.i(TAG, "NVA-like POST $path body=${body.size}B")
             return response(200, "OK", "text/plain", ByteArray(0))
@@ -222,9 +247,12 @@ class DlnaRenderer(
                 LogHub.e(TAG, "SOAP parse failed: ${t.message}", t)
                 return response(400, "Bad Request", "text/plain", "bad soap")
             }
+        if (captureGeneration() != generation) {
+            return response(503, "Service Unavailable", "text/plain", "renderer unavailable")
+        }
         val result =
             try {
-                dispatch(req)
+                dispatch(req, generation)
             } catch (t: Throwable) {
                 LogHub.e(TAG, "SOAP dispatch ${req.action} failed: ${t.message}", t)
                 soapDispatcher.fault(req.service, 501, "Action Failed")
@@ -233,7 +261,8 @@ class DlnaRenderer(
     }
 
     /** 分发 SOAP 动作并构造响应。 */
-    private fun dispatch(req: SoapRequest): ByteArray = soapDispatcher.dispatch(req)
+    private fun dispatch(req: SoapRequest, generation: Long): ByteArray =
+        soapDispatcher.dispatch(req, generation)
 
     private fun descriptionXml(): ByteArray {
         val svc =

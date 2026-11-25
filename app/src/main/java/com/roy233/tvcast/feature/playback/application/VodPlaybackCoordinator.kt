@@ -34,7 +34,7 @@ import kotlinx.coroutines.withContext
 interface VodPlaybackHost {
     fun showRouteToast(message: String)
 
-    fun isPausedWithoutBuffering(): Boolean
+    fun isPlaybackPaused(): Boolean
 
     fun currentRequest(): PlaybackRequest?
 
@@ -685,7 +685,7 @@ class VodPlaybackCoordinator(
             )
             completeRouteSwitch()
         }
-        if (!activelyPlaying && playback.isPausedWithoutBuffering()) {
+        if (!activelyPlaying && playback.isPlaybackPaused()) {
             return
         }
         session.recovery.onTick(now)?.let { failure ->

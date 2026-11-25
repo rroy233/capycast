@@ -13,6 +13,32 @@ import org.junit.Test
 /** 会话终止原因对应的历史、播放器和界面顺序。 */
 class PlaybackSessionLifecycleTest {
     @Test
+    fun `paused open notifies components after they are opened`() {
+        val calls = mutableListOf<String>()
+        val lifecycle = PlaybackSessionLifecycle(host(calls))
+        val context = requireNotNull(lifecycle.beginOpen(request(), 0L))
+        lifecycle.completeOpen(context, opened = true, startPaused = true)
+
+        assertEquals(
+            listOf("openPlaybackComponents", "publishInitialPaused"),
+            calls.filter { it == "openPlaybackComponents" || it == "publishInitialPaused" },
+        )
+    }
+
+    @Test
+    fun `backgrounding pauses active and resolving playback without closing session`() {
+        val calls = mutableListOf<String>()
+        val lifecycle = PlaybackSessionLifecycle(host(calls, hasRequest = true, resolving = true))
+
+        lifecycle.onForegroundUnavailable()
+
+        assertTrue(calls.contains("setPendingPause"))
+        assertTrue(calls.contains("pausePlaybackForSession"))
+        assertFalse(calls.contains("closePlaybackComponents"))
+        assertFalse(calls.contains("stopPlaybackForSession"))
+    }
+
+    @Test
     fun `every terminal path closes active components exactly once`() {
         val terminalPaths =
             listOf<Pair<String, (PlaybackSessionLifecycle) -> Unit>>(
@@ -156,7 +182,11 @@ class PlaybackSessionLifecycleTest {
         )
     }
 
-    private fun host(calls: MutableList<String>): PlaybackSessionHost =
+    private fun host(
+        calls: MutableList<String>,
+        hasRequest: Boolean = false,
+        resolving: Boolean = false,
+    ): PlaybackSessionHost =
         Proxy.newProxyInstance(
             PlaybackSessionHost::class.java.classLoader,
             arrayOf(PlaybackSessionHost::class.java),
@@ -165,6 +195,8 @@ class PlaybackSessionLifecycleTest {
             when (method.name) {
                 "modeForLog" -> "PLAYING"
                 "isEngineInitialized" -> true
+                "hasCurrentRequest" -> hasRequest
+                "isResolving" -> resolving
                 "runOnMain" -> {
                     @Suppress("UNCHECKED_CAST") (args!![0] as Function0<Unit>).invoke()
                     null

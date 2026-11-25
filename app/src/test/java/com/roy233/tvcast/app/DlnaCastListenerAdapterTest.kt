@@ -11,10 +11,10 @@ class DlnaCastListenerAdapterTest {
         val commands = RecordingCommands(calls)
 
         val listener = DlnaCastListenerAdapter(commands)
-        listener.onPlay()
-        listener.onPause()
-        listener.onStop()
-        listener.onSeek(2000L)
+        listener.onPlay(1L)
+        listener.onPause(1L)
+        listener.onStop(1L)
+        listener.onSeek(2000L, 1L)
         listener.onSetVolume(40)
 
         assertEquals(listOf("play", "pause", "stop", "seek:2000", "volume:40"), calls)
@@ -35,23 +35,23 @@ class DlnaCastListenerAdapterTest {
     }
 
     private class RecordingCommands(private val calls: MutableList<String>) : DlnaCastCommands {
-        override fun cast(uri: String, title: String, longDescription: String) {
+        override fun cast(uri: String, title: String, longDescription: String, generation: Long) {
             calls += "cast:$uri:$title"
         }
 
-        override fun play() {
+        override fun play(generation: Long) {
             calls += "play"
         }
 
-        override fun pause() {
+        override fun pause(generation: Long) {
             calls += "pause"
         }
 
-        override fun stop() {
+        override fun stop(generation: Long) {
             calls += "stop"
         }
 
-        override fun seek(positionMs: Long) {
+        override fun seek(positionMs: Long, generation: Long) {
             calls += "seek:$positionMs"
         }
 

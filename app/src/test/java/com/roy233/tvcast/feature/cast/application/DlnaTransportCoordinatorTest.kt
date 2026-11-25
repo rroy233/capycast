@@ -1,5 +1,6 @@
 package com.roy233.tvcast.feature.cast.application
 
+import com.roy233.tvcast.core.lifecycle.ForegroundAvailability
 import java.lang.reflect.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -7,20 +8,77 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DlnaTransportCoordinatorTest {
+    private val foreground =
+        ForegroundAvailability().apply {
+            setInteractive(true)
+            setResumed(true)
+            activate()
+        }
+
+    private val generation: Long
+        get() = requireNotNull(foreground.capture())
+
+    @Test
+    fun `queued remote play is discarded when foreground session changes`() {
+        val calls = mutableListOf<String>()
+        val queued = mutableListOf<() -> Unit>()
+        val coordinator =
+            DlnaTransportCoordinator(
+                host(calls, HostState(engineAvailable = true), queued),
+                foreground,
+            )
+        coordinator.play(generation)
+        foreground.setResumed(false)
+        foreground.setResumed(true)
+        foreground.activate()
+        queued.forEach { it() }
+        assertTrue(calls.isEmpty())
+    }
+
+    @Test
+    fun `remote commands are not queued in background`() {
+        val calls = mutableListOf<String>()
+        val queued = mutableListOf<() -> Unit>()
+        val priorGeneration = generation
+        foreground.setResumed(false)
+        val coordinator = DlnaTransportCoordinator(host(calls, queue = queued), foreground)
+        coordinator.cast("uri", "title", "metadata", priorGeneration)
+        coordinator.play(priorGeneration)
+        coordinator.pause(priorGeneration)
+        coordinator.seek(1000, priorGeneration)
+        coordinator.stop(priorGeneration)
+        assertTrue(queued.isEmpty())
+    }
+
+    @Test
+    fun `request from prior foreground remains invalid after return`() {
+        val calls = mutableListOf<String>()
+        val queued = mutableListOf<() -> Unit>()
+        val priorGeneration = generation
+        foreground.setResumed(false)
+        foreground.setResumed(true)
+        foreground.activate()
+        val coordinator = DlnaTransportCoordinator(host(calls, queue = queued), foreground)
+        coordinator.cast("uri", "title", "metadata", priorGeneration)
+        coordinator.play(priorGeneration)
+        assertTrue(queued.isEmpty())
+    }
+
     @Test
     fun `stop delegates to the host session teardown`() {
         val calls = mutableListOf<String>()
-        DlnaTransportCoordinator(host(calls)).stop()
+        DlnaTransportCoordinator(host(calls), foreground).stop(generation)
         assertEquals(listOf("stopCastFromDlna"), calls)
     }
 
     @Test
     fun `play and pause marshal playback state to the main thread`() {
         val calls = mutableListOf<String>()
-        val coordinator = DlnaTransportCoordinator(host(calls, HostState(engineAvailable = true)))
+        val coordinator =
+            DlnaTransportCoordinator(host(calls, HostState(engineAvailable = true)), foreground)
 
-        coordinator.play()
-        coordinator.pause()
+        coordinator.play(generation)
+        coordinator.pause(generation)
 
         assertEquals(
             listOf(
@@ -39,9 +97,9 @@ class DlnaTransportCoordinatorTest {
     fun `live transport rejects seeking and reports zero duration`() {
         val calls = mutableListOf<String>()
         val state = HostState(isLive = true, seekable = true, engineAvailable = true)
-        val coordinator = DlnaTransportCoordinator(host(calls, state))
+        val coordinator = DlnaTransportCoordinator(host(calls, state), foreground)
 
-        coordinator.seek(2000L)
+        coordinator.seek(2000L, generation)
 
         assertFalse(coordinator.isSeekable())
         assertEquals(0L, coordinator.positionMs())
@@ -53,7 +111,7 @@ class DlnaTransportCoordinatorTest {
     fun `vod transport reports seekable from the active backend`() {
         val calls = mutableListOf<String>()
         val state = HostState(isLive = false, seekable = true, engineAvailable = true)
-        val coordinator = DlnaTransportCoordinator(host(calls, state))
+        val coordinator = DlnaTransportCoordinator(host(calls, state), foreground)
 
         assertEquals(true, coordinator.isSeekable())
     }
@@ -62,9 +120,9 @@ class DlnaTransportCoordinatorTest {
     fun `seek clamps to zero and forwards danmaku position`() {
         val calls = mutableListOf<String>()
         val state = HostState(isLive = false, seekable = true, engineAvailable = true)
-        val coordinator = DlnaTransportCoordinator(host(calls, state))
+        val coordinator = DlnaTransportCoordinator(host(calls, state), foreground)
 
-        coordinator.seek(-500L)
+        coordinator.seek(-500L, generation)
 
         assertEquals(listOf("seekTo:-500", "seek-state:0", "seekDanmaku:0"), calls)
     }
@@ -73,7 +131,7 @@ class DlnaTransportCoordinatorTest {
     fun `volume command is ignored by Bilibili cast policy`() {
         val calls = mutableListOf<String>()
         val queued = mutableListOf<() -> Unit>()
-        val coordinator = DlnaTransportCoordinator(host(calls, queue = queued))
+        val coordinator = DlnaTransportCoordinator(host(calls, queue = queued), foreground)
 
         coordinator.setVolume(0)
 
@@ -86,13 +144,13 @@ class DlnaTransportCoordinatorTest {
         val calls = mutableListOf<String>()
         val queued = mutableListOf<() -> Unit>()
         val state = HostState(engineAvailable = true, seekable = true, enforceMainAccess = true)
-        val coordinator = DlnaTransportCoordinator(host(calls, state, queued))
+        val coordinator = DlnaTransportCoordinator(host(calls, state, queued), foreground)
 
-        coordinator.play()
-        coordinator.pause()
-        coordinator.seek(2_000L)
+        coordinator.play(generation)
+        coordinator.pause(generation)
+        coordinator.seek(2_000L, generation)
         coordinator.setVolume(75)
-        coordinator.stop()
+        coordinator.stop(generation)
         assertTrue(calls.isEmpty())
         assertEquals(4, queued.size)
 

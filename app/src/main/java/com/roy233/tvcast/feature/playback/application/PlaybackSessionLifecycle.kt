@@ -57,6 +57,15 @@ interface PlaybackSessionHost {
 
     fun hasCurrentRequest(): Boolean
 
+    fun isResolving(): Boolean
+
+    fun setPendingPause(paused: Boolean)
+
+    fun pausePlaybackForSession(reason: String)
+
+    /** 首次以暂停状态打开时，向事件路由器提交暂停事件。 */
+    fun publishInitialPaused(token: PlaybackSessionToken)
+
     fun isCastActive(): Boolean
 
     fun lastCastContent(): CastContent?
@@ -123,6 +132,15 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
     var state: PlaybackSessionState = PlaybackSessionState.Idle
         private set
 
+    /** 前台失效时保留会话，暂停播放器并禁止解析完成后自动起播。 */
+    fun onForegroundUnavailable() {
+        if (state == PlaybackSessionState.Destroyed) return
+        if (host.isResolving()) host.setPendingPause(true)
+        if (host.hasCurrentRequest() && host.isEngineInitialized()) {
+            host.pausePlaybackForSession("foreground-unavailable")
+        }
+    }
+
     /**
      * 开始一次播放器打开。
      *
@@ -164,7 +182,11 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
     }
 
     /** 提交一次播放器打开结果；只有当前 attempt 可以启动内容组件。 */
-    fun completeOpen(context: PlaybackSessionContext, opened: Boolean) {
+    fun completeOpen(
+        context: PlaybackSessionContext,
+        opened: Boolean,
+        startPaused: Boolean = false,
+    ) {
         val session = activeSession
         if (session == null || currentToken != context.token || session.context !== context) {
             LogHub.i(
@@ -189,6 +211,7 @@ class PlaybackSessionLifecycle(private val host: PlaybackSessionHost) {
             }
         }
         state = PlaybackSessionState.Active(context)
+        if (startPaused) host.publishInitialPaused(context.token)
         LogHub.i(
             TAG,
             "session open committed session=${context.token.sessionId} " +
