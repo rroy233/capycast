@@ -7,6 +7,7 @@ import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.Collections
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -36,7 +37,8 @@ internal class DlnaHttpServer(
             bind(InetSocketAddress(port))
         }
     private val pool = Executors.newCachedThreadPool()
-    private val sockets = ConcurrentHashMap.newKeySet<Socket>()
+    private val sockets: MutableSet<Socket> =
+        Collections.newSetFromMap(ConcurrentHashMap<Socket, Boolean>())
 
     val localPort: Int
         get() = serverSocket.localPort
